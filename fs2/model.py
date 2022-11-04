@@ -12,16 +12,16 @@ from smts.text.lookups import LookupTables
 from torch import nn
 from tqdm import tqdm
 
-from fs2.layers import (
+from .layers import (
     ConformerEncoderLayer,
     PositionalEncoding,
     PriorEmbedding,
     SpeakerEmbedding,
     VarianceAdaptor,
 )
-from fs2.log_gmm import LogGMM
-from fs2.loss import FastSpeech2Loss
-from fs2.noam import NoamLR
+from .log_gmm import LogGMM
+from .loss import FastSpeech2Loss
+from .noam import NoamLR
 
 
 class FastSpeech2(pl.LightningModule):

@@ -11,9 +11,9 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from smts.preprocessor import Preprocessor
 from smts.utils import update_config_from_cli_args, update_config_from_path
 
-from fs2.config import CONFIGS, FastSpeech2Config
-from fs2.dataset import FastSpeech2DataModule
-from fs2.model import FastSpeech2
+from .config import CONFIGS, FastSpeech2Config
+from .dataset import FastSpeech2DataModule
+from .model import FastSpeech2
 
 app = typer.Typer(pretty_exceptions_show_locals=False)
 

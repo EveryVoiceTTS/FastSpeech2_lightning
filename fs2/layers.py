@@ -6,8 +6,8 @@ from einops.layers.torch import Reduce
 from torch import nn
 from torch.nn.utils.rnn import pad_sequence
 
-from fs2.cwt import CWT
-from fs2.sdp import StochasticDurationPredictor
+from .cwt import CWT
+from .sdp import StochasticDurationPredictor
 
 
 def generate_square_subsequent_mask(sz):

@@ -9,7 +9,7 @@ from smts.text.lookups import LookupTables
 from smts.utils import collate_fn, expand
 from torch.utils.data import Dataset, random_split
 
-from fs2.config import FastSpeech2Config
+from .config import FastSpeech2Config
 
 
 class FastSpeechDataset(Dataset):
