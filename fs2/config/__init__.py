@@ -2,7 +2,6 @@ from enum import Enum
 from pathlib import Path
 from typing import Dict, List
 
-import yaml
 from smts.config.preprocessing_config import PreprocessingConfig
 from smts.config.shared_types import (
     BaseTrainingConfig,
@@ -11,6 +10,7 @@ from smts.config.shared_types import (
     PartialConfigModel,
 )
 from smts.config.text_config import TextConfig
+from smts.utils import load_config_from_json_or_yaml_path
 
 
 class TransformerConfig(ConfigModel):
@@ -142,8 +142,7 @@ class FastSpeech2Config(PartialConfigModel):
     @staticmethod
     def load_config_from_path(path: Path) -> dict:
         """Load a config from a path"""
-        with open(path) as f:
-            config = yaml.safe_load(f)
+        config = load_config_from_json_or_yaml_path(path)
         return FastSpeech2Config(**config)
 
 
