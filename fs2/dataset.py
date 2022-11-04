@@ -1,14 +1,15 @@
 import random
-import torch
-import numpy as np
 from pathlib import Path
-from torch.utils.data import Dataset, random_split
+
+import numpy as np
+import torch
 from smts.dataloader import BaseDataModule
 from smts.text import TextProcessor
 from smts.text.lookups import LookupTables
 from smts.utils import collate_fn, expand
+from torch.utils.data import Dataset, random_split
 
-from .config import FastSpeech2Config
+from fs2.config import FastSpeech2Config
 
 
 class FastSpeechDataset(Dataset):

@@ -5,13 +5,12 @@ import pytorch_lightning as pl
 import torch
 from scipy.spatial.distance import jensenshannon
 from sklearn.neighbors import KernelDensity
-from torch import nn
-from tqdm import tqdm
-
 from smts.config.base_config import FeaturePredictionConfig
 from smts.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.model import HiFiGAN
 from smts.text import TextProcessor
 from smts.text.lookups import LookupTables
+from torch import nn
+from tqdm import tqdm
 
 from fs2.layers import (
     ConformerEncoderLayer,
@@ -20,9 +19,9 @@ from fs2.layers import (
     SpeakerEmbedding,
     VarianceAdaptor,
 )
-from .log_gmm import LogGMM
-from .loss import FastSpeech2Loss
-from .noam import NoamLR
+from fs2.log_gmm import LogGMM
+from fs2.loss import FastSpeech2Loss
+from fs2.noam import NoamLR
 
 
 class FastSpeech2(pl.LightningModule):
@@ -818,44 +817,44 @@ class FastSpeech2(pl.LightningModule):
             if pred_dict["duration"].sum() == 0:
                 print("WARNING: duration is zero (common at beginning of training)")
             # else:
-                # try:
-                #     pred_fig = self.valid_ds.plot(pred_dict, show=False)
-                #     true_fig = self.valid_ds.plot(true_dict, show=False)
-                #     if self.valid_example_directory is not None:
-                #         Path(self.valid_example_directory).mkdir(
-                #             parents=True, exist_ok=True
-                #         )
-                #         pred_fig.save(
-                #             os.path.join(
-                #                 self.valid_example_directory,
-                #                 f"pred_{batch['id'][i]}.png",
-                #             )
-                #         )
-                #         true_fig.save(
-                #             os.path.join(
-                #                 self.valid_example_directory,
-                #                 f"true_{batch['id'][i]}.png",
-                #             )
-                #         )
-                #     # pred_audio = self.vocoder(pred_mel.to(self.device).float())[
-                #     #     0
-                #     # ]  # TODO: Implement predict_step
-                #     # true_audio = self.vocoder(true_mel.to(self.device).float())[
-                #         0
-                #     # ]  # TODO: Implement predict_step
-                #     # self.eval_log_data.append(
-                #     #     [
-                #     #         batch["text"][i],
-                #     #         wandb.Image(pred_fig),
-                #     #         wandb.Image(true_fig),
-                #     #         wandb.Audio(pred_audio, sample_rate=22050),
-                #     #         wandb.Audio(true_audio, sample_rate=22050),
-                #     #     ]
-                #     # )  # TODO: replace wandb with tensorboard
-                # except:
-                #     print(
-                #         "WARNING: failed to log example (common before training starts)"
-                #     )
+            # try:
+            #     pred_fig = self.valid_ds.plot(pred_dict, show=False)
+            #     true_fig = self.valid_ds.plot(true_dict, show=False)
+            #     if self.valid_example_directory is not None:
+            #         Path(self.valid_example_directory).mkdir(
+            #             parents=True, exist_ok=True
+            #         )
+            #         pred_fig.save(
+            #             os.path.join(
+            #                 self.valid_example_directory,
+            #                 f"pred_{batch['id'][i]}.png",
+            #             )
+            #         )
+            #         true_fig.save(
+            #             os.path.join(
+            #                 self.valid_example_directory,
+            #                 f"true_{batch['id'][i]}.png",
+            #             )
+            #         )
+            #     # pred_audio = self.vocoder(pred_mel.to(self.device).float())[
+            #     #     0
+            #     # ]  # TODO: Implement predict_step
+            #     # true_audio = self.vocoder(true_mel.to(self.device).float())[
+            #         0
+            #     # ]  # TODO: Implement predict_step
+            #     # self.eval_log_data.append(
+            #     #     [
+            #     #         batch["text"][i],
+            #     #         wandb.Image(pred_fig),
+            #     #         wandb.Image(true_fig),
+            #     #         wandb.Audio(pred_audio, sample_rate=22050),
+            #     #         wandb.Audio(true_audio, sample_rate=22050),
+            #     #     ]
+            #     # )  # TODO: replace wandb with tensorboard
+            # except:
+            #     print(
+            #         "WARNING: failed to log example (common before training starts)"
+            #     )
 
     def _add_to_results_dict(self, inference_result, batch, result, add_n):
         # duration

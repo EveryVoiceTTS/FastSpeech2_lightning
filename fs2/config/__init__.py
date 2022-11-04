@@ -1,10 +1,15 @@
-import yaml
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List
 
-from smts.config.shared_types import BaseTrainingConfig, ConfigModel, NoamOptimizer, PartialConfigModel
+import yaml
 from smts.config.preprocessing_config import PreprocessingConfig
+from smts.config.shared_types import (
+    BaseTrainingConfig,
+    ConfigModel,
+    NoamOptimizer,
+    PartialConfigModel,
+)
 from smts.config.text_config import TextConfig
 
 
@@ -143,5 +148,7 @@ class FastSpeech2Config(PartialConfigModel):
 
 
 CONFIGS: Dict[str, FastSpeech2Config] = {
-    "base": FastSpeech2Config.load_config_from_path(Path(__file__).parent / "base.yaml"),
+    "base": FastSpeech2Config.load_config_from_path(
+        Path(__file__).parent / "base.yaml"
+    ),
 }
