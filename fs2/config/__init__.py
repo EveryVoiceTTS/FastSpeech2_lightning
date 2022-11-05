@@ -146,8 +146,6 @@ class FastSpeech2Config(PartialConfigModel):
         return FastSpeech2Config(**config)
 
 
-CONFIGS: Dict[str, FastSpeech2Config] = {
-    "base": FastSpeech2Config.load_config_from_path(
-        Path(__file__).parent / "base.yaml"
-    ),
+CONFIGS: Dict[str, Path] = {
+    "base": Path(__file__).parent / "base.yaml",
 }
