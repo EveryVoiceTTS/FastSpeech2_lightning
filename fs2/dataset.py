@@ -6,7 +6,8 @@ import torch
 from smts.dataloader import BaseDataModule
 from smts.text import TextProcessor
 from smts.text.lookups import LookupTables
-from smts.utils import collate_fn, expand
+from smts.utils.heavy import _flatten
+from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset, random_split
 
 from .config import FastSpeech2Config
@@ -29,23 +30,27 @@ class FastSpeechDataset(Dataset):
         self.speaker2id = self.lookup.speaker2id
         self.lang2id = self.lookup.lang2id
 
-    def _load_file(self, bn, spk, lang, fn):
-        return torch.load(self.preprocessed_dir / self.sep.join([bn, spk, lang, fn]))
+    def _load_file(self, bn, spk, lang, dir, fn):
+        return torch.load(
+            self.preprocessed_dir / dir / self.sep.join([bn, spk, lang, fn])
+        )
 
     def __getitem__(self, index):
         """
         Returns dict with keys: {
-            "phones",
-            "duration",
-            "silence_mask",
-            "unexpanded_silence_mask",
-            "priors",
-            "audio",
-            "speaker",
-            "text",
-            "basename",
-            "variances",
-            "labels",
+            "mel"
+            "duration"
+            "pfs"
+            "text"
+            "raw_text"
+            "basename"
+            "speaker"
+            "speaker_id"
+            "language"
+            "language_id"
+            "label"
+            "energy"
+            "pitch"
         }
         """
         item = self.dataset[index]
@@ -58,53 +63,37 @@ class FastSpeechDataset(Dataset):
             basename,
             speaker,
             language,
-            f"spec-{self.sampling_rate}-{self.config.preprocessing.audio.spec_type}.npy",
+            "spec",
+            f"spec-{self.sampling_rate}-{self.config.preprocessing.audio.spec_type}.pt",
         ).transpose(
             0, 1
         )  # [mel_bins, frames] -> [frames, mel_bins]
-        duration = self._load_file(basename, speaker, language, "duration.npy")
-        text = self._load_file(basename, speaker, language, "text.npy")
+        duration = self._load_file(
+            basename, speaker, language, "duration", "duration.pt"
+        )
+        text = self._load_file(basename, speaker, language, "text", "text.pt")
         raw_text = item["raw_text"]
         pfs = None
         if self.config.model.use_phonological_feats:
-            pfs = self._load_file(basename, speaker, language, "pfs.npy")
-        variances = {
-            vp.variance_type: self._load_file(
-                basename, speaker, language, f"{vp.variance_type}.npy"
-            )
-            for vp in self.config.model.variance_adaptor.variance_predictors
-        }
+            pfs = self._load_file(basename, speaker, language, "text", "pfs.pt")
 
-        # TODO: Fix text processor and resolve how to deal with punctuation and
-        # potential mismatch between duration/textgrid and text
-        # DONE: This was resolved by the use of an aligner that uses the same text processor
-        # TODO: silence masks
-        # DONE: There won't really be any silences if we aren't using MFA, this might be a problem
-        # Durations & Silence Mask
-        silence_ids = [
-            self.text_processor.cleaned_text_to_sequence(x)[0]
-            for x in self.config.text.symbols.silence
-        ]
-        silence_masks = [np.array(text) == s for s in silence_ids]
-        unexpanded_silence_mask = np.logical_or.reduce(silence_masks)
-        silence_mask = expand(unexpanded_silence_mask, duration)
-
-        # Priors
+        energy = self._load_file(basename, speaker, language, "energy", "energy.pt")
+        pitch = self._load_file(basename, speaker, language, "pitch", "pitch.pt")
 
         return {
             "mel": mel,
             "duration": duration,
-            "silence_mask": silence_mask,
-            "unexpanded_silence_mask": unexpanded_silence_mask,
             "pfs": pfs,
             "text": text,
             "raw_text": raw_text,
+            "basename": basename,
             "speaker": speaker,
             "speaker_id": speaker_id,
             "language": language,
             "language_id": language_id,
             "label": item["label"],
-            "variances": variances,
+            "energy": energy,
+            "pitch": pitch,
         }
 
     def __len__(self):
@@ -115,14 +104,34 @@ class FastSpeechDataset(Dataset):
 
 
 class FastSpeech2DataModule(BaseDataModule):
-    # TODO: look into compatibility with base data module; ie pin_memory, drop_last, etc
     def __init__(self, config: FastSpeech2Config):
         super().__init__(config=config)
-        self.collate_fn = collate_fn
+        self.collate_fn = self.collate_method
         self.use_weighted_sampler = config.training.use_weighted_sampler
         self.batch_size = config.training.batch_size
         self.train_split = self.config.training.train_split
         self.load_dataset()
+
+    @staticmethod
+    def collate_method(data):
+        data = [_flatten(x) for x in data]
+        data = {k: [dic[k] for dic in data] for k in data[0]}
+        text_lens = torch.LongTensor([text.size(0) for text in data["text"]])
+        mel_lens = torch.LongTensor([mel.size(0) for mel in data["mel"]])
+        max_mel = max(mel_lens)
+        max_text = max(text_lens)
+        for key in data:
+            if isinstance(data[key][0], np.ndarray):
+                data[key] = [torch.tensor(x) for x in data[key]]
+            if torch.is_tensor(data[key][0]):
+                data[key] = pad_sequence(data[key], batch_first=True, padding_value=0)
+            if isinstance(data[key][0], int):
+                data[key] = torch.tensor(data[key]).long()
+        data["src_lens"] = text_lens
+        data["mel_lens"] = mel_lens
+        data["max_src_len"] = max_text
+        data["max_mel_len"] = max_mel
+        return data
 
     def load_dataset(self):
         self.dataset = self.config.training.filelist_loader(

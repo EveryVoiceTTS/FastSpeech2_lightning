@@ -22,7 +22,7 @@ model:
   variance_adaptor:
     variance_predictors:
       pitch:
-        level: "frame"
+        level: "phone"
         transform: "none"
         loss: "mse"
         n_layers: 5
@@ -33,7 +33,7 @@ model:
         n_bins: 256
         depthwise: True
       energy:
-        level: "frame"
+        level: "phone"
         transform: "none"
         loss: "mse"
         n_layers: 5
@@ -92,22 +92,22 @@ training:
     linear_schedule_end: 20
     linear_schedule_end_ratio: 0.0
   batch_size: 16
-  train_split: 0.9
+  train_split: 0.95
   save_top_k_ckpts: 5
   ckpt_steps: null
   ckpt_epochs: 1
   max_epochs: 1000
   seed: 1234
-  finetune_checkpoint: null
-  filelist: "./preprocessed/YourDataSet/processed_filelist.psv"
+  finetune_checkpoint: "./logs/LJ/fastspeech2-base/checkpoints/last.ckpt"
+  filelist: "./preprocessed/LJ/processed_filelist.psv"
   filelist_loader: "smts.utils.generic_dict_loader"
   logger:
-    name: "Base Experiment"
+    name: "LJ"
     save_dir: "./logs"
     sub_dir: "smts.utils.get_current_time"
-    version: "base"
+    version: "fastspeech2-base"
   val_data_workers: 0
-  train_data_workers: 0
+  train_data_workers: 4
   vocoder_path: "/fs/hestia_Hnrc/ict/aip000/tts/code/SmallTeamSpeech/smts/logs/OpenSLR/openslr-hifigan-ckpt.pt"
-preprocessing: "./config/default/preprocessing.yaml"
+preprocessing: "./config/lj/preprocessing.yaml"
 text: "./config/default/text_eng.yaml"
