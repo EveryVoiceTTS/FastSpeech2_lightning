@@ -1,7 +1,8 @@
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List
+from typing import Union
 
+from pydantic import FilePath
 from smts.config.preprocessing_config import PreprocessingConfig
 from smts.config.shared_types import (
     BaseTrainingConfig,
@@ -10,7 +11,7 @@ from smts.config.shared_types import (
     PartialConfigModel,
 )
 from smts.config.text_config import TextConfig
-from smts.utils import load_config_from_json_or_yaml_path
+from smts.utils import load_config_from_json_or_yaml_path, return_configs_from_dir
 
 
 class TransformerConfig(ConfigModel):
@@ -19,7 +20,7 @@ class TransformerConfig(ConfigModel):
     hidden_dim: int
     feedforward_dim: int
     conv_filter_size: int
-    conv_kernel_sizes: List[int]
+    conv_kernel_size: int
     dropout: float
     depthwise: bool
     conformer: bool
@@ -55,31 +56,35 @@ class VarianceLossEnum(str, Enum):
     soft_dtw = "soft_dtw"
 
 
-class VariancePredictorConfig(ConfigModel):
-    variance_type: VarianceTypeEnum
-    level: VarianceLevelEnum
+class VariancePredictorBase(ConfigModel):
     transform: VarianceTransformEnum
     loss: VarianceLossEnum
     n_layers: int
     loss_weights: float
     kernel_size: int
     dropout: float
-    filter_size: int
+    hidden_dim: int
     n_bins: int
     depthwise: bool
 
 
-class DurationVariancePredictorConfig(VariancePredictorConfig):
-    stochastic: bool
+class VariancePredictorConfig(VariancePredictorBase):
+    level: VarianceLevelEnum
 
 
+class VariancePredictors(ConfigModel):
+    energy: VariancePredictorConfig
+    duration: VariancePredictorBase
+    pitch: VariancePredictorConfig
+
+
+# TODO: maybe flatten this to just variance_adaptor: VariancePredictors
 class VarianceAdaptorConfig(ConfigModel):
-    variance_predictors: List[VariancePredictorConfig]
-    duration_predictor: DurationVariancePredictorConfig
+    variance_predictors: VariancePredictors
 
 
 class MultiSpeakerConfig(ConfigModel):
-    embedding_type: Enum(
+    embedding_type: Enum(  # type: ignore
         "EmbeddingType", {v: v for v in ["id", "dvector", "none"]}  # noqa: F821
     )
     every_layer: bool
@@ -92,7 +97,7 @@ class FastSpeech2ModelConfig(ConfigModel):
     variance_adaptor: VarianceAdaptorConfig
     learn_alignment: bool
     max_length: int
-    mel_loss: Enum(
+    mel_loss: Enum(  # type: ignore
         "variance_loss", {k: k for k in ["mse", "l1", "softw_dtw"]}  # noqa: F821
     )
     mel_loss_weight: float
@@ -104,6 +109,7 @@ class FastSpeech2ModelConfig(ConfigModel):
 
 
 class FastSpeech2FreezeLayersConfig(ConfigModel):
+    all_layers: bool
     encoder: bool
     decoder: bool
     postnet: bool
@@ -111,7 +117,7 @@ class FastSpeech2FreezeLayersConfig(ConfigModel):
 
 
 class EarlyStoppingConfig(ConfigModel):
-    metric: Enum(
+    metric: Enum(  # type: ignore
         "EarlyStoppingMetric", {v: v for v in ["none", "mae", "js"]}  # noqa: F821
     )
     patience: int
@@ -131,6 +137,7 @@ class FastSpeech2TrainingConfig(BaseTrainingConfig):
     freeze_layers: FastSpeech2FreezeLayersConfig
     early_stopping: EarlyStoppingConfig
     tf: TFConfig
+    vocoder_path: Union[FilePath, None]
 
 
 class FastSpeech2Config(PartialConfigModel):
@@ -140,12 +147,11 @@ class FastSpeech2Config(PartialConfigModel):
     text: TextConfig
 
     @staticmethod
-    def load_config_from_path(path: Path) -> dict:
+    def load_config_from_path(path: Path) -> "FastSpeech2Config":
         """Load a config from a path"""
         config = load_config_from_json_or_yaml_path(path)
         return FastSpeech2Config(**config)
 
 
-CONFIGS: Dict[str, Path] = {
-    "base": Path(__file__).parent / "base.yaml",
-}
+CONFIG_DIR = Path(__file__).parent
+CONFIGS = return_configs_from_dir(CONFIG_DIR)
