@@ -404,7 +404,7 @@ def train(
     lr_monitor = LearningRateMonitor(logging_interval="step")
     logger.info("Starting training for feature prediction model.")
     ckpt_callback = ModelCheckpoint(
-        monitor="train/total_loss",
+        monitor="training/total_loss",
         mode="min",
         save_last=True,
         save_top_k=config.training.save_top_k_ckpts,
