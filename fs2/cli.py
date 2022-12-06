@@ -10,7 +10,7 @@ from loguru import logger
 from tqdm import tqdm
 
 from .config import CONFIGS, FastSpeech2Config
-from .variance_adaptor import Stats, StatsInfo
+from .type_definitions import Stats, StatsInfo
 
 app = typer.Typer(pretty_exceptions_show_locals=False)
 
