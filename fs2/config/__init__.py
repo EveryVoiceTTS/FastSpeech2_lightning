@@ -2,7 +2,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Union
 
-from pydantic import FilePath
+from pydantic import Field, FilePath
 from smts.config.preprocessing_config import PreprocessingConfig
 from smts.config.shared_types import (
     BaseTrainingConfig,
@@ -15,32 +15,26 @@ from smts.utils import load_config_from_json_or_yaml_path, return_configs_from_d
 
 
 class TransformerConfig(ConfigModel):
-    layers: int
-    heads: int
-    hidden_dim: int
-    feedforward_dim: int
-    conv_filter_size: int
-    conv_kernel_size: int
-    dropout: float
-    depthwise: bool
-    conformer: bool
+    layers: int = 4
+    heads: int = 2
+    hidden_dim: int = 256
+    feedforward_dim: int = 1024
+    conv_filter_size: int = 1024
+    conv_kernel_size: int = 9
+    dropout: float = 0.2
+    depthwise: bool = True
+    conformer: bool = True
 
 
 class FastSpeech2Variances(ConfigModel):
-    energy: bool
-    duration: bool
-    pitch: bool
+    energy: bool = False
+    duration: bool = False
+    pitch: bool = False
 
 
 class VarianceLevelEnum(str, Enum):
     phone = "phone"
     frame = "frame"
-
-
-class VarianceTypeEnum(str, Enum):
-    energy = "energy"
-    duration = "duration"
-    pitch = "pitch"
 
 
 class VarianceTransformEnum(str, Enum):
@@ -57,94 +51,106 @@ class VarianceLossEnum(str, Enum):
 
 
 class VariancePredictorBase(ConfigModel):
-    transform: VarianceTransformEnum
-    loss: VarianceLossEnum
-    n_layers: int
-    loss_weights: float
-    kernel_size: int
-    dropout: float
-    hidden_dim: int
-    n_bins: int
-    depthwise: bool
+    transform: VarianceTransformEnum = VarianceTransformEnum.none
+    loss: VarianceLossEnum = VarianceLossEnum.mse
+    n_layers: int = 5
+    loss_weights: float = 5e-2
+    kernel_size: int = 3
+    dropout: float = 0.5
+    hidden_dim: int = 256
+    n_bins: int = 256
+    depthwise: bool = True
 
 
 class VariancePredictorConfig(VariancePredictorBase):
-    level: VarianceLevelEnum
+    level: VarianceLevelEnum = VarianceLevelEnum.phone
 
 
 class VariancePredictors(ConfigModel):
-    energy: VariancePredictorConfig
-    duration: VariancePredictorBase
-    pitch: VariancePredictorConfig
+    energy: VariancePredictorConfig = Field(default_factory=VariancePredictorConfig)
+    duration: VariancePredictorBase = Field(default_factory=VariancePredictorBase)
+    pitch: VariancePredictorConfig = Field(default_factory=VariancePredictorConfig)
 
 
 # TODO: maybe flatten this to just variance_adaptor: VariancePredictors
 class VarianceAdaptorConfig(ConfigModel):
-    variance_predictors: VariancePredictors
+    variance_predictors: VariancePredictors = Field(default_factory=VariancePredictors)
+
+
+class EmbeddingTypeEnum(str, Enum):
+    id = "id"
+    dvector = "dvector"
+    none = "none"
 
 
 class MultiSpeakerConfig(ConfigModel):
-    embedding_type: Enum(  # type: ignore
-        "EmbeddingType", {v: v for v in ["id", "dvector", "none"]}  # noqa: F821
-    )
-    every_layer: bool
-    dvector_gmm: bool
+    embedding_type: EmbeddingTypeEnum = EmbeddingTypeEnum.none
+    every_layer: bool = False
+    dvector_gmm: bool = False
 
 
 class FastSpeech2ModelConfig(ConfigModel):
-    encoder: TransformerConfig
-    decoder: TransformerConfig
-    variance_adaptor: VarianceAdaptorConfig
-    learn_alignment: bool
-    max_length: int
-    mel_loss: Enum(  # type: ignore
-        "variance_loss", {k: k for k in ["mse", "l1", "softw_dtw"]}  # noqa: F821
+    encoder: TransformerConfig = Field(default_factory=TransformerConfig)
+    decoder: TransformerConfig = Field(default_factory=TransformerConfig)
+    variance_adaptor: VarianceAdaptorConfig = Field(
+        default_factory=VarianceAdaptorConfig
     )
-    mel_loss_weight: float
-    phonological_feats_size: int
-    use_phonological_feats: bool
-    use_postnet: bool
-    multilingual: bool
-    multispeaker: MultiSpeakerConfig
+    learn_alignment: bool = False
+    max_length: int = 1000
+    mel_loss: VarianceLossEnum = VarianceLossEnum.mse
+    mel_loss_weight: float = 5e-1
+    phonological_feats_size: int = 38
+    use_phonological_feats: bool = False
+    use_postnet: bool = True
+    multilingual: bool = False
+    multispeaker: MultiSpeakerConfig = Field(default_factory=MultiSpeakerConfig)
 
 
 class FastSpeech2FreezeLayersConfig(ConfigModel):
-    all_layers: bool
-    encoder: bool
-    decoder: bool
-    postnet: bool
-    variance: FastSpeech2Variances
+    all_layers: bool = False
+    encoder: bool = False
+    decoder: bool = False
+    postnet: bool = False
+    variance: FastSpeech2Variances = Field(default_factory=FastSpeech2Variances)
+
+
+class EarlyStoppingMetricEnum(str, Enum):
+    none = "none"
+    mae = "mae"
+    js = "js"
 
 
 class EarlyStoppingConfig(ConfigModel):
-    metric: Enum(  # type: ignore
-        "EarlyStoppingMetric", {v: v for v in ["none", "mae", "js"]}  # noqa: F821
-    )
-    patience: int
+    metric: EarlyStoppingMetricEnum = EarlyStoppingMetricEnum.none
+    patience: int = 4
 
 
 class TFConfig(ConfigModel):
-    ratio: float
-    linear_schedule: bool
-    linear_schedule_start: int
-    linear_schedule_end: int
-    linear_schedule_end_ratio: float
+    ratio: float = 1.0
+    linear_schedule: bool = False
+    linear_schedule_start: int = 0
+    linear_schedule_end: int = 20
+    linear_schedule_end_ratio: float = 0.0
 
 
 class FastSpeech2TrainingConfig(BaseTrainingConfig):
-    use_weighted_sampler: bool
-    optimizer: NoamOptimizer
-    freeze_layers: FastSpeech2FreezeLayersConfig
-    early_stopping: EarlyStoppingConfig
-    tf: TFConfig
-    vocoder_path: Union[FilePath, None]
+    use_weighted_sampler: bool = False
+    optimizer: NoamOptimizer = Field(default_factory=NoamOptimizer)
+    freeze_layers: FastSpeech2FreezeLayersConfig = Field(
+        default_factory=FastSpeech2FreezeLayersConfig
+    )
+    early_stopping: EarlyStoppingConfig = Field(default_factory=EarlyStoppingConfig)
+    tf: TFConfig = Field(default_factory=TFConfig)
+    vocoder_path: Union[FilePath, None] = None
 
 
 class FastSpeech2Config(PartialConfigModel):
-    model: FastSpeech2ModelConfig
-    training: FastSpeech2TrainingConfig
-    preprocessing: PreprocessingConfig
-    text: TextConfig
+    model: FastSpeech2ModelConfig = Field(default_factory=FastSpeech2ModelConfig)
+    training: FastSpeech2TrainingConfig = Field(
+        default_factory=FastSpeech2TrainingConfig
+    )
+    preprocessing: PreprocessingConfig = Field(default_factory=PreprocessingConfig)
+    text: TextConfig = Field(default_factory=TextConfig)
 
     @staticmethod
     def load_config_from_path(path: Path) -> "FastSpeech2Config":
