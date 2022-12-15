@@ -1,12 +1,15 @@
 import json
-import multiprocessing as mp
-import os
 from enum import Enum
 from pathlib import Path
 from typing import List, Optional
 
 import typer
 from loguru import logger
+from merge_args import merge_args
+from smts.base_cli.interfaces import (
+    preprocess_base_command_interface,
+    train_base_command_interface,
+)
 from tqdm import tqdm
 
 from .config import CONFIGS, FastSpeech2Config
@@ -21,7 +24,7 @@ CONFIGS_ENUM = Enum("CONFIGS", _config_keys)  # type: ignore
 
 class PreprocessCategories(str, Enum):
     audio = "audio"
-    mel = "mel"
+    spec = "spec"
     text = "text"
     pitch = "pitch"
     energy = "energy"
@@ -34,35 +37,40 @@ class SynthesisOutputs(str, Enum):
 
 
 @app.command()
+@merge_args(preprocess_base_command_interface)
 def preprocess(
-    name: CONFIGS_ENUM,
+    name: CONFIGS_ENUM = typer.Option(None, "--name", "-n"),
     data: Optional[List[PreprocessCategories]] = typer.Option(None, "-d", "--data"),
-    output_path: Optional[Path] = typer.Option(
-        "processed_filelist.psv", "-o", "--output"
-    ),
-    cpus: Optional[int] = typer.Option(mp.cpu_count(), "-c", "--cpus"),
-    overwrite: bool = typer.Option(False, "-O", "--overwrite"),
+    **kwargs,
 ):
-    from smts.preprocessor import Preprocessor
+    from smts.base_cli.helpers import preprocess_base_command
 
-    config = FastSpeech2Config.load_config_from_path(CONFIGS[name.value])
-    preprocessor = Preprocessor(config)
-    to_preprocess = {k: k in data for k in PreprocessCategories.__members__.keys()}  # type: ignore
-    if not data:
-        logger.info(
-            f"No specific preprocessing data requested, processing everything (pitch, mel, energy, durations, inputs) from dataset '{name}'"
-        )
-        to_preprocess = {k: True for k in to_preprocess}
-    preprocessor.preprocess(
-        output_path=output_path,
-        process_audio=to_preprocess["audio"],
-        process_spec=to_preprocess["mel"],
-        process_text=to_preprocess["text"],
-        process_pitch=to_preprocess["pitch"],
-        process_energy=to_preprocess["energy"],
-        compute_stats=True,
-        cpus=cpus,
-        overwrite=overwrite,
+    preprocess_base_command(
+        name=name,
+        configs=CONFIGS,
+        model_config=FastSpeech2Config,
+        data=data,
+        preprocess_categories=PreprocessCategories,
+        **kwargs,
+    )
+
+
+@app.command()
+@merge_args(train_base_command_interface)
+def train(name: CONFIGS_ENUM = typer.Option(None, "--name", "-n"), **kwargs):
+    from smts.base_cli.helpers import train_base_command
+
+    from .dataset import FastSpeech2DataModule
+    from .model import FastSpeech2
+
+    train_base_command(
+        name=name,
+        model_config=FastSpeech2Config,
+        configs=CONFIGS,
+        model=FastSpeech2,
+        data_module=FastSpeech2DataModule,
+        monitor="training/total_loss",
+        **kwargs,
     )
 
 
@@ -245,8 +253,10 @@ def synthesize(
             logger.info("Predicting spectral features")
             spec = model.forward(batch, inference=True)["postnet_output"]
         if "wav" in output_type:
-            from hfgl.utils import synthesize_data
             from scipy.io.wavfile import write
+            from smts.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
+                synthesize_data,
+            )
 
             logger.info(f"Loading Vocoder from {model.config.training.vocoder_path}")
             ckpt = torch.load(model.config.training.vocoder_path)
@@ -292,10 +302,12 @@ def synthesize(
                 self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx
             ):
                 if "wav" in self.output_types:
-                    from hfgl.utils import synthesize_data
                     from scipy.io.wavfile import write
                     from smts.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import (
                         HiFiGANConfig,
+                    )
+                    from smts.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
+                        synthesize_data,
                     )
 
                     ckpt = torch.load(self.config.training.vocoder_path)
@@ -374,63 +386,6 @@ def synthesize(
             ],
         )
         trainer.predict(model, data)
-
-
-@app.command()
-def train(
-    name: CONFIGS_ENUM,
-    accelerator: str = typer.Option("auto", "--accelerator", "-a"),
-    devices: str = typer.Option("auto", "--devices", "-d"),
-    strategy: str = typer.Option(None),
-    config_args: List[str] = typer.Option(None, "--config", "-c"),
-    config_path: Path = typer.Option(None, exists=True, dir_okay=False, file_okay=True),
-):
-    from smts.utils import update_config_from_cli_args, update_config_from_path
-
-    original_config = FastSpeech2Config.load_config_from_path(CONFIGS[name.value])
-    config: FastSpeech2Config = update_config_from_cli_args(
-        config_args, original_config
-    )
-    config = update_config_from_path(config_path, config)
-
-    from pytorch_lightning import Trainer
-    from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
-    from pytorch_lightning.loggers import TensorBoardLogger
-
-    from .dataset import FastSpeech2DataModule
-    from .model import FastSpeech2
-
-    tensorboard_logger = TensorBoardLogger(**(config.training.logger.dict()))
-    lr_monitor = LearningRateMonitor(logging_interval="step")
-    logger.info("Starting training for feature prediction model.")
-    ckpt_callback = ModelCheckpoint(
-        monitor="training/total_loss",
-        mode="min",
-        save_last=True,
-        save_top_k=config.training.save_top_k_ckpts,
-        every_n_train_steps=config.training.ckpt_steps,
-        every_n_epochs=config.training.ckpt_epochs,
-    )
-    trainer = Trainer(
-        gradient_clip_val=1.0,
-        logger=tensorboard_logger,
-        accelerator=accelerator,
-        devices=devices,
-        max_epochs=config.training.max_epochs,
-        callbacks=[ckpt_callback, lr_monitor],
-        strategy=strategy,
-        detect_anomaly=False,  # used for debugging, but triples training time
-    )
-    model = FastSpeech2(config)
-    data = FastSpeech2DataModule(config)
-    last_ckpt = (
-        config.training.finetune_checkpoint
-        if config.training.finetune_checkpoint is not None
-        and os.path.exists(config.training.finetune_checkpoint)
-        else None
-    )
-    tensorboard_logger.log_hyperparams(config.dict())
-    trainer.fit(model, data, ckpt_path=last_ckpt)
 
 
 if __name__ == "__main__":

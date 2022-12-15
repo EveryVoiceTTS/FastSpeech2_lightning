@@ -4,7 +4,7 @@ from typing import Union
 import numpy as np
 import pytorch_lightning as pl
 import torch
-from hfgl.utils import synthesize_data
+from smts.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import synthesize_data
 from smts.text import TextProcessor
 from smts.text.lookups import LookupTables
 from smts.utils.heavy import expand
