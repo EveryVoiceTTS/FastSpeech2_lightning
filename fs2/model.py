@@ -202,6 +202,17 @@ class FastSpeech2(pl.LightningModule):
                 self.global_step,
                 self.config.preprocessing.audio.output_sampling_rate,
             )
+            if self.config.training.vocoder_path:
+                checkpoint = torch.load(
+                    self.config.training.vocoder_path, map_location=batch["mel"].device
+                )
+                gt_wav, gt_sr = synthesize_data(batch["mel"], checkpoint)
+                self.logger.experiment.add_audio(
+                    f"copy-synthesis/wav_{batch['basename'][0]}",
+                    gt_wav,
+                    self.global_step,
+                    gt_sr,
+                )
         output = self(batch)
         if batch_idx == 0:
             duration_np = batch["duration"][0].cpu().numpy()
@@ -243,13 +254,6 @@ class FastSpeech2(pl.LightningModule):
                 wav, sr = synthesize_data(output["postnet_output"], checkpoint)
                 self.logger.experiment.add_audio(
                     f"pred/wav_{batch['basename'][0]}", wav, self.global_step, sr
-                )
-                gt_wav, gt_sr = synthesize_data(batch["mel"], checkpoint)
-                self.logger.experiment.add_audio(
-                    f"copy-synthesis/wav_{batch['basename'][0]}",
-                    gt_wav,
-                    self.global_step,
-                    gt_sr,
                 )
         losses = self.loss(output, batch)
         self.log_dict(
