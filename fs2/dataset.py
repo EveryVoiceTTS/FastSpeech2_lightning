@@ -72,7 +72,7 @@ class FastSpeechDataset(Dataset):
             basename, speaker, language, "duration", "duration.pt"
         )
         text = self._load_file(basename, speaker, language, "text", "text.pt")
-        raw_text = item["raw_text"]
+        raw_text = item.get("raw_text", "text")
         pfs = None
         if self.config.model.use_phonological_feats:
             pfs = self._load_file(basename, speaker, language, "text", "pfs.pt")

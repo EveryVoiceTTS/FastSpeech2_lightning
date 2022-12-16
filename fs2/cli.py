@@ -41,11 +41,12 @@ class SynthesisOutputs(str, Enum):
 def preprocess(
     name: CONFIGS_ENUM = typer.Option(None, "--name", "-n"),
     data: Optional[List[PreprocessCategories]] = typer.Option(None, "-d", "--data"),
+    compute_stats: bool = typer.Option(True, "-S", "--stats"),
     **kwargs,
 ):
     from smts.base_cli.helpers import preprocess_base_command
 
-    preprocess_base_command(
+    preprocessor, config, processed = preprocess_base_command(
         name=name,
         configs=CONFIGS,
         model_config=FastSpeech2Config,
@@ -53,6 +54,32 @@ def preprocess(
         preprocess_categories=PreprocessCategories,
         **kwargs,
     )
+
+    if compute_stats:
+        e_scaler, p_scaler = preprocessor.compute_stats(
+            energy="energy" in processed, pitch="pitch" in processed
+        )
+        stats = {}
+        if e_scaler:
+            e_stats = e_scaler.calculate_stats()
+            stats["energy"] = e_stats
+        if p_scaler:
+            p_stats = p_scaler.calculate_stats()
+            stats["pitch"] = p_stats
+        preprocessor.normalize_stats(e_scaler, p_scaler)
+        stats_path = config.preprocessing.save_dir / "stats.json"
+        # Merge with existing stats
+        if stats_path.exists():
+            with open(stats_path, "r", encoding="utf8") as f:
+                previous_stats = json.load(f)
+        else:
+            previous_stats = {}
+        stats = {**previous_stats, **stats}
+        if not stats_path.exists() or kwargs["overwrite"]:
+            with open(
+                config.preprocessing.save_dir / "stats.json", "w", encoding="utf8"
+            ) as f:
+                json.dump(stats, f)
 
 
 @app.command()
