@@ -91,7 +91,7 @@ class FastSpeechDataset(Dataset):
             "speaker_id": speaker_id,
             "language": language,
             "language_id": language_id,
-            "label": item["label"],
+            # "label": item.get("label", "default"), # TODO: determine proper label
             "energy": energy,
             "pitch": pitch,
         }
