@@ -54,7 +54,6 @@ def preprocess(
         preprocess_categories=PreprocessCategories,
         **kwargs,
     )
-
     if compute_stats:
         e_scaler, p_scaler = preprocessor.compute_stats(
             energy="energy" in processed, pitch="pitch" in processed
@@ -80,6 +79,8 @@ def preprocess(
                 config.preprocessing.save_dir / "stats.json", "w", encoding="utf8"
             ) as f:
                 json.dump(stats, f)
+        else:
+            logger.info(f"{stats_path} exists, please re-run with --overwrite flag")
 
 
 @app.command()
