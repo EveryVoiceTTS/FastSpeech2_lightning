@@ -6,6 +6,7 @@ import torch
 from smts.dataloader import BaseDataModule
 from smts.text import TextProcessor
 from smts.text.lookups import LookupTables
+from smts.utils import check_dataset_size
 from smts.utils.heavy import _flatten
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset, random_split
@@ -111,6 +112,7 @@ class FastSpeech2DataModule(BaseDataModule):
         self.batch_size = config.training.batch_size
         self.train_split = self.config.training.train_split
         self.load_dataset()
+        self.dataset_length = len(self.dataset)
 
     @staticmethod
     def collate_method(data):
@@ -139,11 +141,13 @@ class FastSpeech2DataModule(BaseDataModule):
         )
 
     def prepare_data(self):
-        train_split = int(len(self.dataset) * self.train_split)
-
+        train_samples = int(self.dataset_length * self.train_split)
+        val_samples = self.dataset_length - train_samples
         self.train_dataset, self.val_dataset = random_split(
-            self.dataset, [train_split, len(self.dataset) - train_split]
+            self.dataset, [train_samples, val_samples]
         )
+        check_dataset_size(self.batch_size, train_samples, "training")
+        check_dataset_size(self.batch_size, val_samples, "validation")
         self.train_dataset = FastSpeechDataset(self.train_dataset, self.config)
         self.val_dataset = FastSpeechDataset(self.val_dataset, self.config)
         # save it to disk
