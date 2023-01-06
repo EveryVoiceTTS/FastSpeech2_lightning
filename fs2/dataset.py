@@ -69,9 +69,14 @@ class FastSpeechDataset(Dataset):
         ).transpose(
             0, 1
         )  # [mel_bins, frames] -> [frames, mel_bins]
-        duration = self._load_file(
-            basename, speaker, language, "duration", "duration.pt"
-        )
+        if self.config.model.learn_alignment:
+            duration = self._load_file(
+                basename, speaker, language, "attn", "attn-prior.pt"
+            )
+        else:
+            duration = self._load_file(
+                basename, speaker, language, "duration", "duration.pt"
+            )
         text = self._load_file(basename, speaker, language, "text", "text.pt")
         raw_text = item.get("raw_text", "text")
         pfs = None
@@ -114,8 +119,7 @@ class FastSpeech2DataModule(BaseDataModule):
         self.load_dataset()
         self.dataset_length = len(self.dataset)
 
-    @staticmethod
-    def collate_method(data):
+    def collate_method(self, data):
         data = [_flatten(x) for x in data]
         data = {k: [dic[k] for dic in data] for k in data[0]}
         text_lens = torch.LongTensor([text.size(0) for text in data["text"]])
@@ -126,7 +130,18 @@ class FastSpeech2DataModule(BaseDataModule):
             if isinstance(data[key][0], np.ndarray):
                 data[key] = [torch.tensor(x) for x in data[key]]
             if torch.is_tensor(data[key][0]):
-                data[key] = pad_sequence(data[key], batch_first=True, padding_value=0)
+                if key == "duration" and self.config.model.learn_alignment:
+                    # in this case we need to pad both the src and target dimensions
+                    dur_padded = torch.zeros(len(text_lens), max_mel, max_text)
+                    dur_padded.zero_()
+                    for i in range(len(data[key])):
+                        dur = data[key][i]
+                        dur_padded[i, : dur.size(0), : dur.size(1)] = dur
+                    data[key] = dur_padded
+                else:
+                    data[key] = pad_sequence(
+                        data[key], batch_first=True, padding_value=0
+                    )
             if isinstance(data[key][0], int):
                 data[key] = torch.tensor(data[key]).long()
         data["src_lens"] = text_lens

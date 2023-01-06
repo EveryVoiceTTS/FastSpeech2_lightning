@@ -1,9 +1,14 @@
 import json
 
+import numpy as np
 import torch
+import torch.nn.functional as F
+from loguru import logger
 from torch import nn
 from torch.nn.utils.rnn import pad_sequence
 
+from .alignment import mas_width1
+from .attention import ConvAttention
 from .config import FastSpeech2Config
 from .layers import VarianceConvolutionLayer
 from .type_definitions import InferenceControl, Stats, StatsInfo
@@ -109,11 +114,17 @@ class VarianceAdaptor(nn.Module):
             padding_idx=0,
         )
         self.pitch_bins = nn.Parameter(
-            torch.linspace(
-                self.stats.pitch.norm_min,
-                self.stats.pitch.norm_max,
-                self.config.model.variance_adaptor.variance_predictors.pitch.n_bins,
-                requires_grad=False,
+            torch.cat(
+                [
+                    torch.Tensor([0]),
+                    torch.linspace(
+                        self.stats.pitch.norm_min,
+                        self.stats.pitch.norm_max,
+                        self.config.model.variance_adaptor.variance_predictors.pitch.n_bins
+                        - 1,
+                        requires_grad=False,
+                    ),
+                ]
             )
         )
         # Energy Predictor
@@ -131,14 +142,56 @@ class VarianceAdaptor(nn.Module):
             self.config.model.variance_adaptor.variance_predictors.energy.hidden_dim,
             padding_idx=0,
         )
+
         self.energy_bins = nn.Parameter(
-            torch.linspace(
-                self.stats.energy.norm_min,
-                self.stats.energy.norm_max,
-                self.config.model.variance_adaptor.variance_predictors.energy.n_bins,
-                requires_grad=False,
+            torch.cat(
+                [
+                    torch.Tensor([0]),
+                    torch.linspace(
+                        self.stats.energy.norm_min,
+                        self.stats.energy.norm_max,
+                        self.config.model.variance_adaptor.variance_predictors.energy.n_bins
+                        - 1,
+                        requires_grad=False,
+                    ),
+                ]
             )
         )
+
+        # Attention
+        if self.config.model.learn_alignment:
+            self.attention = ConvAttention(
+                self.config.preprocessing.audio.n_mels,
+                0,
+                self.config.model.encoder.hidden_dim,
+                use_query_proj=True,
+                align_query_enc_type="3xconv",
+            )
+
+    def binarize_attention(self, attn, in_lens, out_lens):
+        """For training purposes only. Binarizes attention with MAS.
+           These will no longer recieve a gradient.
+        Args:
+            attn: B x 1 x max_mel_len x max_text_len
+        """
+        b_size = attn.shape[0]
+        with torch.no_grad():
+            attn_out_cpu = np.zeros(attn.data.shape, dtype=np.float32)
+            log_attn_cpu = torch.log(attn.data).to(device="cpu", dtype=torch.float32)
+            log_attn_cpu = log_attn_cpu.numpy()
+            out_lens_cpu = out_lens.cpu()
+            in_lens_cpu = in_lens.cpu()
+            for ind in range(b_size):
+                hard_attn = mas_width1(
+                    log_attn_cpu[ind, 0, : out_lens_cpu[ind], : in_lens_cpu[ind]]
+                )
+                attn_out_cpu[
+                    ind, 0, : out_lens_cpu[ind], : in_lens_cpu[ind]
+                ] = hard_attn
+            attn_out = torch.tensor(
+                attn_out_cpu, device=attn.get_device(), dtype=attn.dtype
+            )
+        return attn_out
 
     def get_variance_embedding(
         self,
@@ -160,8 +213,26 @@ class VarianceAdaptor(nn.Module):
             embed = embedding(torch.bucketize(prediction, bins).to(x.device))
         return prediction, embed
 
+    def average_variance(self, var, durs):
+        durs_cums_ends = torch.cumsum(durs, dim=1).long()
+        durs_cums_starts = F.pad(durs_cums_ends[:, :-1], (1, 0))
+        var_nonzero_cums = F.pad(torch.cumsum(var != 0.0, dim=1), (1, 0))
+        var_cums = F.pad(torch.cumsum(var, dim=1), (1, 0))
+
+        var_sums = (
+            torch.gather(var_cums, 1, durs_cums_ends)
+            - torch.gather(var_cums, 1, durs_cums_starts)
+        ).float()
+        var_nelems = (
+            torch.gather(var_nonzero_cums, 1, durs_cums_ends)
+            - torch.gather(var_nonzero_cums, 1, durs_cums_starts)
+        ).float()
+        var_avg = torch.where(var_nelems == 0.0, var_nelems, var_sums / var_nelems)
+        return var_avg
+
     def forward(
         self,
+        text_emb,
         encoder_output,
         batch,
         src_mask,
@@ -175,7 +246,54 @@ class VarianceAdaptor(nn.Module):
         duration_target = batch["duration"] if not inference else None
         max_target_len = batch["max_mel_len"]
         src_mask = src_mask
-        # If phone-level variance, use src_mask before duration predictor and upsampling
+        attn_logprob = None  # Overwritten if alignment is learned
+        attn_soft = None
+        attn_hard = None
+        # speaker embedding is handled in main model
+        # Alignment
+        if self.config.model.learn_alignment:
+            # make sure to do the alignments before folding
+            attn_mask = src_mask[..., None] == 0
+            # attn_mask should be 1 for unused timesteps in the text_enc_w_spkvec tensor
+            attn_soft, attn_logprob = self.attention(
+                batch["mel"].transpose(1, 2),
+                text_emb.transpose(1, 2),
+                batch["mel_lens"],
+                attn_mask,
+                key_lens=batch["src_lens"],
+                keys_encoded=x,
+                attn_prior=batch["duration"],
+            )
+
+            attn_hard = self.binarize_attention(
+                attn_soft, batch["src_lens"], batch["mel_lens"]
+            )
+
+            # Viterbi --> durations
+            attn_hard_dur = attn_hard.sum(2)[:, 0, :]
+            duration_target = attn_hard_dur.long()
+            if (pitch_target.size(1) == text_emb.size(1)) or (
+                energy_target.size(1) == text_emb.size(1)
+            ):
+                logger.error(
+                    "Your pitch and/or energy targets are already averaged across phones, but when you are learning alignment with phone-level energy or pitch modelling, you must have an un-averaged target for these as the duration of phones changes during training. This should happen automatically if you re-run the preprocessing step for energy and pitch."
+                )
+                exit()
+            if (
+                self.config.model.variance_adaptor.variance_predictors.energy.level
+                == "phone"
+            ):
+                energy_target = self.average_variance(energy_target, duration_target)
+            if (
+                self.config.model.variance_adaptor.variance_predictors.pitch.level
+                == "phone"
+            ):
+                pitch_target = self.average_variance(pitch_target, duration_target)
+
+            assert torch.all(torch.eq(duration_target.sum(dim=1), batch["mel_lens"]))
+
+        # If phone-level variance, use src_mask before duration predictor and upsampling of x
+        # using length regulator
         # otherwise use tgt_mask after upsampling
         if (
             self.config.model.variance_adaptor.variance_predictors.energy.level
@@ -225,7 +343,7 @@ class VarianceAdaptor(nn.Module):
                 print(pitch_embedding.size())
                 breakpoint()
                 raise e
-        # speaker embedding is handled in main model
+
         log_duration_prediction = self.duration_predictor(x, mask=src_mask)
         # upsampling from text time steps to mel time steps
         if not inference:
@@ -281,9 +399,15 @@ class VarianceAdaptor(nn.Module):
 
         return {
             "output": x,
+            "attn_logprob": attn_logprob,
+            "attn_soft": attn_soft,
+            "attn_hard": attn_hard,
             "duration_prediction": log_duration_prediction,
+            "duration_target": duration_target,
             "pitch_prediction": pitch_prediction,
+            "pitch_target": pitch_target,
             "energy_prediction": energy_prediction,
+            "energy_target": energy_target,
             "duration_rounded": duration_rounded,
             "target_mask": tgt_mask,
         }

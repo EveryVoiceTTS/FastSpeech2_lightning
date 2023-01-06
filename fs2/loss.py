@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 
+from .attention_loss import AttentionCTCLoss
 from .config import FastSpeech2Config
 
 
@@ -12,15 +13,16 @@ class FastSpeech2Loss(nn.Module):
             "mse": nn.MSELoss(),
             "l1": nn.L1Loss(),
         }
+        self.attn_ctc_loss = AttentionCTCLoss()
 
     def forward(self, output, batch, frozen_components=None):
         # sourcery skip: merge-dict-assign, move-assign-in-block
         log_duration_prediction = output["duration_prediction"]
-        duration_target = batch["duration"]
+        duration_target = output["duration_target"]
+        energy_target = output["energy_target"]
+        pitch_target = output["pitch_target"]
         energy_prediction = output["energy_prediction"]
-        energy_target = batch["energy"]
         pitch_prediction = output["pitch_prediction"]
-        pitch_target = batch["pitch"]
         spec_target = batch["mel"]
         spec_prediction = output["output"]
         spec_postnet_prediction = output["postnet_output"]
@@ -95,6 +97,14 @@ class FastSpeech2Loss(nn.Module):
         losses["postnet"] = self.loss_fns[self.config.model.mel_loss](
             spec_postnet_prediction, spec_target
         )
+
+        # Calculate attention loss if using
+        if self.config.model.learn_alignment:
+            attn_loss = self.attn_ctc_loss(
+                output["attn_logprob"], batch["src_lens"], batch["mel_lens"]
+            )
+            losses["attn"] = attn_loss
+
         # Calculate total loss
         losses["total"] = sum(losses.values())
         return losses

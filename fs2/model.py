@@ -16,7 +16,7 @@ from .layers import PositionalEmbedding, PostNet
 from .loss import FastSpeech2Loss
 from .noam import NoamLR
 from .type_definitions import InferenceControl, Stats
-from .utils import mask_from_lens, plot_mel
+from .utils import mask_from_lens, plot_attn_maps, plot_mel
 from .variance_adaptor import VarianceAdaptor
 
 
@@ -133,9 +133,8 @@ class FastSpeech2(pl.LightningModule):
 
         # VarianceAdaptor out
         variance_adaptor_out = self.variance_adaptor(
-            x, batch, src_mask, control, inference=inference
+            inputs, x, batch, src_mask, control, inference=inference
         )
-
         # Create inference Mel lens
         if inference:
             mel_lens = torch.LongTensor(
@@ -164,11 +163,18 @@ class FastSpeech2(pl.LightningModule):
             "output": output,
             "postnet_output": postnet_output,
             "src_mask": src_mask,
+            "src_lens": src_lens,
             "tgt_mask": variance_adaptor_out["target_mask"],
             "tgt_lens": mel_lens,
+            "attn_logprob": variance_adaptor_out["attn_logprob"],
+            "attn_soft": variance_adaptor_out["attn_soft"],
+            "attn_hard": variance_adaptor_out["attn_hard"],
             "duration_prediction": variance_adaptor_out["duration_prediction"],
+            "duration_target": variance_adaptor_out["duration_target"],
             "energy_prediction": variance_adaptor_out["energy_prediction"],
+            "energy_target": variance_adaptor_out["energy_target"],
             "pitch_prediction": variance_adaptor_out["pitch_prediction"],
+            "pitch_target": variance_adaptor_out["pitch_target"],
         }
 
     def predict_step(self, batch, batch_idx):
@@ -215,31 +221,54 @@ class FastSpeech2(pl.LightningModule):
                 )
         output = self(batch)
         if batch_idx == 0:
-            duration_np = batch["duration"][0].cpu().numpy()
+            # Currently only plots the first one, but the function is writte to support plotting multiple
+            figs = plot_attn_maps(
+                output["attn_soft"],
+                output["attn_hard"],
+                output["tgt_lens"],
+                output["src_lens"],
+                n=1,
+            )
+            for i, fig in enumerate(figs):
+                self.logger.experiment.add_figure(
+                    f"attention/{batch['basename'][i]}", fig, self.global_step
+                )
+            duration_np = output["duration_target"][0].cpu().numpy()
+            gt_pitch_for_plotting = batch["pitch"][0].cpu().numpy()
+            gt_energy_for_plotting = batch["energy"][0].cpu().numpy()
+            pred_pitch_for_plotting = output["pitch_prediction"][0].cpu().numpy()
+            pred_energy_for_plotting = output["energy_prediction"][0].cpu().numpy()
+            if (
+                self.config.model.variance_adaptor.variance_predictors.pitch.level
+                == "phone"
+            ):
+                pred_pitch_for_plotting = expand(pred_pitch_for_plotting, duration_np)
+                if not self.config.model.learn_alignment:
+                    # pitch targets are frame-wise if alignment is learned
+                    gt_pitch_for_plotting = expand(gt_pitch_for_plotting, duration_np)
+            if (
+                self.config.model.variance_adaptor.variance_predictors.energy.level
+                == "phone"
+            ):
+                pred_energy_for_plotting = expand(pred_energy_for_plotting, duration_np)
+                if not self.config.model.learn_alignment:
+                    # energy targets are frame-wise if alignment is learned
+                    gt_energy_for_plotting = expand(gt_energy_for_plotting, duration_np)
             self.logger.experiment.add_figure(
                 f"pred/spec_{batch['basename'][0]}",
                 plot_mel(
                     [
                         {
                             "mel": np.swapaxes(batch["mel"][0].cpu().numpy(), 0, 1),
-                            "pitch": expand(
-                                batch["pitch"][0].cpu().numpy(), duration_np
-                            ),
-                            "energy": expand(
-                                batch["energy"][0].cpu().numpy(), duration_np
-                            ),
+                            "pitch": gt_pitch_for_plotting,
+                            "energy": gt_energy_for_plotting,
                         },
                         {
                             "mel": np.swapaxes(
                                 output["postnet_output"][0].cpu().numpy(), 0, 1
                             ),
-                            "pitch": expand(
-                                output["pitch_prediction"][0].cpu().numpy(), duration_np
-                            ),
-                            "energy": expand(
-                                output["energy_prediction"][0].cpu().numpy(),
-                                duration_np,
-                            ),
+                            "pitch": pred_pitch_for_plotting,
+                            "energy": pred_energy_for_plotting,
                         },
                     ],
                     self.stats,

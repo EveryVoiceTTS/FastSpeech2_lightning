@@ -95,7 +95,7 @@ class FastSpeech2ModelConfig(ConfigModel):
     variance_adaptor: VarianceAdaptorConfig = Field(
         default_factory=VarianceAdaptorConfig
     )
-    learn_alignment: bool = False
+    learn_alignment: bool = True
     max_length: int = 1000
     mel_loss: VarianceLossEnum = VarianceLossEnum.mse
     mel_loss_weight: float = 5e-1

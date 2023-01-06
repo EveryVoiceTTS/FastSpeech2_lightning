@@ -7,6 +7,26 @@ from matplotlib import pyplot as plt
 from .type_definitions import Stats
 
 
+def plot_attn_maps(attn_softs, attn_hards, mel_lens, text_lens, n=4):
+    bs = len(attn_softs)
+    n = min(n, bs)
+    s = bs // n
+    attn_softs = attn_softs[::s].cpu().numpy()
+    attn_hards = attn_hards[::s].cpu().numpy()
+    figs = []
+    for attn_soft, attn_hard, mel_len, text_len in zip(
+        attn_softs, attn_hards, mel_lens, text_lens
+    ):
+        attn_soft = attn_soft[:, :mel_len, :text_len].squeeze(0).transpose()
+        attn_hard = attn_hard[:, :mel_len, :text_len].squeeze(0).transpose()
+        fig, axs = plt.subplots(2, 1)
+        axs[0].imshow(attn_soft, aspect="auto", origin="lower")
+        axs[1].imshow(attn_hard, aspect="auto", origin="lower")
+        fig.canvas.draw()
+        figs.append(fig)
+    return figs
+
+
 def plot_mel(data, stats: Stats, titles):
     data_len = len(data)
     fig, axes = plt.subplots(data_len, 1, squeeze=False)

@@ -25,6 +25,7 @@ CONFIGS_ENUM = Enum("CONFIGS", _config_keys)  # type: ignore
 class PreprocessCategories(str, Enum):
     audio = "audio"
     spec = "spec"
+    attn = "attn"
     text = "text"
     pitch = "pitch"
     energy = "energy"
@@ -54,7 +55,11 @@ def preprocess(
         preprocess_categories=PreprocessCategories,
         **kwargs,
     )
+
     if compute_stats:
+        stats_path = config.preprocessing.save_dir / "stats.json"
+        if stats_path.exists() and not kwargs["overwrite"]:
+            logger.info(f"{stats_path} exists, please re-run with --overwrite flag")
         e_scaler, p_scaler = preprocessor.compute_stats(
             energy="energy" in processed, pitch="pitch" in processed
         )
@@ -66,7 +71,6 @@ def preprocess(
             p_stats = p_scaler.calculate_stats()
             stats["pitch"] = p_stats
         preprocessor.normalize_stats(e_scaler, p_scaler)
-        stats_path = config.preprocessing.save_dir / "stats.json"
         # Merge with existing stats
         if stats_path.exists():
             with open(stats_path, "r", encoding="utf8") as f:
@@ -74,13 +78,10 @@ def preprocess(
         else:
             previous_stats = {}
         stats = {**previous_stats, **stats}
-        if not stats_path.exists() or kwargs["overwrite"]:
-            with open(
-                config.preprocessing.save_dir / "stats.json", "w", encoding="utf8"
-            ) as f:
-                json.dump(stats, f)
-        else:
-            logger.info(f"{stats_path} exists, please re-run with --overwrite flag")
+        with open(
+            config.preprocessing.save_dir / "stats.json", "w", encoding="utf8"
+        ) as f:
+            json.dump(stats, f)
 
 
 @app.command()
@@ -352,7 +353,7 @@ def synthesize(
                 if "npy" in self.output_types:
                     import numpy as np
 
-                    specs = outputs["postnet_output"].transpose(0, 1).cpu().numpy()
+                    specs = outputs["postnet_output"].transpose(1, 2).cpu().numpy()
                 for b in range(batch["text"].size(0)):
                     basename = batch["basename"][b]
                     speaker = batch["speaker"][b]
