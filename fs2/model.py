@@ -1,4 +1,5 @@
 import json
+import os
 from typing import Union
 
 import numpy as np
@@ -209,10 +210,30 @@ class FastSpeech2(pl.LightningModule):
                 self.config.preprocessing.audio.output_sampling_rate,
             )
             if self.config.training.vocoder_path:
-                checkpoint = torch.load(
-                    self.config.training.vocoder_path, map_location=batch["mel"].device
-                )
-                gt_wav, gt_sr = synthesize_data(batch["mel"], checkpoint)
+                if (
+                    os.path.basename(self.config.training.vocoder_path)
+                    == "generator_universal.pth.tar"
+                ):
+                    from smts.model.vocoder.original_hifigan_helper import (
+                        get_vocoder,
+                        vocoder_infer,
+                    )
+
+                    checkpoint = get_vocoder(
+                        self.config.training.vocoder_path, batch["mel"].device
+                    )
+                    gt_wav = vocoder_infer(
+                        batch["mel"],
+                        checkpoint,
+                        self.config.preprocessing.audio.max_wav_value,
+                    )[0]
+                    gt_sr = self.config.preprocessing.audio.input_sampling_rate
+                else:
+                    checkpoint = torch.load(
+                        self.config.training.vocoder_path,
+                        map_location=batch["mel"].device,
+                    )
+                    gt_wav, gt_sr = synthesize_data(batch["mel"], checkpoint)
                 self.logger.experiment.add_audio(
                     f"copy-synthesis/wav_{batch['basename'][0]}",
                     gt_wav,
@@ -277,10 +298,30 @@ class FastSpeech2(pl.LightningModule):
                 self.global_step,
             )
             if self.config.training.vocoder_path:
-                checkpoint = torch.load(
-                    self.config.training.vocoder_path, map_location=batch["mel"].device
-                )
-                wav, sr = synthesize_data(output["postnet_output"], checkpoint)
+                if (
+                    os.path.basename(self.config.training.vocoder_path)
+                    == "generator_universal.pth.tar"
+                ):
+                    from smts.model.vocoder.original_hifigan_helper import (
+                        get_vocoder,
+                        vocoder_infer,
+                    )
+
+                    checkpoint = get_vocoder(
+                        self.config.training.vocoder_path, batch["mel"].device
+                    )
+                    wav = vocoder_infer(
+                        output["postnet_output"],
+                        checkpoint,
+                        self.config.preprocessing.audio.max_wav_value,
+                    )[0]
+                    sr = self.config.preprocessing.audio.input_sampling_rate
+                else:
+                    checkpoint = torch.load(
+                        self.config.training.vocoder_path,
+                        map_location=batch["mel"].device,
+                    )
+                    wav, sr = synthesize_data(output["postnet_output"], checkpoint)
                 self.logger.experiment.add_audio(
                     f"pred/wav_{batch['basename'][0]}", wav, self.global_step, sr
                 )

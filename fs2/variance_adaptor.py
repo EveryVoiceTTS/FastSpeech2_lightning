@@ -111,21 +111,15 @@ class VarianceAdaptor(nn.Module):
         self.pitch_embedding = nn.Embedding(
             self.config.model.variance_adaptor.variance_predictors.pitch.n_bins,
             self.config.model.variance_adaptor.variance_predictors.pitch.hidden_dim,
-            padding_idx=0,
+            # padding_idx=0,
         )
         self.pitch_bins = nn.Parameter(
-            torch.cat(
-                [
-                    torch.Tensor([0]),
-                    torch.linspace(
-                        self.stats.pitch.norm_min,
-                        self.stats.pitch.norm_max,
-                        self.config.model.variance_adaptor.variance_predictors.pitch.n_bins
-                        - 1,
-                        requires_grad=False,
-                    ),
-                ]
-            )
+            torch.linspace(
+                self.stats.pitch.norm_min,
+                self.stats.pitch.norm_max,
+                self.config.model.variance_adaptor.variance_predictors.pitch.n_bins - 1,
+            ),
+            requires_grad=False,
         )
         # Energy Predictor
         self.energy_predictor = VariancePredictor(
@@ -140,22 +134,17 @@ class VarianceAdaptor(nn.Module):
         self.energy_embedding = nn.Embedding(
             self.config.model.variance_adaptor.variance_predictors.energy.n_bins,
             self.config.model.variance_adaptor.variance_predictors.energy.hidden_dim,
-            padding_idx=0,
+            # padding_idx=0,
         )
 
         self.energy_bins = nn.Parameter(
-            torch.cat(
-                [
-                    torch.Tensor([0]),
-                    torch.linspace(
-                        self.stats.energy.norm_min,
-                        self.stats.energy.norm_max,
-                        self.config.model.variance_adaptor.variance_predictors.energy.n_bins
-                        - 1,
-                        requires_grad=False,
-                    ),
-                ]
-            )
+            torch.linspace(
+                self.stats.energy.norm_min,
+                self.stats.energy.norm_max,
+                self.config.model.variance_adaptor.variance_predictors.energy.n_bins
+                - 1,
+            ),
+            requires_grad=False,
         )
 
         # Attention
@@ -207,7 +196,11 @@ class VarianceAdaptor(nn.Module):
     ):
         prediction = predictor(x, mask)
         if not inference:
-            embed = embedding(torch.bucketize(target, bins).to(x.device))
+            buckets = torch.bucketize(target, bins)
+            # max_b = max([max(b) for b in buckets])
+            # min_b = min([min(b) for b in buckets])
+            # breakpoint()
+            embed = embedding(buckets.to(x.device))
         else:
             prediction = prediction * control
             embed = embedding(torch.bucketize(prediction, bins).to(x.device))
