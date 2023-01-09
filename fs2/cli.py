@@ -1,4 +1,5 @@
 import json
+import os
 from enum import Enum
 from pathlib import Path
 from typing import List, Optional
@@ -283,16 +284,43 @@ def synthesize(
             spec = model.forward(batch, inference=True)["postnet_output"]
         if "wav" in output_type:
             from scipy.io.wavfile import write
-            from smts.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
-                synthesize_data,
-            )
 
-            logger.info(f"Loading Vocoder from {model.config.training.vocoder_path}")
-            ckpt = torch.load(model.config.training.vocoder_path)
-            logger.info("Generating waveform...")
-            wav, sr = synthesize_data(spec, ckpt)
-            logger.info(f"Writing file {data_path}")
-            write(f"{data_path}.wav", sr, wav)
+            if (
+                os.path.basename(model.config.training.vocoder_path)
+                == "generator_universal.pth.tar"
+            ):
+                from smts.model.vocoder.original_hifigan_helper import (
+                    get_vocoder,
+                    vocoder_infer,
+                )
+
+                logger.info(
+                    f"Loading Vocoder from {model.config.training.vocoder_path}"
+                )
+                ckpt = get_vocoder(model.config.training.vocoder_path, device=device)
+                logger.info("Generating waveform...")
+                wav = vocoder_infer(
+                    spec, ckpt, model.config.preprocessing.audio.max_wav_value
+                )[0]
+                logger.info(f"Writing file {data_path}")
+                write(
+                    f"{data_path}.wav",
+                    model.config.preprocessing.audio.output_sampling_rate,
+                    wav,
+                )
+            else:
+                from smts.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
+                    synthesize_data,
+                )
+
+                logger.info(
+                    f"Loading Vocoder from {model.config.training.vocoder_path}"
+                )
+                ckpt = torch.load(model.config.training.vocoder_path)
+                logger.info("Generating waveform...")
+                wav, sr = synthesize_data(spec, ckpt)
+                logger.info(f"Writing file {data_path}")
+                write(f"{data_path}.wav", sr, wav)
         if "npy" in output_type:
             import numpy as np
 
@@ -331,25 +359,47 @@ def synthesize(
                 self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx
             ):
                 if "wav" in self.output_types:
-                    from scipy.io.wavfile import write
-                    from smts.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import (
-                        HiFiGANConfig,
-                    )
-                    from smts.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
-                        synthesize_data,
-                    )
+                    if (
+                        os.path.basename(model.config.training.vocoder_path)
+                        == "generator_universal.pth.tar"
+                    ):
+                        from smts.model.vocoder.original_hifigan_helper import (
+                            get_vocoder,
+                            vocoder_infer,
+                        )
 
-                    ckpt = torch.load(self.config.training.vocoder_path)
-                    vocoder_config: HiFiGANConfig = ckpt["config"]
-                    sampling_rate_change = (
-                        vocoder_config.preprocessing.audio.output_sampling_rate
-                        // vocoder_config.preprocessing.audio.input_sampling_rate
-                    )
-                    output_hop_size = (
-                        sampling_rate_change
-                        * vocoder_config.preprocessing.audio.fft_hop_frames
-                    )
-                    wavs, sr = synthesize_data(outputs["postnet_output"], ckpt)
+                        logger.info(
+                            f"Loading Vocoder from {model.config.training.vocoder_path}"
+                        )
+                        ckpt = get_vocoder(
+                            model.config.training.vocoder_path, device=device
+                        )
+                        logger.info("Generating waveform...")
+                        wavs = vocoder_infer(
+                            outputs["postnet_output"],
+                            ckpt,
+                            model.config.preprocessing.audio.max_wav_value,
+                        )
+                        sr = model.config.preprocessing.audio.output_sampling_rate
+                    else:
+                        from smts.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import (
+                            HiFiGANConfig,
+                        )
+                        from smts.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
+                            synthesize_data,
+                        )
+
+                        ckpt = torch.load(self.config.training.vocoder_path)
+                        vocoder_config: HiFiGANConfig = ckpt["config"]
+                        sampling_rate_change = (
+                            vocoder_config.preprocessing.audio.output_sampling_rate
+                            // vocoder_config.preprocessing.audio.input_sampling_rate
+                        )
+                        output_hop_size = (
+                            sampling_rate_change
+                            * vocoder_config.preprocessing.audio.fft_hop_frames
+                        )
+                        wavs, sr = synthesize_data(outputs["postnet_output"], ckpt)
                 if "npy" in self.output_types:
                     import numpy as np
 
@@ -378,6 +428,8 @@ def synthesize(
                             ),
                         )
                     if "wav" in self.output_types:
+                        from scipy.io.wavfile import write
+
                         write(
                             self.save_dir
                             / "wav"

@@ -244,7 +244,7 @@ class VarianceAdaptor(nn.Module):
         attn_hard = None
         # speaker embedding is handled in main model
         # Alignment
-        if self.config.model.learn_alignment:
+        if not inference and self.config.model.learn_alignment:
             # make sure to do the alignments before folding
             attn_mask = src_mask[..., None] == 0
             # attn_mask should be 1 for unused timesteps in the text_enc_w_spkvec tensor
