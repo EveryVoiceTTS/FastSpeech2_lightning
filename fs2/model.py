@@ -79,13 +79,19 @@ class FastSpeech2(pl.LightningModule):
             raise NotImplementedError(
                 "Only a standard TorchAudio Conformer is currently supported."
             )
-
-        self.mel_linear = nn.Linear(
-            self.config.model.decoder.hidden_dim, self.config.preprocessing.audio.n_mels
-        )  # TODO: replace with option for linear spec or complex
-        self.postnet = PostNet(
-            n_mel_channels=self.config.preprocessing.audio.n_mels
-        )  # TODO: allow for postnet parameterization in config
+        if self.config.preprocessing.audio.spec_type == 'raw':
+            upsample_rates = [8, 8]
+            upsample_kernel_sizes = [16, 16]
+            self.ups = nn.ModuleList()
+            for i, (u, k) in enumerate(zip(upsample_rates, upsample_kernel_sizes)):
+                self.ups.append(nn.ConvTranspose1d(self.config.model.decoder.hidden_dim // (2**i), self.config.model.decoder.hidden_dim // (2**(i + 1)), k, u, padding=(k - u) // 2))
+        else:
+            self.mel_linear = nn.Linear(
+                self.config.model.decoder.hidden_dim, self.config.preprocessing.audio.n_mels
+            )  # TODO: replace with option for linear spec or complex
+            self.postnet = PostNet(
+                n_mel_channels=self.config.preprocessing.audio.n_mels
+            )  # TODO: allow for postnet parameterization in config
         self.speaker_embedding = nn.Embedding(
             len(self.embedding_lookup.speaker2id), self.config.model.encoder.hidden_dim
         )  # TODO: replace with d_vector multispeaker embedding
@@ -131,7 +137,7 @@ class FastSpeech2(pl.LightningModule):
         if self.language_embedding:
             lang_emb = self.language_embedding(language_ids)
             x = x + lang_emb.unsqueeze(1)
-
+        breakpoint()
         # VarianceAdaptor out
         variance_adaptor_out = self.variance_adaptor(
             inputs, x, batch, src_mask, control, inference=inference
@@ -154,8 +160,11 @@ class FastSpeech2(pl.LightningModule):
         # Decoder
         x, _ = self.decoder(variance_adaptor_out["output"] + dec_pos_emb, mel_lens)
 
-        # Mel Linear
-        output = self.mel_linear(x)
+        if self.config.preprocessing.audio.spec_type == 'raw':
+            output = self.ups(x)
+        else:
+            # Mel Linear
+            output = self.mel_linear(x)
 
         # Postnet
         postnet_output = output + self.postnet(output)
@@ -297,6 +306,8 @@ class FastSpeech2(pl.LightningModule):
                 ),
                 self.global_step,
             )
+            if self.config.preprocessing.audio.spec_type == 'raw':
+                pass
             if self.config.training.vocoder_path:
                 if (
                     os.path.basename(self.config.training.vocoder_path)

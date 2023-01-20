@@ -149,8 +149,12 @@ class VarianceAdaptor(nn.Module):
 
         # Attention
         if self.config.model.learn_alignment:
+            if self.config.preprocessing.audio.spec_type == 'raw':
+                input_dim = 513
+            else:
+                input_dim = self.config.preprocessing.audio.n_mels
             self.attention = ConvAttention(
-                self.config.preprocessing.audio.n_mels,
+                input_dim,
                 0,
                 self.config.model.encoder.hidden_dim,
                 use_query_proj=True,

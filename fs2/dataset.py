@@ -60,15 +60,22 @@ class FastSpeechDataset(Dataset):
         speaker_id = self.speaker2id[speaker]
         language_id = self.lang2id[language]
         basename = item["basename"]
+        phase = None
         mel = self._load_file(
             basename,
             speaker,
             language,
             "spec",
             f"spec-{self.sampling_rate}-{self.config.preprocessing.audio.spec_type}.pt",
-        ).transpose(
-            0, 1
-        )  # [mel_bins, frames] -> [frames, mel_bins]
+        )
+        if self.config.preprocessing.audio.spec_type == 'raw':
+            # TODO: change "mel" to spec or mag to be more inclusive of complex inputs
+            phase = mel.imag
+            mel = mel.real
+            phase = phase.transpose(0, 1)
+
+        mel = mel.transpose(0, 1)  # [mel_bins, frames] -> [frames, mel_bins]
+
         if self.config.model.learn_alignment:
             duration = self._load_file(
                 basename, speaker, language, "attn", "attn-prior.pt"
@@ -88,6 +95,7 @@ class FastSpeechDataset(Dataset):
 
         return {
             "mel": mel,
+            "phase": phase,
             "duration": duration,
             "pfs": pfs,
             "text": text,
