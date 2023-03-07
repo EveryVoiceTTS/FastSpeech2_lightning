@@ -100,14 +100,14 @@ training:
   seed: 1234
   finetune_checkpoint: "./logs/LJ/fastspeech2-base/checkpoints/last.ckpt"
   filelist: "./preprocessed/LJ/processed_filelist.psv"
-  filelist_loader: "smts.utils.generic_dict_loader"
+  filelist_loader: "everyvoice.utils.generic_dict_loader"
   logger:
     name: "LJ"
     save_dir: "./logs"
-    sub_dir: "smts.utils.get_current_time"
+    sub_dir: "everyvoice.utils.get_current_time"
     version: "fastspeech2-base"
   val_data_workers: 0
   train_data_workers: 4
-  vocoder_path: "/fs/hestia_Hnrc/ict/aip000/tts/code/SmallTeamSpeech/smts/logs/OpenSLR/openslr-hifigan-ckpt.pt"
+  vocoder_path: "/fs/hestia_Hnrc/ict/aip000/tts/code/EveryVoice/everyvoice/logs/OpenSLR/openslr-hifigan-ckpt.pt"
 preprocessing: "./config/lj/preprocessing.yaml"
 text: "./config/default/text_eng.yaml"

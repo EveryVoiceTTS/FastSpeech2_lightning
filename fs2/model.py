@@ -5,10 +5,10 @@ from typing import Union
 import numpy as np
 import pytorch_lightning as pl
 import torch
-from smts.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import synthesize_data
-from smts.text import TextProcessor
-from smts.text.lookups import LookupTables
-from smts.utils.heavy import expand
+from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import synthesize_data
+from everyvoice.text import TextProcessor
+from everyvoice.text.lookups import LookupTables
+from everyvoice.utils.heavy import expand
 from torch import nn
 from torchaudio.models import Conformer
 
@@ -214,7 +214,7 @@ class FastSpeech2(pl.LightningModule):
                     os.path.basename(self.config.training.vocoder_path)
                     == "generator_universal.pth.tar"
                 ):
-                    from smts.model.vocoder.original_hifigan_helper import (
+                    from everyvoice.model.vocoder.original_hifigan_helper import (
                         get_vocoder,
                         vocoder_infer,
                     )
@@ -302,7 +302,7 @@ class FastSpeech2(pl.LightningModule):
                     os.path.basename(self.config.training.vocoder_path)
                     == "generator_universal.pth.tar"
                 ):
-                    from smts.model.vocoder.original_hifigan_helper import (
+                    from everyvoice.model.vocoder.original_hifigan_helper import (
                         get_vocoder,
                         vocoder_infer,
                     )

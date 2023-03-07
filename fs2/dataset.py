@@ -3,11 +3,11 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from smts.dataloader import BaseDataModule
-from smts.text import TextProcessor
-from smts.text.lookups import LookupTables
-from smts.utils import check_dataset_size
-from smts.utils.heavy import _flatten
+from everyvoice.dataloader import BaseDataModule
+from everyvoice.text import TextProcessor
+from everyvoice.text.lookups import LookupTables
+from everyvoice.utils import check_dataset_size
+from everyvoice.utils.heavy import _flatten
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset, random_split
 

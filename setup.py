@@ -1,4 +1,4 @@
-""" Setup for smts
+""" Setup for FastSpeech2
 """
 import datetime as dt
 from os import path

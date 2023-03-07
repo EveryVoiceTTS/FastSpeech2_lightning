@@ -7,7 +7,8 @@ from typing import List, Optional
 import typer
 from loguru import logger
 from merge_args import merge_args
-from smts.base_cli.interfaces import (
+from everyvoice.base_cli.interfaces import (
+    load_config_base_command_interface,
     preprocess_base_command_interface,
     train_base_command_interface,
 )
@@ -39,6 +40,33 @@ class SynthesisOutputs(str, Enum):
 
 
 @app.command()
+@merge_args(load_config_base_command_interface)
+def check_data(
+    filelist: Path = typer.Option(
+        None, "--filelist", "-f", exists=True, dir_okay=False, file_okay=True
+    ),
+    name: CONFIGS_ENUM = typer.Option(None, "--name", "-n"),
+    **kwargs,
+):
+
+    from everyvoice.base_cli.helpers import load_config_base_command
+    from everyvoice.preprocessor import Preprocessor
+    from everyvoice.utils import generic_dict_loader
+    
+    config = load_config_base_command(
+        name=name,
+        model_config=FastSpeech2Config,
+        configs=CONFIGS,
+        **kwargs,
+    )
+    filelist = generic_dict_loader(filelist)
+    preprocessor = Preprocessor(config)
+    checked_data = preprocessor.check_data(filelist=filelist)
+    with open("datapoints_sil_removed.json", "w", encoding="utf8") as f:
+        json.dump(checked_data, f)
+
+
+@app.command()
 @merge_args(preprocess_base_command_interface)
 def preprocess(
     name: CONFIGS_ENUM = typer.Option(None, "--name", "-n"),
@@ -46,7 +74,7 @@ def preprocess(
     compute_stats: bool = typer.Option(True, "-S", "--stats"),
     **kwargs,
 ):
-    from smts.base_cli.helpers import preprocess_base_command
+    from everyvoice.base_cli.helpers import preprocess_base_command
 
     preprocessor, config, processed = preprocess_base_command(
         name=name,
@@ -88,7 +116,7 @@ def preprocess(
 @app.command()
 @merge_args(train_base_command_interface)
 def train(name: CONFIGS_ENUM = typer.Option(None, "--name", "-n"), **kwargs):
-    from smts.base_cli.helpers import train_base_command
+    from everyvoice.base_cli.helpers import train_base_command
 
     from .dataset import FastSpeech2DataModule
     from .model import FastSpeech2
@@ -232,7 +260,7 @@ def synthesize(
     # TODO: allow for changing of language/speaker and variance control
     import torch
     from slugify import slugify
-    from smts.preprocessor import Preprocessor
+    from everyvoice.preprocessor import Preprocessor
 
     from .model import FastSpeech2
 
@@ -289,7 +317,7 @@ def synthesize(
                 os.path.basename(model.config.training.vocoder_path)
                 == "generator_universal.pth.tar"
             ):
-                from smts.model.vocoder.original_hifigan_helper import (
+                from everyvoice.model.vocoder.original_hifigan_helper import (
                     get_vocoder,
                     vocoder_infer,
                 )
@@ -309,7 +337,7 @@ def synthesize(
                     wav,
                 )
             else:
-                from smts.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
+                from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
                     synthesize_data,
                 )
 
@@ -363,7 +391,7 @@ def synthesize(
                         os.path.basename(model.config.training.vocoder_path)
                         == "generator_universal.pth.tar"
                     ):
-                        from smts.model.vocoder.original_hifigan_helper import (
+                        from everyvoice.model.vocoder.original_hifigan_helper import (
                             get_vocoder,
                             vocoder_infer,
                         )
@@ -382,10 +410,10 @@ def synthesize(
                         )
                         sr = model.config.preprocessing.audio.output_sampling_rate
                     else:
-                        from smts.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import (
+                        from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import (
                             HiFiGANConfig,
                         )
-                        from smts.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
+                        from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
                             synthesize_data,
                         )
 
