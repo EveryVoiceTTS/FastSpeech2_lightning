@@ -243,17 +243,18 @@ class FastSpeech2(pl.LightningModule):
         output = self(batch)
         if batch_idx == 0:
             # Currently only plots the first one, but the function is writte to support plotting multiple
-            figs = plot_attn_maps(
-                output["attn_soft"],
-                output["attn_hard"],
-                output["tgt_lens"],
-                output["src_lens"],
-                n=1,
-            )
-            for i, fig in enumerate(figs):
-                self.logger.experiment.add_figure(
-                    f"attention/{batch['basename'][i]}", fig, self.global_step
+            if self.config.model.learn_alignment:
+                figs = plot_attn_maps(
+                    output["attn_soft"],
+                    output["attn_hard"],
+                    output["tgt_lens"],
+                    output["src_lens"],
+                    n=1,
                 )
+                for i, fig in enumerate(figs):
+                    self.logger.experiment.add_figure(
+                        f"attention/{batch['basename'][i]}", fig, self.global_step
+                    )
             duration_np = output["duration_target"][0].cpu().numpy()
             gt_pitch_for_plotting = batch["pitch"][0].cpu().numpy()
             gt_energy_for_plotting = batch["energy"][0].cpu().numpy()

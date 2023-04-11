@@ -1,4 +1,3 @@
-import random
 from pathlib import Path
 
 import numpy as np
@@ -9,7 +8,7 @@ from everyvoice.text.lookups import LookupTables
 from everyvoice.utils import check_dataset_size
 from everyvoice.utils.heavy import _flatten
 from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data import Dataset, random_split
+from torch.utils.data import Dataset
 
 from .config import FastSpeech2Config
 
@@ -26,7 +25,6 @@ class FastSpeechDataset(Dataset):
         self.sep = config.preprocessing.value_separator
         self.text_processor = TextProcessor(config)
         self.preprocessed_dir = Path(self.config.preprocessing.save_dir)
-        random.seed(self.config.training.seed)
         self.sampling_rate = self.config.preprocessing.audio.input_sampling_rate
         self.speaker2id = self.lookup.speaker2id
         self.lang2id = self.lookup.lang2id
@@ -115,9 +113,8 @@ class FastSpeech2DataModule(BaseDataModule):
         self.collate_fn = self.collate_method
         self.use_weighted_sampler = config.training.use_weighted_sampler
         self.batch_size = config.training.batch_size
-        self.train_split = self.config.training.train_split
         self.load_dataset()
-        self.dataset_length = len(self.dataset)
+        self.dataset_length = len(self.train_dataset) + len(self.val_dataset)
 
     def collate_method(self, data):
         data = [_flatten(x) for x in data]
@@ -151,16 +148,16 @@ class FastSpeech2DataModule(BaseDataModule):
         return data
 
     def load_dataset(self):
-        self.dataset = self.config.training.filelist_loader(
-            self.config.training.filelist
+        self.train_dataset = self.config.training.filelist_loader(
+            self.config.training.training_filelist
+        )
+        self.val_dataset = self.config.training.filelist_loader(
+            self.config.training.validation_filelist
         )
 
     def prepare_data(self):
-        train_samples = int(self.dataset_length * self.train_split)
-        val_samples = self.dataset_length - train_samples
-        self.train_dataset, self.val_dataset = random_split(
-            self.dataset, [train_samples, val_samples]
-        )
+        train_samples = len(self.train_dataset)
+        val_samples = len(self.val_dataset)
         check_dataset_size(self.batch_size, train_samples, "training")
         check_dataset_size(self.batch_size, val_samples, "validation")
         self.train_dataset = FastSpeechDataset(self.train_dataset, self.config)

@@ -474,12 +474,14 @@ def synthesize(
                         )
 
         if filelist:
-            model.config.training.filelist = filelist
+            model.config.training.training_filelist = filelist
+            model.config.training.validation_filelist = filelist
         else:
             original_config: FastSpeech2Config = (
                 FastSpeech2Config.load_config_from_path(CONFIGS[name.value])
             )
-            model.config.training.filelist = original_config.training.filelist
+            model.config.training.training_filelist = original_config.training.training_filelist
+            model.config.training.validation_filelist = original_config.training.validation_filelist
         data = FastSpeech2DataModule(model.config)
         tensorboard_logger = TensorBoardLogger(**(model.config.training.logger.dict()))
         trainer = Trainer(
