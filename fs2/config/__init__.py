@@ -2,7 +2,6 @@ from enum import Enum
 from pathlib import Path
 from typing import Union
 
-from pydantic import Field, FilePath
 from everyvoice.config.preprocessing_config import PreprocessingConfig
 from everyvoice.config.shared_types import (
     BaseTrainingConfig,
@@ -12,6 +11,7 @@ from everyvoice.config.shared_types import (
 )
 from everyvoice.config.text_config import TextConfig
 from everyvoice.utils import load_config_from_json_or_yaml_path, return_configs_from_dir
+from pydantic import Field, FilePath
 
 
 class TransformerConfig(ConfigModel):

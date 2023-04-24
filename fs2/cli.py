@@ -5,13 +5,13 @@ from pathlib import Path
 from typing import List, Optional
 
 import typer
-from loguru import logger
-from merge_args import merge_args
 from everyvoice.base_cli.interfaces import (
     load_config_base_command_interface,
     preprocess_base_command_interface,
     train_base_command_interface,
 )
+from loguru import logger
+from merge_args import merge_args
 from tqdm import tqdm
 
 from .config import CONFIGS, FastSpeech2Config
@@ -52,7 +52,7 @@ def check_data(
     from everyvoice.base_cli.helpers import load_config_base_command
     from everyvoice.preprocessor import Preprocessor
     from everyvoice.utils import generic_dict_loader
-    
+
     config = load_config_base_command(
         name=name,
         model_config=FastSpeech2Config,
@@ -259,8 +259,8 @@ def synthesize(
 ):
     # TODO: allow for changing of language/speaker and variance control
     import torch
-    from slugify import slugify
     from everyvoice.preprocessor import Preprocessor
+    from slugify import slugify
 
     from .model import FastSpeech2
 
@@ -480,8 +480,12 @@ def synthesize(
             original_config: FastSpeech2Config = (
                 FastSpeech2Config.load_config_from_path(CONFIGS[name.value])
             )
-            model.config.training.training_filelist = original_config.training.training_filelist
-            model.config.training.validation_filelist = original_config.training.validation_filelist
+            model.config.training.training_filelist = (
+                original_config.training.training_filelist
+            )
+            model.config.training.validation_filelist = (
+                original_config.training.validation_filelist
+            )
         data = FastSpeech2DataModule(model.config)
         tensorboard_logger = TensorBoardLogger(**(model.config.training.logger.dict()))
         trainer = Trainer(
