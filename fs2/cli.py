@@ -17,7 +17,10 @@ from tqdm import tqdm
 from .config import CONFIGS, FastSpeech2Config
 from .type_definitions import Stats, StatsInfo
 
-app = typer.Typer(pretty_exceptions_show_locals=False)
+app = typer.Typer(
+    pretty_exceptions_show_locals=False,
+    help="A PyTorch Lightning implementation of the FastSpeech2 Text-to-Speech Feature Prediction Model",
+)
 
 _config_keys = {k: k for k in CONFIGS.keys()}
 
@@ -122,7 +125,6 @@ def check_data(
     name: CONFIGS_ENUM = typer.Option(None, "--name", "-n"),
     **kwargs,
 ):
-
     from everyvoice.base_cli.helpers import load_config_base_command
     from everyvoice.preprocessor import Preprocessor
     from everyvoice.utils import generic_dict_loader
