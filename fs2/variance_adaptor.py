@@ -177,9 +177,7 @@ class VarianceAdaptor(nn.Module):
                 attn_out_cpu[
                     ind, 0, : out_lens_cpu[ind], : in_lens_cpu[ind]
                 ] = hard_attn
-            attn_out = torch.tensor(
-                attn_out_cpu, device=attn.get_device(), dtype=attn.dtype
-            )
+            attn_out = torch.tensor(attn_out_cpu, device=attn.device, dtype=attn.dtype)
         return attn_out
 
     def get_variance_embedding(
