@@ -317,7 +317,7 @@ def synthesize(
     ),
     output_dir: Path = typer.Option(
         "synthesis_output",
-        "--output_dir",
+        "--output-dir",
         "-o",
         file_okay=False,
         dir_okay=True,
@@ -330,8 +330,8 @@ def synthesize(
         None, "--filelist", "-f", exists=True, file_okay=True, dir_okay=False
     ),
     name: CONFIGS_ENUM = typer.Option(None, "--name", "-n"),
-    output_type: List[SynthesisOutputs] = typer.Option(..., "-O", "--output_type"),
-    vocoder_path: Path = typer.Option(None, "--vocoder_path", "-v"),
+    output_type: List[SynthesisOutputs] = typer.Option(..., "-O", "--output-type"),
+    vocoder_path: Path = typer.Option(None, "--vocoder-path", "-v"),
 ):
     # TODO: allow for changing of language/speaker and variance control
     import torch
