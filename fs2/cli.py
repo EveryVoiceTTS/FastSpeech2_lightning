@@ -131,7 +131,7 @@ def check_data(
 
     config = load_config_base_command(
         name=name,
-        model_config=FastSpeech2Config,
+        model_config=FastSpeech2Config,  # type: ignore
         configs=CONFIGS,
         **kwargs,
     )
@@ -155,7 +155,7 @@ def preprocess(
     preprocessor, config, processed = preprocess_base_command(
         name=name,
         configs=CONFIGS,
-        model_config=FastSpeech2Config,
+        model_config=FastSpeech2Config,  # type: ignore
         data=data,
         preprocess_categories=PreprocessCategories,
         **kwargs,
@@ -199,10 +199,10 @@ def train(name: CONFIGS_ENUM = typer.Option(None, "--name", "-n"), **kwargs):
 
     train_base_command(
         name=name,
-        model_config=FastSpeech2Config,
-        configs=CONFIGS,
-        model=FastSpeech2,
-        data_module=FastSpeech2DataModule,
+        model_config=FastSpeech2Config,  # type: ignore
+        configs=CONFIGS,  # type: ignore
+        model=FastSpeech2,  # type: ignore
+        data_module=FastSpeech2DataModule,  # type: ignore
         monitor="training/total_loss",
         **kwargs,
     )
@@ -390,7 +390,7 @@ def synthesize(
             from scipy.io.wavfile import write
 
             if (
-                os.path.basename(model.config.training.vocoder_path)
+                os.path.basename(model.config.training.vocoder_path)  # type: ignore
                 == "generator_universal.pth.tar"
             ):
                 from everyvoice.model.vocoder.original_hifigan_helper import (
@@ -420,7 +420,7 @@ def synthesize(
                 logger.info(
                     f"Loading Vocoder from {model.config.training.vocoder_path}"
                 )
-                ckpt = torch.load(model.config.training.vocoder_path)
+                ckpt = torch.load(model.config.training.vocoder_path)  # type: ignore
                 logger.info("Generating waveform...")
                 wav, sr = synthesize_data(spec, ckpt)
                 logger.info(f"Writing file {data_path}")
@@ -485,6 +485,15 @@ def synthesize(
                             model.config.preprocessing.audio.max_wav_value,
                         )
                         sr = model.config.preprocessing.audio.output_sampling_rate
+                        # Necessary when passing --filelist
+                        sampling_rate_change = (
+                            model.config.preprocessing.audio.output_sampling_rate
+                            // model.config.preprocessing.audio.input_sampling_rate
+                        )
+                        output_hop_size = (
+                            sampling_rate_change
+                            * model.config.preprocessing.audio.fft_hop_frames
+                        )
                     else:
                         from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import (
                             HiFiGANConfig,
@@ -494,7 +503,7 @@ def synthesize(
                         )
 
                         ckpt = torch.load(self.config.training.vocoder_path)
-                        vocoder_config: HiFiGANConfig = ckpt["config"]
+                        vocoder_config: HiFiGANConfig = ckpt["config"]  # type: ignore
                         sampling_rate_change = (
                             vocoder_config.preprocessing.audio.output_sampling_rate
                             // vocoder_config.preprocessing.audio.input_sampling_rate
