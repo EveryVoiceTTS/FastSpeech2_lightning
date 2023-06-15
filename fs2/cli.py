@@ -237,28 +237,28 @@ def audit(name: CONFIGS_ENUM, should_check_stats: bool = True, dimensions: bool 
     for x in tqdm(files):
         duration_files = (
             (original_config.preprocessing.save_dir / "duration").glob(
-                f"*{x['basename']}*.pt"
+                f"**/*{x['basename']}*.pt"
             )
             if dimensions
             else []
         )
         energy_files = (
             (original_config.preprocessing.save_dir / "energy").glob(
-                f"*{x['basename']}*.pt"
+                f"**/*{x['basename']}*.pt"
             )
             if dimensions or should_check_stats
             else []
         )
         pitch_files = (
             (original_config.preprocessing.save_dir / "pitch").glob(
-                f"*{x['basename']}*.pt"
+                f"**/*{x['basename']}*.pt"
             )
             if dimensions or should_check_stats
             else []
         )
         text_files = (
             (original_config.preprocessing.save_dir / "text").glob(
-                f"*{x['basename']}*.pt"
+                f"**/*{x['basename']}*.pt"
             )
             if dimensions or should_check_stats
             else []
