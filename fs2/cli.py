@@ -1,6 +1,7 @@
 import json
 import os
 from enum import Enum
+from glob import glob
 from pathlib import Path
 from typing import List, Optional
 
@@ -236,30 +237,22 @@ def audit(name: CONFIGS_ENUM, should_check_stats: bool = True, dimensions: bool 
         files += dataset.filelist_loader(dataset.filelist)
     for x in tqdm(files):
         duration_files = (
-            (original_config.preprocessing.save_dir / "duration").glob(
-                f"**/*{x['basename']}*.pt"
-            )
+            glob(os.path.join((original_config.preprocessing.save_dir / "duration"), "**/*{x['basename']}*.pt"), recursive=True)
             if dimensions
             else []
         )
         energy_files = (
-            (original_config.preprocessing.save_dir / "energy").glob(
-                f"**/*{x['basename']}*.pt"
-            )
+            glob(os.path.join((original_config.preprocessing.save_dir / "energy"), "**/*{x['basename']}*.pt"), recursive=True)
             if dimensions or should_check_stats
             else []
         )
         pitch_files = (
-            (original_config.preprocessing.save_dir / "pitch").glob(
-                f"**/*{x['basename']}*.pt"
-            )
+            glob(os.path.join((original_config.preprocessing.save_dir / "pitch"), "**/*{x['basename']}*.pt"), recursive=True)
             if dimensions or should_check_stats
             else []
         )
         text_files = (
-            (original_config.preprocessing.save_dir / "text").glob(
-                f"**/*{x['basename']}*.pt"
-            )
+            glob(os.path.join((original_config.preprocessing.save_dir / "text"), "**/*{x['basename']}*.pt"), recursive=True)
             if dimensions or should_check_stats
             else []
         )
