@@ -397,9 +397,13 @@ def synthesize(
                 ckpt = get_vocoder(model.config.training.vocoder_path, device=device)
                 logger.info("Generating waveform...")
                 wav = vocoder_infer(
-                    spec, ckpt, model.config.preprocessing.audio.max_wav_value
+                    spec, ckpt
                 )[0]
                 logger.info(f"Writing file {data_path}")
+                # synthesize 16 bit audio
+                if wav.dtype != 'int16':
+                    wav = wav * model.config.preprocessing.audio.max_wav_value
+                    wav = wav.astype('int16')
                 write(
                     f"{data_path}.wav",
                     model.config.preprocessing.audio.output_sampling_rate,
@@ -475,7 +479,6 @@ def synthesize(
                         wavs = vocoder_infer(
                             outputs["postnet_output"],
                             ckpt,
-                            model.config.preprocessing.audio.max_wav_value,
                         )
                         sr = model.config.preprocessing.audio.output_sampling_rate
                         # Necessary when passing --filelist
@@ -506,10 +509,15 @@ def synthesize(
                             * vocoder_config.preprocessing.audio.fft_hop_frames
                         )
                         wavs, sr = synthesize_data(outputs["postnet_output"], ckpt)
+                        # synthesize 16 bit audio
+                        if wavs.dtype != 'int16':
+                            wavs = wavs * model.config.preprocessing.audio.max_wav_value
+                            wavs = wavs.astype('int16')
                 if "npy" in self.output_types:
                     import numpy as np
 
                     specs = outputs["postnet_output"].transpose(1, 2).cpu().numpy()
+                
                 for b in range(batch["text"].size(0)):
                     basename = batch["basename"][b]
                     speaker = batch["speaker"][b]
@@ -535,7 +543,6 @@ def synthesize(
                         )
                     if "wav" in self.output_types:
                         from scipy.io.wavfile import write
-
                         write(
                             self.save_dir
                             / "wav"

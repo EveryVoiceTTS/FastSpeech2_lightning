@@ -225,7 +225,6 @@ class FastSpeech2(pl.LightningModule):
                     gt_wav = vocoder_infer(
                         batch["mel"],
                         checkpoint,
-                        self.config.preprocessing.audio.max_wav_value,
                     )[0]
                     gt_sr = self.config.preprocessing.audio.input_sampling_rate
                 else:
@@ -314,7 +313,6 @@ class FastSpeech2(pl.LightningModule):
                     wav = vocoder_infer(
                         output["postnet_output"],
                         checkpoint,
-                        self.config.preprocessing.audio.max_wav_value,
                     )[0]
                     sr = self.config.preprocessing.audio.input_sampling_rate
                 else:
