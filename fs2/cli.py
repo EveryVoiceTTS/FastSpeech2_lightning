@@ -237,22 +237,46 @@ def audit(name: CONFIGS_ENUM, should_check_stats: bool = True, dimensions: bool 
         files += dataset.filelist_loader(dataset.filelist)
     for x in tqdm(files):
         duration_files = (
-            glob(os.path.join((original_config.preprocessing.save_dir / "duration"), "**/*{x['basename']}*.pt"), recursive=True)
+            glob(
+                os.path.join(
+                    (original_config.preprocessing.save_dir / "duration"),
+                    "**/*{x['basename']}*.pt",
+                ),
+                recursive=True,
+            )
             if dimensions
             else []
         )
         energy_files = (
-            glob(os.path.join((original_config.preprocessing.save_dir / "energy"), "**/*{x['basename']}*.pt"), recursive=True)
+            glob(
+                os.path.join(
+                    (original_config.preprocessing.save_dir / "energy"),
+                    "**/*{x['basename']}*.pt",
+                ),
+                recursive=True,
+            )
             if dimensions or should_check_stats
             else []
         )
         pitch_files = (
-            glob(os.path.join((original_config.preprocessing.save_dir / "pitch"), "**/*{x['basename']}*.pt"), recursive=True)
+            glob(
+                os.path.join(
+                    (original_config.preprocessing.save_dir / "pitch"),
+                    "**/*{x['basename']}*.pt",
+                ),
+                recursive=True,
+            )
             if dimensions or should_check_stats
             else []
         )
         text_files = (
-            glob(os.path.join((original_config.preprocessing.save_dir / "text"), "**/*{x['basename']}*.pt"), recursive=True)
+            glob(
+                os.path.join(
+                    (original_config.preprocessing.save_dir / "text"),
+                    "**/*{x['basename']}*.pt",
+                ),
+                recursive=True,
+            )
             if dimensions or should_check_stats
             else []
         )
@@ -329,7 +353,7 @@ def synthesize(
     # TODO: allow for changing of language/speaker and variance control
     import torch
     from everyvoice.preprocessor import Preprocessor
-    from slugify import slugify
+    from everyvoice.utils import sanitize_path
 
     from .model import FastSpeech2
 
@@ -359,7 +383,7 @@ def synthesize(
     if text:
         logger.info(f"Processing text '{text}'")
         text_len = min(10, len(text))
-        data_path = output_dir / slugify(text[:text_len])
+        data_path = output_dir / sanitize_path(text)[:text_len]
         text_tensor = preprocessor.extract_text_inputs(text)
         # Create Batch
         logger.info("Creating batch")
@@ -396,14 +420,12 @@ def synthesize(
                 )
                 ckpt = get_vocoder(model.config.training.vocoder_path, device=device)
                 logger.info("Generating waveform...")
-                wav = vocoder_infer(
-                    spec, ckpt
-                )[0]
+                wav = vocoder_infer(spec, ckpt)[0]
                 logger.info(f"Writing file {data_path}")
                 # synthesize 16 bit audio
-                if wav.dtype != 'int16':
+                if wav.dtype != "int16":
                     wav = wav * model.config.preprocessing.audio.max_wav_value
-                    wav = wav.astype('int16')
+                    wav = wav.astype("int16")
                 write(
                     f"{data_path}.wav",
                     model.config.preprocessing.audio.output_sampling_rate,
@@ -510,14 +532,14 @@ def synthesize(
                         )
                         wavs, sr = synthesize_data(outputs["postnet_output"], ckpt)
                         # synthesize 16 bit audio
-                        if wavs.dtype != 'int16':
+                        if wavs.dtype != "int16":
                             wavs = wavs * model.config.preprocessing.audio.max_wav_value
-                            wavs = wavs.astype('int16')
+                            wavs = wavs.astype("int16")
                 if "npy" in self.output_types:
                     import numpy as np
 
                     specs = outputs["postnet_output"].transpose(1, 2).cpu().numpy()
-                
+
                 for b in range(batch["text"].size(0)):
                     basename = batch["basename"][b]
                     speaker = batch["speaker"][b]
@@ -543,6 +565,7 @@ def synthesize(
                         )
                     if "wav" in self.output_types:
                         from scipy.io.wavfile import write
+
                         write(
                             self.save_dir
                             / "wav"
