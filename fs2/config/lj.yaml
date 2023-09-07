@@ -97,12 +97,12 @@ training:
   ckpt_epochs: 1
   max_epochs: 1000
   seed: 1234
-  finetune_checkpoint: "./logs/LJ/fastspeech2-base/checkpoints/last.ckpt"
+  finetune_checkpoint: "./logs_and_checkpoints/LJ/fastspeech2-base/checkpoints/last.ckpt"
   filelist: "./preprocessed/LJ/processed_filelist.psv"
   filelist_loader: "everyvoice.utils.generic_dict_loader"
   logger:
     name: "LJ"
-    save_dir: "./logs"
+    save_dir: "./logs_and_checkpoints"
     sub_dir: "everyvoice.utils.get_current_time"
     version: "fastspeech2-base"
   val_data_workers: 0
