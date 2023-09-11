@@ -347,7 +347,9 @@ def synthesize(
         None, "--filelist", "-f", exists=True, file_okay=True, dir_okay=False
     ),
     name: CONFIGS_ENUM = typer.Option(None, "--name", "-n"),
-    output_type: List[SynthesisOutputs] = typer.Option(..., "-O", "--output-type"),
+    output_type: List[SynthesisOutputs] = typer.Option(
+        [SynthesisOutputs.wav], "-O", "--output-type"
+    ),
     vocoder_path: Path = typer.Option(None, "--vocoder-path", "-v"),
 ):
     # TODO: allow for changing of language/speaker and variance control
