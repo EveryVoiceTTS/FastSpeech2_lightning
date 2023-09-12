@@ -355,7 +355,7 @@ def synthesize(
     # TODO: allow for changing of language/speaker and variance control
     import torch
     from everyvoice.preprocessor import Preprocessor
-    from everyvoice.utils import sanitize_path
+    from everyvoice.wizard.utils import sanitize_path
 
     from .model import FastSpeech2
 
