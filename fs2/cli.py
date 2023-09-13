@@ -146,8 +146,10 @@ def check_data(
 @app.command()
 @merge_args(preprocess_base_command_interface)
 def preprocess(
+    steps: Optional[List[PreprocessCategories]] = [
+        cat.value for cat in PreprocessCategories
+    ],
     name: CONFIGS_ENUM = typer.Option(None, "--name", "-n"),
-    data: Optional[List[PreprocessCategories]] = typer.Option(None, "-d", "--data"),
     compute_stats: bool = typer.Option(True, "-S", "--stats"),
     **kwargs,
 ):
@@ -157,7 +159,7 @@ def preprocess(
         name=name,
         configs=CONFIGS,
         model_config=FastSpeech2Config,  # type: ignore
-        data=data,
+        steps=steps,
         preprocess_categories=PreprocessCategories,
         **kwargs,
     )
