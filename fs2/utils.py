@@ -1,10 +1,45 @@
 from typing import Optional
 
 import torch
+import torch.distributions as D
 import torch.nn.functional as F
 from matplotlib import pyplot as plt
 
 from .type_definitions import Stats
+
+def get_mels_from_tvcgmm_prediction(spec_prediction, spec_target, tgt_mask, n_mels):
+    # Same as the implementation here: https://github.com/sony/ai-research-code/blob/master/tvc-gmm/model/utils/tools.py
+    # except does batch-wise transformations, is generalized to varying numbers of Mel bands and assumes a B T K
+    # oriented spectral prediction tensor.
+    mixture = return_mixture_model(spec_prediction, spec_target, tgt_mask)
+    mel_prediction = mixture.sample().reshape(spec_prediction.shape[0], -1, (n_mels * 3)) # B, T, K * 3
+    mel_prediction[:, 1:, :n_mels] += mel_prediction[:, :-1, n_mels:(n_mels * 2)]
+    mel_prediction[:, :, 1:n_mels] += mel_prediction[:, :, (n_mels * 2):-1]
+    mel_prediction[:, 1:, 1:n_mels] /= 3
+    mel_prediction[:, 1:, 0] /= 2
+    mel_prediction[:, 0, 1:] /= 2
+    return mel_prediction[:, :, :n_mels]
+
+def return_mixture_model(spec_prediction, spec_target, tgt_mask, k=5, min_var=1.0e-3):
+    # spec_prediction: B, T, K * 50
+    # spec_target: B, T, K
+    # tgt_mask: B, T
+    param_predictions = spec_prediction.reshape(*spec_target.shape, k, 10)[
+        :, : tgt_mask.shape[1]
+    ]
+    # in practice we predict the scale_tril (lower triangular factor of the covariance matrix)
+    # we predict the parameters for every t,f bin
+    # at every bin we predict the joint distribution of t,f t+1,f and t,f+1
+    # --> later in sampling we have overlap of one bin with the next time and the next freq bin
+    scale_tril = torch.diag_embed(
+        torch.nn.functional.softplus(param_predictions[..., 4:7]) + min_var, offset=0
+    )
+    scale_tril += torch.diag_embed(param_predictions[..., 7:9], offset=-1)
+    scale_tril += torch.diag_embed(param_predictions[..., 9:10], offset=-2)
+
+    mix = D.Categorical(torch.nn.functional.softmax(param_predictions[..., 0], dim=-1))
+    comp = D.MultivariateNormal(param_predictions[..., 1:4], scale_tril=scale_tril)
+    return D.MixtureSameFamily(mix, comp)
 
 
 def plot_attn_maps(attn_softs, attn_hards, mel_lens, text_lens, n=4):

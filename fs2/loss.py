@@ -2,7 +2,8 @@ import torch
 from torch import nn
 
 from .attention_loss import AttentionCTCLoss
-from .config import FastSpeech2Config
+from .config import FastSpeech2Config, MelLossEnum
+from .utils import return_mixture_model
 
 
 class FastSpeech2Loss(nn.Module):
@@ -87,17 +88,48 @@ class FastSpeech2Loss(nn.Module):
         )
 
         # Calculate Mel-spectrogram loss
-        tgt_mask = tgt_mask.unsqueeze(2)
-        spec_prediction = spec_prediction * tgt_mask
-        spec_postnet_prediction = spec_postnet_prediction * tgt_mask
-        spec_target = spec_target * tgt_mask
-        losses["spec"] = self.loss_fns[self.config.model.mel_loss](
-            spec_prediction, spec_target
-        )
-        losses["postnet"] = self.loss_fns[self.config.model.mel_loss](
-            spec_postnet_prediction, spec_target
-        )
+        if self.config.model.mel_loss == MelLossEnum.tvcgmm:
+            spec_mixture = return_mixture_model(spec_prediction, spec_target, tgt_mask)
+            
 
+            mel_multivariate_targets = torch.zeros(
+                [*spec_target.shape, 3], device=spec_target.device
+            )
+            mel_multivariate_targets[..., 0] = spec_target  # spectrogram
+            mel_multivariate_targets[..., :-1, :, 1] = spec_target[
+                ..., 1:, :
+            ]  # t shifted spectrogram
+            mel_multivariate_targets[..., :, :-1, 2] = spec_target[
+                ..., :, 1:
+            ]  # f shifted spectrogram
+
+            losses["spec"] = (
+                -spec_mixture.log_prob(mel_multivariate_targets)
+                .masked_select(tgt_mask.unsqueeze(-1))
+                .mean()
+            )
+            if self.config.model.use_postnet:
+                postnet_mixture = return_mixture_model(
+                    spec_postnet_prediction, spec_target, tgt_mask
+                )
+                losses["postnet"] = (
+                    -postnet_mixture.log_prob(mel_multivariate_targets)
+                    .masked_select(tgt_mask.unsqueeze(-1))
+                    .mean()
+                )
+        else:
+            tgt_mask = tgt_mask.unsqueeze(2)
+            spec_prediction = spec_prediction * tgt_mask
+            
+            spec_target = spec_target * tgt_mask
+            losses["spec"] = self.loss_fns[self.config.model.mel_loss](
+                spec_prediction, spec_target
+            )
+            if self.config.model.use_postnet:
+                spec_postnet_prediction = spec_postnet_prediction * tgt_mask
+                losses["postnet"] = self.loss_fns[self.config.model.mel_loss](
+                    spec_postnet_prediction, spec_target
+                )
         # Calculate attention loss if using
         if self.config.model.learn_alignment:
             attn_loss = self.attn_ctc_loss(

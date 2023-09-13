@@ -50,6 +50,14 @@ class VarianceLossEnum(str, Enum):
     soft_dtw = "soft_dtw"
 
 
+class MelLossEnum(str, Enum):
+    tvcgmm = "tvcgmm"
+    mse = "mse"
+    mae = "mae"
+    l1 = "l1"
+    soft_dtw = "soft_dtw"
+
+
 class VariancePredictorBase(ConfigModel):
     transform: VarianceTransformEnum = VarianceTransformEnum.none
     loss: VarianceLossEnum = VarianceLossEnum.mse
@@ -97,7 +105,7 @@ class FastSpeech2ModelConfig(ConfigModel):
     )
     learn_alignment: bool = True
     max_length: int = 1000
-    mel_loss: VarianceLossEnum = VarianceLossEnum.mse
+    mel_loss: MelLossEnum = MelLossEnum.tvcgmm
     mel_loss_weight: float = 5e-1
     phonological_feats_size: int = 38
     use_phonological_feats: bool = False

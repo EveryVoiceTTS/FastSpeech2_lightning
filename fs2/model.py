@@ -12,12 +12,12 @@ from everyvoice.utils.heavy import expand
 from torch import nn
 from torchaudio.models import Conformer
 
-from .config import FastSpeech2Config
+from .config import FastSpeech2Config, MelLossEnum
 from .layers import PositionalEmbedding, PostNet
 from .loss import FastSpeech2Loss
 from .noam import NoamLR
 from .type_definitions import InferenceControl, Stats
-from .utils import mask_from_lens, plot_attn_maps, plot_mel
+from .utils import mask_from_lens, plot_attn_maps, plot_mel, get_mels_from_tvcgmm_prediction
 from .variance_adaptor import VarianceAdaptor
 
 
@@ -31,6 +31,7 @@ class FastSpeech2(pl.LightningModule):
         self.save_hyperparameters(ignore=[])
         self.loss = FastSpeech2Loss(config=config)
         self.text_input_layer: Union[nn.Linear, nn.Embedding]
+        self.output_key = "postnet_output" if self.config.model.use_postnet else "output"
         with open(self.config.preprocessing.save_dir / "stats.json") as f:
             self.stats: Stats = Stats(**json.load(f))
         if self.config.model.use_phonological_feats:
@@ -80,12 +81,25 @@ class FastSpeech2(pl.LightningModule):
                 "Only a standard TorchAudio Conformer is currently supported."
             )
 
-        self.mel_linear = nn.Linear(
-            self.config.model.decoder.hidden_dim, self.config.preprocessing.audio.n_mels
-        )  # TODO: replace with option for linear spec or complex
-        self.postnet = PostNet(
-            n_mel_channels=self.config.preprocessing.audio.n_mels
-        )  # TODO: allow for postnet parameterization in config
+        if config.model.mel_loss == MelLossEnum.tvcgmm:
+            self.mel_linear = nn.Linear(
+                self.config.model.decoder.hidden_dim,
+                # Default for k is 5, I don't see a need to parameterize this.
+                self.config.preprocessing.audio.n_mels * 50,
+            )
+            if self.config.model.use_postnet:
+                self.postnet = PostNet(
+                    n_mel_channels=self.config.preprocessing.audio.n_mels * 50
+                )  # TODO: allow for postnet parameterization in config
+        else:
+            self.mel_linear = nn.Linear(
+                self.config.model.decoder.hidden_dim,
+                self.config.preprocessing.audio.n_mels,
+            )  # TODO: replace with option for linear spec or complex
+            if self.config.model.use_postnet:
+                self.postnet = PostNet(
+                    n_mel_channels=self.config.preprocessing.audio.n_mels
+                )  # TODO: allow for postnet parameterization in config
         self.speaker_embedding = nn.Embedding(
             len(self.embedding_lookup.speaker2id), self.config.model.encoder.hidden_dim
         )  # TODO: replace with d_vector multispeaker embedding
@@ -158,7 +172,10 @@ class FastSpeech2(pl.LightningModule):
         output = self.mel_linear(x)
 
         # Postnet
-        postnet_output = output + self.postnet(output)
+        if self.config.model.use_postnet:
+            postnet_output = output + self.postnet(output)
+        else:
+            postnet_output = None
 
         return {
             "output": output,
@@ -240,6 +257,11 @@ class FastSpeech2(pl.LightningModule):
                     gt_sr,
                 )
         output = self(batch)
+        if self.config.model.mel_loss == MelLossEnum.tvcgmm:
+            tvcgmm_mels = get_mels_from_tvcgmm_prediction(output[self.output_key], batch['mel'], output['tgt_mask'], self.config.preprocessing.audio.n_mels)
+            output['tvcgmm_mels'] = tvcgmm_mels
+        else:
+            tvcgmm_mels = None
         if batch_idx == 0:
             # Currently only plots the first one, but the function is writte to support plotting multiple
             if self.config.model.learn_alignment:
@@ -286,7 +308,7 @@ class FastSpeech2(pl.LightningModule):
                         },
                         {
                             "mel": np.swapaxes(
-                                output["postnet_output"][0].cpu().numpy(), 0, 1
+                                output['tvcgmm_mels' if tvcgmm_mels is not None else self.output_key][0].cpu().numpy(), 0, 1
                             ),
                             "pitch": pred_pitch_for_plotting,
                             "energy": pred_energy_for_plotting,
@@ -311,7 +333,7 @@ class FastSpeech2(pl.LightningModule):
                         self.config.training.vocoder_path, batch["mel"].device
                     )
                     wav = vocoder_infer(
-                        output["postnet_output"],
+                        output['tvcgmm_mels' if tvcgmm_mels is not None else self.output_key],
                         checkpoint,
                     )[0]
                     sr = self.config.preprocessing.audio.input_sampling_rate
@@ -320,7 +342,7 @@ class FastSpeech2(pl.LightningModule):
                         self.config.training.vocoder_path,
                         map_location=batch["mel"].device,
                     )
-                    wav, sr = synthesize_data(output["postnet_output"], checkpoint)
+                    wav, sr = synthesize_data(output['tvcgmm_mels' if tvcgmm_mels is not None else self.output_key], checkpoint)
                 self.logger.experiment.add_audio(
                     f"pred/wav_{batch['basename'][0]}", wav, self.global_step, sr
                 )

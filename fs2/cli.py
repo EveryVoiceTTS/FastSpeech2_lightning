@@ -410,7 +410,11 @@ def synthesize(
         logger.warning(
             "Got arguments for both text and a filelist - this will only process the text. Please re-run without out providing text if you want to run batch synthesis"
         )
-
+    # Determine where to get the predictions from
+    if model.config.model.use_postnet:
+        output_key = "postnet_output"
+    else:
+        output_key = "output"
     # Single Inference
     if text:
         logger.info(f"Processing text '{text}'")
@@ -434,7 +438,7 @@ def synthesize(
         # Run model
         with torch.no_grad():
             logger.info("Predicting spectral features")
-            spec = model.forward(batch, inference=True)["postnet_output"]
+            spec = model.forward(batch, inference=True)[output_key]
         if "wav" in output_type:
             from scipy.io.wavfile import write
 
@@ -531,7 +535,7 @@ def synthesize(
                         )
                         logger.info("Generating waveform...")
                         wavs = vocoder_infer(
-                            outputs["postnet_output"],
+                            outputs[output_key],
                             ckpt,
                         )
                         sr = model.config.preprocessing.audio.output_sampling_rate
@@ -562,7 +566,7 @@ def synthesize(
                             sampling_rate_change
                             * vocoder_config.preprocessing.audio.fft_hop_frames
                         )
-                        wavs, sr = synthesize_data(outputs["postnet_output"], ckpt)
+                        wavs, sr = synthesize_data(outputs[output_key], ckpt)
                         # synthesize 16 bit audio
                         if wavs.dtype != "int16":
                             wavs = wavs * model.config.preprocessing.audio.max_wav_value
@@ -570,7 +574,7 @@ def synthesize(
                 if "npy" in self.output_types:
                     import numpy as np
 
-                    specs = outputs["postnet_output"].transpose(1, 2).cpu().numpy()
+                    specs = outputs[output_key].transpose(1, 2).cpu().numpy()
 
                 for b in range(batch["text"].size(0)):
                     basename = batch["basename"][b]
@@ -581,7 +585,7 @@ def synthesize(
                     ]  # the vocoder output includes padding so we have to remove that
                     if "pt" in self.output_types:
                         torch.save(
-                            outputs["postnet_output"][b][:unmasked_len]
+                            outputs[output_key][b][:unmasked_len]
                             .transpose(0, 1)
                             .cpu(),
                             self.save_dir
