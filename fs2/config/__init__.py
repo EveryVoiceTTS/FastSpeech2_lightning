@@ -143,7 +143,7 @@ class TFConfig(ConfigModel):
 
 class FastSpeech2TrainingConfig(BaseTrainingConfig):
     use_weighted_sampler: bool = False
-    optimizer: NoamOptimizer = Field(default_factory=NoamOptimizer)
+    optimizer: NoamOptimizer = NoamOptimizer(learning_rate=0.1, warmup_steps=1000, eps=1.0e-09, weight_decay=1e-6)
     freeze_layers: FastSpeech2FreezeLayersConfig = Field(
         default_factory=FastSpeech2FreezeLayersConfig
     )

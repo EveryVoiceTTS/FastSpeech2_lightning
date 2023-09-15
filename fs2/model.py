@@ -11,6 +11,7 @@ from everyvoice.text.lookups import LookupTables
 from everyvoice.utils.heavy import expand
 from torch import nn
 from torchaudio.models import Conformer
+from torch_optimizer import Lamb
 
 from .config import FastSpeech2Config, MelLossEnum
 from .layers import PositionalEmbedding, PostNet
@@ -354,6 +355,7 @@ class FastSpeech2(pl.LightningModule):
         )
 
     def configure_optimizers(self):
+        # self.optimizer = Lamb(
         self.optimizer = torch.optim.AdamW(
             self.parameters(),
             self.config.training.optimizer.learning_rate,
@@ -364,7 +366,7 @@ class FastSpeech2(pl.LightningModule):
 
         self.scheduler = NoamLR(
             self.optimizer,
-            self.config.training.optimizer.warmup_steps,
+            self.config.training.optimizer.warmup_steps
         )
 
         sched = {

@@ -13,11 +13,17 @@ def get_mels_from_tvcgmm_prediction(spec_prediction, spec_target, tgt_mask, n_me
     # oriented spectral prediction tensor.
     mixture = return_mixture_model(spec_prediction, spec_target, tgt_mask)
     mel_prediction = mixture.sample().reshape(spec_prediction.shape[0], -1, (n_mels * 3)) # B, T, K * 3
+    # B, T-1, K
     mel_prediction[:, 1:, :n_mels] += mel_prediction[:, :-1, n_mels:(n_mels * 2)]
+    # B, T, K-1
     mel_prediction[:, :, 1:n_mels] += mel_prediction[:, :, (n_mels * 2):-1]
+    # B, T-1, K-1
     mel_prediction[:, 1:, 1:n_mels] /= 3
+    # B, T-1
     mel_prediction[:, 1:, 0] /= 2
+    # B, K * 3 -1
     mel_prediction[:, 0, 1:] /= 2
+    # B, T, K
     return mel_prediction[:, :, :n_mels]
 
 def return_mixture_model(spec_prediction, spec_target, tgt_mask, k=5, min_var=1.0e-3):
