@@ -14,19 +14,14 @@ from everyvoice.base_cli.interfaces import (
 from loguru import logger
 from merge_args import merge_args
 from tqdm import tqdm
-from typing_extensions import Annotated
 
-from .config import CONFIGS, FastSpeech2Config
+from .config import FastSpeech2Config
 from .type_definitions import Stats, StatsInfo
 
 app = typer.Typer(
     pretty_exceptions_show_locals=False,
     help="A PyTorch Lightning implementation of the FastSpeech2 Text-to-Speech Feature Prediction Model",
 )
-
-_config_keys = {k: k for k in CONFIGS.keys()}
-
-CONFIGS_ENUM = Enum("CONFIGS", _config_keys)  # type: ignore
 
 
 class PreprocessCategories(str, Enum):
@@ -124,7 +119,6 @@ def check_data(
     filelist: Path = typer.Option(
         None, "--filelist", "-f", exists=True, dir_okay=False, file_okay=True
     ),
-    name: CONFIGS_ENUM = typer.Option(None, "--name", "-n"),
     **kwargs,
 ):
     from everyvoice.base_cli.helpers import load_config_base_command
@@ -132,9 +126,7 @@ def check_data(
     from everyvoice.utils import generic_dict_loader
 
     config = load_config_base_command(
-        name=name,
         model_config=FastSpeech2Config,  # type: ignore
-        configs=CONFIGS,
         **kwargs,
     )
     filelist = generic_dict_loader(filelist)
@@ -147,21 +139,22 @@ def check_data(
 @app.command()
 @merge_args(preprocess_base_command_interface)
 def preprocess(
-    steps: Annotated[List[PreprocessCategories], typer.Argument()] = None,
-    name: CONFIGS_ENUM = typer.Option(None, "--name", "-n"),
-    compute_stats: bool = typer.Option(True, "-S", "--stats"),
+    compute_stats: bool = typer.Option(
+        True, "-S", "--stats", help="Calculate stats for energy and pitch"
+    ),
+    steps: List[PreprocessCategories] = typer.Option(
+        [cat.value for cat in PreprocessCategories],
+        "-s",
+        "--steps",
+        help="Which steps of the preprocessor to use. If none are provided, all steps will be performed.",
+    ),
     **kwargs,
 ):
-    if not steps:
-        steps = [cat.value for cat in PreprocessCategories]
     from everyvoice.base_cli.helpers import preprocess_base_command
 
     preprocessor, config, processed = preprocess_base_command(
-        name=name,
-        configs=CONFIGS,
         model_config=FastSpeech2Config,  # type: ignore
-        steps=steps,
-        preprocess_categories=PreprocessCategories,
+        steps=[step.name for step in steps],
         **kwargs,
     )
 
@@ -195,16 +188,14 @@ def preprocess(
 
 @app.command()
 @merge_args(train_base_command_interface)
-def train(name: CONFIGS_ENUM = typer.Option(None, "--name", "-n"), **kwargs):
+def train(**kwargs):
     from everyvoice.base_cli.helpers import train_base_command
 
     from .dataset import FastSpeech2DataModule
     from .model import FastSpeech2
 
     train_base_command(
-        name=name,
         model_config=FastSpeech2Config,  # type: ignore
-        configs=CONFIGS,  # type: ignore
         model=FastSpeech2,  # type: ignore
         data_module=FastSpeech2DataModule,  # type: ignore
         monitor="training/total_loss",
@@ -226,12 +217,16 @@ def check_stats(data, path, stats: StatsInfo):
 
 
 @app.command()
-def audit(name: CONFIGS_ENUM, should_check_stats: bool = True, dimensions: bool = True):
+def audit(
+    path: Path = typer.Option(
+        None, "--config-path", "-p", exists=True, dir_okay=False, file_okay=True
+    ),
+    should_check_stats: bool = True,
+    dimensions: bool = True,
+):
     import torch
 
-    original_config: FastSpeech2Config = FastSpeech2Config.load_config_from_path(
-        CONFIGS[name.value]
-    )
+    original_config: FastSpeech2Config = FastSpeech2Config.load_config_from_path(path)
     if should_check_stats:
         with open(original_config.preprocessing.save_dir / "stats.json") as f:
             stats: Stats = Stats(**json.load(f))
@@ -334,6 +329,7 @@ def synthesize(
         file_okay=True,
         exists=True,
         dir_okay=False,
+        help="The path to a trained text-to-spec or e2e EveryVoice model.",
     ),
     output_dir: Path = typer.Option(
         "synthesis_output",
@@ -341,20 +337,41 @@ def synthesize(
         "-o",
         file_okay=False,
         dir_okay=True,
+        help="The directory where your synthesized audio should be written",
     ),
-    text: str = typer.Option("", "--text", "-t"),
+    text: str = typer.Option(
+        "",
+        "--text",
+        "-t",
+        help="Some text to synthesize. Choose --filelist if you want to synthesize more than one sample at a time.",
+    ),
     accelerator: str = typer.Option("auto", "--accelerator", "-a"),
-    devices: str = typer.Option("auto", "--devices", "-d"),
-    strategy: str = typer.Option(None),
+    devices: str = typer.Option(
+        "auto", "--devices", "-d", help="The number of GPUs to use"
+    ),
     filelist: Path = typer.Option(
-        None, "--filelist", "-f", exists=True, file_okay=True, dir_okay=False
+        None,
+        "--filelist",
+        "-f",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        help="Synthesize all audio in a given filelist. Use --text if you want to just synthesize one sample.",
     ),
-    name: CONFIGS_ENUM = typer.Option(None, "--name", "-n"),
     output_type: List[SynthesisOutputs] = typer.Option(
-        [SynthesisOutputs.wav], "-O", "--output-type"
+        [SynthesisOutputs.wav.value],
+        "-O",
+        "--output-type",
+        help="Which format to synthesize to. **wav** is the default and will synthesize to a playable audio file. **npy** will generate spectrograms required to fine-tune [HiFiGAN](https://github.com/jik876/hifi-gan) (Mel-band oriented tensors, K, T). **pt** will generate predicted Mel spectrograms in the EveryVoice format (time-oriented Tensors, T, K)",
     ),
-    vocoder_path: Path = typer.Option(None, "--vocoder-path", "-v"),
+    vocoder_path: Path = typer.Option(
+        None,
+        "--vocoder-path",
+        "-v",
+        help="The path to a trained vocoder in case one was not specified in your model configuration.",
+    ),
 ):
+    """Given some text and a trained model, generate some audio. i.e. perform typical speech synthesis"""
     # TODO: allow for changing of language/speaker and variance control
     import torch
     from everyvoice.preprocessor import Preprocessor
@@ -379,9 +396,9 @@ def synthesize(
             model.config.training.vocoder_path
         ), "Sorry, no vocoder was provided, please add it to model.config.training.vocoder_path or as --vocoder-path /path/to/vocoder in the command line"
 
-    if text and (name or filelist):
+    if text and filelist:
         logger.warning(
-            "Got arguments for both text and a config name or filelist - this will only process the text. Please re-run without out providing text if you want to run batch synthesis"
+            "Got arguments for both text and a filelist - this will only process the text. Please re-run without out providing text if you want to run batch synthesis"
         )
 
     # Single Inference
@@ -458,7 +475,7 @@ def synthesize(
         if "pt" in output_type:
             torch.save(spec, f"{data_path}.pt")
 
-    elif filelist or name:
+    elif filelist:
         from pytorch_lightning import Trainer
         from pytorch_lightning.callbacks import Callback
         from pytorch_lightning.loggers import TensorBoardLogger
@@ -586,19 +603,8 @@ def synthesize(
                             specs[b][:, :unmasked_len].squeeze(),
                         )
 
-        if filelist:
-            model.config.training.training_filelist = filelist
-            model.config.training.validation_filelist = filelist
-        else:
-            original_config: FastSpeech2Config = (
-                FastSpeech2Config.load_config_from_path(CONFIGS[name.value])
-            )
-            model.config.training.training_filelist = (
-                original_config.training.training_filelist
-            )
-            model.config.training.validation_filelist = (
-                original_config.training.validation_filelist
-            )
+        model.config.training.training_filelist = filelist
+        model.config.training.validation_filelist = filelist
         data = FastSpeech2DataModule(model.config)
         tensorboard_logger = TensorBoardLogger(**(model.config.training.logger.dict()))
         trainer = Trainer(
@@ -606,7 +612,6 @@ def synthesize(
             accelerator=accelerator,
             devices=devices,
             max_epochs=model.config.training.max_epochs,
-            strategy=strategy,
             callbacks=[
                 PredictionWritingCallback(
                     output_types=output_type, output_dir=output_dir, config=model.config

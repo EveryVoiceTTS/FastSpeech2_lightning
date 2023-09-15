@@ -10,7 +10,7 @@ from everyvoice.config.shared_types import (
     PartialConfigModel,
 )
 from everyvoice.config.text_config import TextConfig
-from everyvoice.utils import load_config_from_json_or_yaml_path, return_configs_from_dir
+from everyvoice.utils import load_config_from_json_or_yaml_path
 from pydantic import Field, FilePath
 
 
@@ -157,7 +157,3 @@ class FastSpeech2Config(PartialConfigModel):
         """Load a config from a path"""
         config = load_config_from_json_or_yaml_path(path)
         return FastSpeech2Config(**config)
-
-
-CONFIG_DIR = Path(__file__).parent
-CONFIGS = return_configs_from_dir(CONFIG_DIR)
