@@ -616,7 +616,9 @@ def synthesize(
         model.config.training.training_filelist = filelist
         model.config.training.validation_filelist = filelist
         data = FastSpeech2DataModule(model.config)
-        tensorboard_logger = TensorBoardLogger(**(model.config.training.logger.dict()))
+        tensorboard_logger = TensorBoardLogger(
+            **(model.config.training.logger.model_dump())
+        )
         trainer = Trainer(
             logger=tensorboard_logger,
             accelerator=accelerator,
