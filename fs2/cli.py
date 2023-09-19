@@ -46,8 +46,12 @@ class BenchmarkType(str, Enum):
 
 @app.command()
 def benchmark(
-    config_path: Path = typer.Option(
-        None, "--config-path", "-p", exists=True, dir_okay=False, file_okay=True
+    config_file: Path = typer.Argument(
+        ...,
+        exists=True,
+        dir_okay=False,
+        file_okay=True,
+        help="The path to your model configuration file.",
     ),
     benchmark_type: BenchmarkType = BenchmarkType.training,
     gpu: bool = True,
@@ -64,7 +68,7 @@ def benchmark(
     from .dataset import FastSpeech2DataModule
     from .model import FastSpeech2
 
-    config = FastSpeech2Config.load_config_from_path(config_path)
+    config = FastSpeech2Config.load_config_from_path(config_file)
     loader = FastSpeech2DataModule(config)
     loader.prepare_data()
     batch = loader.collate_method(
@@ -218,15 +222,21 @@ def check_stats(data, path, stats: StatsInfo):
 
 @app.command()
 def audit(
-    path: Path = typer.Option(
-        None, "--config-path", "-p", exists=True, dir_okay=False, file_okay=True
+    config_file: Path = typer.Argument(
+        ...,
+        exists=True,
+        dir_okay=False,
+        file_okay=True,
+        help="The path to your model configuration file.",
     ),
     should_check_stats: bool = True,
     dimensions: bool = True,
 ):
     import torch
 
-    original_config: FastSpeech2Config = FastSpeech2Config.load_config_from_path(path)
+    original_config: FastSpeech2Config = FastSpeech2Config.load_config_from_path(
+        config_file
+    )
     if should_check_stats:
         with open(original_config.preprocessing.save_dir / "stats.json") as f:
             stats: Stats = Stats(**json.load(f))
