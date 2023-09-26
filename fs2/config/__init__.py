@@ -1,17 +1,27 @@
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 from everyvoice.config.preprocessing_config import PreprocessingConfig
 from everyvoice.config.shared_types import (
     BaseTrainingConfig,
     ConfigModel,
     NoamOptimizer,
+    PartialLoadConfig,
+    _init_context_var,
+    init_context,
 )
 from everyvoice.config.text_config import TextConfig
 from everyvoice.config.utils import load_partials
 from everyvoice.utils import load_config_from_json_or_yaml_path
-from pydantic import Field, FilePath, model_validator
+from pydantic import (
+        Field,
+        ValidationInfo,
+        FilePath,
+        field_validator,
+        model_validator,
+        )
+
 
 
 class TransformerConfig(ConfigModel):
@@ -144,7 +154,7 @@ class FastSpeech2TrainingConfig(BaseTrainingConfig):
     vocoder_path: Union[FilePath, None] = None
 
 
-class FastSpeech2Config(ConfigModel):
+class FastSpeech2Config(PartialLoadConfig):
     model: FastSpeech2ModelConfig = Field(default_factory=FastSpeech2ModelConfig)
     path_to_model_config_file: Optional[FilePath] = None
 
@@ -159,12 +169,19 @@ class FastSpeech2Config(ConfigModel):
     text: TextConfig = Field(default_factory=TextConfig)
     path_to_text_config_file: Optional[FilePath] = None
 
-    @model_validator(mode="before")
-    def load_partials(self):
-        return load_partials(self, ["model", "training", "preprocessing", "text"])
+    @model_validator(mode="before")   # type: ignore
+    def load_partials(self, info: ValidationInfo):
+        config_path = info.context.get("config_path", None) if info.context is not None else None
+        return load_partials(
+            self,
+            ("model", "training", "preprocessing", "text"),
+            config_path=config_path,
+        )
 
     @staticmethod
     def load_config_from_path(path: Path) -> "FastSpeech2Config":
         """Load a config from a path"""
         config = load_config_from_json_or_yaml_path(path)
-        return FastSpeech2Config(**config)
+        with init_context({'config_path': path}):
+            config = FastSpeech2Config(**config)
+        return config
