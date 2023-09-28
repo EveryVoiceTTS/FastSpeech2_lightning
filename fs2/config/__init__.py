@@ -1,6 +1,6 @@
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Optional, Union
 
 from everyvoice.config.preprocessing_config import PreprocessingConfig
 from everyvoice.config.shared_types import (
@@ -8,20 +8,12 @@ from everyvoice.config.shared_types import (
     ConfigModel,
     NoamOptimizer,
     PartialLoadConfig,
-    _init_context_var,
     init_context,
 )
 from everyvoice.config.text_config import TextConfig
 from everyvoice.config.utils import load_partials
 from everyvoice.utils import load_config_from_json_or_yaml_path
-from pydantic import (
-        Field,
-        ValidationInfo,
-        FilePath,
-        field_validator,
-        model_validator,
-        )
-
+from pydantic import Field, FilePath, ValidationInfo, model_validator
 
 
 class TransformerConfig(ConfigModel):
@@ -169,9 +161,11 @@ class FastSpeech2Config(PartialLoadConfig):
     text: TextConfig = Field(default_factory=TextConfig)
     path_to_text_config_file: Optional[FilePath] = None
 
-    @model_validator(mode="before")   # type: ignore
+    @model_validator(mode="before")  # type: ignore
     def load_partials(self, info: ValidationInfo):
-        config_path = info.context.get("config_path", None) if info.context is not None else None
+        config_path = (
+            info.context.get("config_path", None) if info.context is not None else None
+        )
         return load_partials(
             self,
             ("model", "training", "preprocessing", "text"),
@@ -182,6 +176,6 @@ class FastSpeech2Config(PartialLoadConfig):
     def load_config_from_path(path: Path) -> "FastSpeech2Config":
         """Load a config from a path"""
         config = load_config_from_json_or_yaml_path(path)
-        with init_context({'config_path': path}):
+        with init_context({"config_path": path}):
             config = FastSpeech2Config(**config)
         return config
