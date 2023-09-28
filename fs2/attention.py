@@ -62,7 +62,9 @@ class Invertible1x1ConvLUS(torch.nn.Module):
         # Ensure determinant is 1.0 not -1.0
         if torch.det(W) < 0:
             W[:, 0] = -1 * W[:, 0]
-        p, lower, upper = torch.lu_unpack(*torch.lu(W))
+        # Original implementation is deprecated: https://pytorch.org/docs/stable/generated/torch.lu.html
+        # p, lower, upper = torch.lu_unpack(*torch.linalg.lu_factor(W))
+        p, lower, upper = torch.linalg.lu(W)
 
         self.register_buffer("p", p)
         # diagonals of lower will always be 1s anyway
