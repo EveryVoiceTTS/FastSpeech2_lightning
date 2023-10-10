@@ -89,14 +89,15 @@ class FastSpeech2Loss(nn.Module):
         # Calculate Mel-spectrogram loss
         tgt_mask = tgt_mask.unsqueeze(2)
         spec_prediction = spec_prediction * tgt_mask
-        spec_postnet_prediction = spec_postnet_prediction * tgt_mask
         spec_target = spec_target * tgt_mask
         losses["spec"] = self.loss_fns[self.config.model.mel_loss](
             spec_prediction, spec_target
         )
-        losses["postnet"] = self.loss_fns[self.config.model.mel_loss](
-            spec_postnet_prediction, spec_target
-        )
+        if self.config.model.use_postnet:
+            spec_postnet_prediction = spec_postnet_prediction * tgt_mask
+            losses["postnet"] = self.loss_fns[self.config.model.mel_loss](
+                spec_postnet_prediction, spec_target
+            )
 
         # Calculate attention loss if using
         if self.config.model.learn_alignment:

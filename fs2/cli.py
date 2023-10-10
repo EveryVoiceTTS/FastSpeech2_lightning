@@ -203,6 +203,7 @@ def train(**kwargs):
         model=FastSpeech2,  # type: ignore
         data_module=FastSpeech2DataModule,  # type: ignore
         monitor="training/total_loss",
+        gradient_clip_val=1.0,
         **kwargs,
     )
 
@@ -434,7 +435,7 @@ def synthesize(
         # Run model
         with torch.no_grad():
             logger.info("Predicting spectral features")
-            spec = model.forward(batch, inference=True)["postnet_output"]
+            spec = model.forward(batch, inference=True)[model.output_key]
         if "wav" in output_type:
             from scipy.io.wavfile import write
 
@@ -531,7 +532,7 @@ def synthesize(
                         )
                         logger.info("Generating waveform...")
                         wavs = vocoder_infer(
-                            outputs["postnet_output"],
+                            outputs[model.output_key],
                             ckpt,
                         )
                         sr = model.config.preprocessing.audio.output_sampling_rate
@@ -562,7 +563,7 @@ def synthesize(
                             sampling_rate_change
                             * vocoder_config.preprocessing.audio.fft_hop_frames
                         )
-                        wavs, sr = synthesize_data(outputs["postnet_output"], ckpt)
+                        wavs, sr = synthesize_data(outputs[model.output_key], ckpt)
                         # synthesize 16 bit audio
                         if wavs.dtype != "int16":
                             wavs = wavs * model.config.preprocessing.audio.max_wav_value
@@ -570,7 +571,7 @@ def synthesize(
                 if "npy" in self.output_types:
                     import numpy as np
 
-                    specs = outputs["postnet_output"].transpose(1, 2).cpu().numpy()
+                    specs = outputs[model.output_key].transpose(1, 2).cpu().numpy()
 
                 for b in range(batch["text"].size(0)):
                     basename = batch["basename"][b]
@@ -581,7 +582,7 @@ def synthesize(
                     ]  # the vocoder output includes padding so we have to remove that
                     if "pt" in self.output_types:
                         torch.save(
-                            outputs["postnet_output"][b][:unmasked_len]
+                            outputs[model.output_key][b][:unmasked_len]
                             .transpose(0, 1)
                             .cpu(),
                             self.save_dir
