@@ -18,8 +18,12 @@ class NoamLR(_LRScheduler):
         super().__init__(optimizer)
 
     def get_lr(self):
-        last_epoch = max(1, self.last_epoch)
-        scale = self.warmup_steps**0.5 * min(
-            last_epoch ** (-0.5), last_epoch * self.warmup_steps ** (-1.5)
-        )
+        # Protect against raising 0 to negative power
+        if self.warmup_steps == 0:
+            scale = 1.0
+        # After warmup scale according to the step count
+        elif self._step_count > self.warmup_steps:
+            scale = self._step_count**-0.5
+        else:
+            scale = self._step_count * (self.warmup_steps**-1.5)
         return [base_lr * scale for base_lr in self.base_lrs]
