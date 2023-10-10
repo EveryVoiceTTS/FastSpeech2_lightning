@@ -83,15 +83,24 @@ class FastSpeech2(pl.LightningModule):
         self.mel_linear = nn.Linear(
             self.config.model.decoder.hidden_dim, self.config.preprocessing.audio.n_mels
         )  # TODO: replace with option for linear spec or complex
-        self.postnet = PostNet(
-            n_mel_channels=self.config.preprocessing.audio.n_mels
-        )  # TODO: allow for postnet parameterization in config
-        self.speaker_embedding = nn.Embedding(
-            len(self.embedding_lookup.speaker2id), self.config.model.encoder.hidden_dim
-        )  # TODO: replace with d_vector multispeaker embedding
-        self.language_embedding = nn.Embedding(
-            len(self.embedding_lookup.lang2id), self.config.model.encoder.hidden_dim
-        )
+        if self.config.model.use_postnet:
+            self.postnet = PostNet(
+                n_mel_channels=self.config.preprocessing.audio.n_mels
+            )  # TODO: allow for postnet parameterization in config
+            self.output_key = "postnet_output"
+        else:
+            self.output_key = "output"
+        self.speaker_embedding = None
+        if self.config.model.multispeaker:
+            self.speaker_embedding = nn.Embedding(
+                len(self.embedding_lookup.speaker2id),
+                self.config.model.encoder.hidden_dim,
+            )  # TODO: replace with d_vector multispeaker embedding
+        self.language_embedding = None
+        if self.config.model.multilingual:
+            self.language_embedding = nn.Embedding(
+                len(self.embedding_lookup.lang2id), self.config.model.encoder.hidden_dim
+            )
         # Freeze Layers
         if self.config.training.freeze_layers.encoder:
             self.encoder.freeze()
@@ -123,12 +132,12 @@ class FastSpeech2(pl.LightningModule):
         # Encoder
         x, _ = self.encoder(inputs + enc_pos_emb, src_lens)  # expects B, T, K
         # Speaker Embedding
-        if self.speaker_embedding:
+        if self.config.model.multispeaker and self.speaker_embedding:
             speaker_emb = self.speaker_embedding(speaker_ids)
             x = x + speaker_emb.unsqueeze(1)
 
         # Language Embedding
-        if self.language_embedding:
+        if self.config.model.multilingual and self.language_embedding:
             lang_emb = self.language_embedding(language_ids)
             x = x + lang_emb.unsqueeze(1)
 
@@ -158,7 +167,9 @@ class FastSpeech2(pl.LightningModule):
         output = self.mel_linear(x)
 
         # Postnet
-        postnet_output = output + self.postnet(output)
+        postnet_output = None
+        if self.config.model.use_postnet:
+            postnet_output = output + self.postnet(output)
 
         return {
             "output": output,
@@ -286,7 +297,7 @@ class FastSpeech2(pl.LightningModule):
                         },
                         {
                             "mel": np.swapaxes(
-                                output["postnet_output"][0].cpu().numpy(), 0, 1
+                                output[self.output_key][0].cpu().numpy(), 0, 1
                             ),
                             "pitch": pred_pitch_for_plotting,
                             "energy": pred_energy_for_plotting,
@@ -311,7 +322,7 @@ class FastSpeech2(pl.LightningModule):
                         self.config.training.vocoder_path, batch["mel"].device
                     )
                     wav = vocoder_infer(
-                        output["postnet_output"],
+                        output[self.output_key],
                         checkpoint,
                     )[0]
                     sr = self.config.preprocessing.audio.input_sampling_rate
@@ -320,7 +331,7 @@ class FastSpeech2(pl.LightningModule):
                         self.config.training.vocoder_path,
                         map_location=batch["mel"].device,
                     )
-                    wav, sr = synthesize_data(output["postnet_output"], checkpoint)
+                    wav, sr = synthesize_data(output[self.output_key], checkpoint)
                 self.logger.experiment.add_audio(
                     f"pred/wav_{batch['basename'][0]}", wav, self.global_step, sr
                 )

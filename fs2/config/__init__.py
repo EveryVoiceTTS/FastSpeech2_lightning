@@ -79,18 +79,6 @@ class VarianceAdaptorConfig(ConfigModel):
     variance_predictors: VariancePredictors = Field(default_factory=VariancePredictors)
 
 
-class EmbeddingTypeEnum(str, Enum):
-    id = "id"
-    dvector = "dvector"
-    none = "none"
-
-
-class MultiSpeakerConfig(ConfigModel):
-    embedding_type: EmbeddingTypeEnum = EmbeddingTypeEnum.none
-    every_layer: bool = False
-    dvector_gmm: bool = False
-
-
 class FastSpeech2ModelConfig(ConfigModel):
     encoder: TransformerConfig = Field(default_factory=TransformerConfig)
     decoder: TransformerConfig = Field(default_factory=TransformerConfig)
@@ -105,7 +93,7 @@ class FastSpeech2ModelConfig(ConfigModel):
     use_phonological_feats: bool = False
     use_postnet: bool = True
     multilingual: bool = False
-    multispeaker: MultiSpeakerConfig = Field(default_factory=MultiSpeakerConfig)
+    multispeaker: bool = False
 
 
 class FastSpeech2FreezeLayersConfig(ConfigModel):
