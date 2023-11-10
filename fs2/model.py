@@ -196,7 +196,9 @@ class FastSpeech2(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         output = self(batch)
         losses = self.loss(output, batch)
-        self.log_dict({f"training/{k}_loss": v.item() for k, v in losses.items()})
+        self.log_dict(
+            {f"training/{k}_loss": v.item() for k, v in losses.items()}, prog_bar=True
+        )
         return losses["total"]
 
     def validation_step(self, batch, batch_idx):
