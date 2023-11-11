@@ -544,7 +544,7 @@ def synthesize(
                         )
                         output_hop_size = (
                             sampling_rate_change
-                            * model.config.preprocessing.audio.fft_hop_frames
+                            * model.config.preprocessing.audio.fft_hop_size
                         )
                     else:
                         from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import (
@@ -562,7 +562,7 @@ def synthesize(
                         )
                         output_hop_size = (
                             sampling_rate_change
-                            * vocoder_config.preprocessing.audio.fft_hop_frames
+                            * vocoder_config.preprocessing.audio.fft_hop_size
                         )
                         wavs, sr = synthesize_data(outputs[model.output_key], ckpt)
                         # synthesize 16 bit audio
