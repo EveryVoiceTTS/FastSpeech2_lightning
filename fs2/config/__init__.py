@@ -160,6 +160,30 @@ class FastSpeech2Config(PartialLoadConfig):
             config_path=config_path,
         )
 
+    @model_validator(mode="after")
+    def probable_out_of_memory_check(self, info: ValidationInfo):
+        """
+        Guesstimate the possibility of the configuration trigerring and out of GPU memory.
+        """
+        import torch
+
+        from pudb import set_trace
+
+        set_trace()
+        if torch.cuda.is_available():
+            max_wav_length = 11
+            estimate = (
+                self.training.batch_size
+                * max_wav_length
+                / (
+                    self.preprocessing.audio.fft_hop_frames
+                    / self.preprocessing.audio.input_sampling_rate
+                )
+            )
+            estimate *= 4  # Bytes per float
+            global_free_memory, total_GPU_memory = torch.cuda.mem_get_info()
+            assert estimate < global_free_memory
+
     @staticmethod
     def load_config_from_path(path: Path) -> "FastSpeech2Config":
         """Load a config from a path"""
