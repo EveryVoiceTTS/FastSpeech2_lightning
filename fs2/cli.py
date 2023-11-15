@@ -472,7 +472,7 @@ def synthesize(
                 logger.info(
                     f"Loading Vocoder from {model.config.training.vocoder_path}"
                 )
-                ckpt = torch.load(model.config.training.vocoder_path)  # type: ignore
+                ckpt = torch.load(model.config.training.vocoder_path, map_location=device)  # type: ignore
                 logger.info("Generating waveform...")
                 wav, sr = synthesize_data(spec, ckpt)
                 logger.info(f"Writing file {data_path}")
