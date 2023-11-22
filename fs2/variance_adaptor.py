@@ -270,7 +270,7 @@ class VarianceAdaptor(nn.Module):
                 logger.error(
                     "Your pitch and/or energy targets are already averaged across phones, but when you are learning alignment with phone-level energy or pitch modelling, you must have an un-averaged target for these as the duration of phones changes during training. This should happen automatically if you re-run the preprocessing step for energy and pitch."
                 )
-                sys.exit()
+                sys.exit(1)
             if (
                 self.config.model.variance_adaptor.variance_predictors.energy.level
                 == "phone"

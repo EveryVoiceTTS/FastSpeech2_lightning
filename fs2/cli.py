@@ -393,7 +393,7 @@ def synthesize(
 
     if model_path is None:
         logger.error
-        sys.exit()
+        sys.exit(1)
     output_dir.mkdir(exist_ok=True, parents=True)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     # Load checkpoints
