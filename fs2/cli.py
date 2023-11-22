@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 from enum import Enum
 from glob import glob
 from pathlib import Path
@@ -392,7 +393,7 @@ def synthesize(
 
     if model_path is None:
         logger.error
-        exit()
+        sys.exit()
     output_dir.mkdir(exist_ok=True, parents=True)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     # Load checkpoints
