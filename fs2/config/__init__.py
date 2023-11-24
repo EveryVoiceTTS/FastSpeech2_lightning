@@ -88,13 +88,36 @@ class FastSpeech2ModelConfig(ConfigModel):
     learn_alignment: bool = True
     max_length: int = 1000
     mel_loss: VarianceLossEnum = VarianceLossEnum.mse
-    mel_loss_weight: float = 5e-1
+    aligner_loss_weight: float = 0.1
+    mel_loss_weight: float = 1.0
+    dur_loss_weight: Optional[float] = None
+    pitch_loss_weight: Optional[float] = None
+    energy_loss_weight: Optional[float] = None
     phonological_feats_size: int = 38
     use_phonological_feats: bool = False
     use_postnet: bool = True
     multilingual: bool = False
     multispeaker: bool = False
 
+    @model_validator(mode='after')
+    def apply_default_loss_scaling(self) -> 'FastSpeech2ModelConfig':
+        # Apply same default loss scaling as in https://github.com/NVIDIA/NeMo/blob/stable/nemo/collections/tts/models/fastpitch.py
+        if self.dur_loss_weight is None:
+            if self.learn_alignment:
+                self.dur_loss_weight = 0.1
+            else:
+                self.dur_loss_weight = 1.0
+        if self.pitch_loss_weight is None:
+            if self.learn_alignment:
+                self.pitch_loss_weight = 0.1
+            else:
+                self.pitch_loss_weight = 1.0
+        if self.energy_loss_weight is None:
+            if self.learn_alignment:
+                self.energy_loss_weight = 0.1
+            else:
+                self.energy_loss_weight = 1.0
+        return self
 
 class FastSpeech2FreezeLayersConfig(ConfigModel):
     all_layers: bool = False
@@ -131,6 +154,7 @@ class FastSpeech2TrainingConfig(BaseTrainingConfig):
     )
     early_stopping: EarlyStoppingConfig = Field(default_factory=EarlyStoppingConfig)
     tf: TFConfig = Field(default_factory=TFConfig)
+    bin_loss_warmup_epochs: int = 100
     vocoder_path: Union[FilePath, None] = None
 
 

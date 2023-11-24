@@ -448,7 +448,6 @@ def synthesize(
                     get_vocoder,
                     vocoder_infer,
                 )
-
                 logger.info(
                     f"Loading Vocoder from {model.config.training.vocoder_path}"
                 )
@@ -456,10 +455,6 @@ def synthesize(
                 logger.info("Generating waveform...")
                 wav = vocoder_infer(spec, ckpt)[0]
                 logger.info(f"Writing file {data_path}")
-                # synthesize 16 bit audio
-                if wav.dtype != "int16":
-                    wav = wav * model.config.preprocessing.audio.max_wav_value
-                    wav = wav.astype("int16")
                 write(
                     f"{data_path}.wav",
                     model.config.preprocessing.audio.output_sampling_rate,
