@@ -5,8 +5,7 @@ import torch
 from everyvoice.dataloader import BaseDataModule
 from everyvoice.text import TextProcessor
 from everyvoice.text.lookups import LookupTables
-from everyvoice.utils import check_dataset_size
-from everyvoice.utils.heavy import _flatten
+from everyvoice.utils import _flatten, check_dataset_size
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 
