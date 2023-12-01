@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from .attention_loss import AttentionCTCLoss
+from .attention_loss import AttentionCTCLoss, AttentionBinarizationLoss
 from .config import FastSpeech2Config
 
 
@@ -14,8 +14,9 @@ class FastSpeech2Loss(nn.Module):
             "l1": nn.L1Loss(),
         }
         self.attn_ctc_loss = AttentionCTCLoss()
+        self.attn_bin_loss = AttentionBinarizationLoss()
 
-    def forward(self, output, batch, frozen_components=None):
+    def forward(self, output, batch, current_epoch, frozen_components=None):
         # sourcery skip: merge-dict-assign, move-assign-in-block
         log_duration_prediction = output["duration_prediction"]
         duration_target = output["duration_target"]
@@ -100,10 +101,13 @@ class FastSpeech2Loss(nn.Module):
 
         # Calculate attention loss if using
         if self.config.model.learn_alignment:
-            attn_loss = self.attn_ctc_loss(
+            ctc_loss = self.attn_ctc_loss(
                 output["attn_logprob"], batch["src_lens"], batch["mel_lens"]
             )
-            losses["attn"] = attn_loss
+            bin_loss_weight = min(current_epoch / 100, 1.0) * 1.0
+            bin_loss = self.attn_bin_loss(output["attn_hard"], output["attn_soft"])
+            losses["attn"] = ctc_loss
+            losses['bin_loss'] = bin_loss * bin_loss_weight
 
         # Calculate total loss
         losses["total"] = sum(losses.values())

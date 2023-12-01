@@ -184,7 +184,7 @@ class FastSpeech2(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         output = self(batch)
-        losses = self.loss(output, batch)
+        losses = self.loss(output, batch, self.current_epoch)
         self.log_dict({f"training/{k}_loss": v.item() for k, v in losses.items()})
         return losses["total"]
 
@@ -324,7 +324,7 @@ class FastSpeech2(pl.LightningModule):
                 self.logger.experiment.add_audio(
                     f"pred/wav_{batch['basename'][0]}", wav, self.global_step, sr
                 )
-        losses = self.loss(output, batch)
+        losses = self.loss(output, batch, self.current_epoch)
         self.log_dict(
             {f"validation/{k}_loss": v.item() for k, v in losses.items()},
             batch_size=self.batch_size,

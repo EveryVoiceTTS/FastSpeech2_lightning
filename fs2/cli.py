@@ -471,7 +471,7 @@ def synthesize(
                 logger.info(
                     f"Loading Vocoder from {model.config.training.vocoder_path}"
                 )
-                ckpt = torch.load(model.config.training.vocoder_path)  # type: ignore
+                ckpt = torch.load(model.config.training.vocoder_path, map_location=device)  # type: ignore
                 logger.info("Generating waveform...")
                 wav, sr = synthesize_data(spec, ckpt)
                 logger.info(f"Writing file {data_path}")
@@ -553,7 +553,13 @@ def synthesize(
                         )
 
                         ckpt = torch.load(self.config.training.vocoder_path)
-                        vocoder_config: HiFiGANConfig = ckpt["config"]  # type: ignore
+                        # vocoder_config: HiFiGANConfig = ckpt["config"]  # type: ignore
+                        if isinstance(ckpt['hyper_parameters']['config'], dict):
+                            if 'check_val_every_n_epoch' in ckpt['hyper_parameters']['config']['training']:
+                                del ckpt['hyper_parameters']['config']['training']['check_val_every_n_epoch']
+                            vocoder_config: HiFiGANConfig = HiFiGANConfig(**ckpt['hyper_parameters']['config'])
+                        else:
+                            vocoder_config: HiFiGANConfig = ckpt['hyper_parameters']["config"]  # type: ignore
                         sampling_rate_change = (
                             vocoder_config.preprocessing.audio.output_sampling_rate
                             // vocoder_config.preprocessing.audio.input_sampling_rate
@@ -616,8 +622,9 @@ def synthesize(
         model.config.training.training_filelist = filelist
         model.config.training.validation_filelist = filelist
         data = FastSpeech2DataModule(model.config)
+        data.batch_size = 4
         tensorboard_logger = TensorBoardLogger(
-            **(model.config.training.logger.model_dump())
+            **(model.config.training.logger.model_dump(exclude={'sub_dir_callable'}))
         )
         trainer = Trainer(
             logger=tensorboard_logger,
