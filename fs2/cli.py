@@ -16,9 +16,6 @@ from loguru import logger
 from merge_args import merge_args
 from tqdm import tqdm
 
-from .config import FastSpeech2Config
-from .type_definitions import Stats, StatsInfo
-
 app = typer.Typer(
     pretty_exceptions_show_locals=False,
     help="A PyTorch Lightning implementation of the FastSpeech2 Text-to-Speech Feature Prediction Model",
@@ -130,6 +127,8 @@ def check_data(
     from everyvoice.preprocessor import Preprocessor
     from everyvoice.utils import generic_dict_loader
 
+    from .config import FastSpeech2Config
+
     config = load_config_base_command(
         model_config=FastSpeech2Config,  # type: ignore
         **kwargs,
@@ -156,6 +155,8 @@ def preprocess(
     **kwargs,
 ):
     from everyvoice.base_cli.helpers import preprocess_base_command
+
+    from .config import FastSpeech2Config
 
     preprocessor, config, processed = preprocess_base_command(
         model_config=FastSpeech2Config,  # type: ignore
@@ -196,6 +197,7 @@ def preprocess(
 def train(**kwargs):
     from everyvoice.base_cli.helpers import train_base_command
 
+    from .config import FastSpeech2Config
     from .dataset import FastSpeech2DataModule
     from .model import FastSpeech2
 
@@ -207,19 +209,6 @@ def train(**kwargs):
         gradient_clip_val=1.0,
         **kwargs,
     )
-
-
-def check_stats(data, path, stats: StatsInfo):
-    import torch
-
-    data_min = torch.min(data)
-    data_max = torch.max(data)
-    assert (
-        data_min >= stats.norm_min
-    ), f"Data in {path} had min of {data_min} despite stats min being {stats.norm_min}"
-    assert (
-        data_max <= stats.norm_max
-    ), f"Data in {path} had max of {data_min} despite stats max being {stats.norm_max}"
 
 
 @app.command()
@@ -235,6 +224,21 @@ def audit(
     dimensions: bool = True,
 ):
     import torch
+
+    from .config import FastSpeech2Config
+    from .type_definitions import Stats, StatsInfo
+
+    def check_stats(data, path, stats: StatsInfo):
+        import torch
+
+        data_min = torch.min(data)
+        data_max = torch.max(data)
+        assert (
+            data_min >= stats.norm_min
+        ), f"Data in {path} had min of {data_min} despite stats min being {stats.norm_min}"
+        assert (
+            data_max <= stats.norm_max
+        ), f"Data in {path} had max of {data_min} despite stats max being {stats.norm_max}"
 
     original_config: FastSpeech2Config = FastSpeech2Config.load_config_from_path(
         config_file
@@ -335,7 +339,7 @@ def audit(
 
 
 @app.command()
-def synthesize(
+def synthesize(  # noqa: C901
     model_path: Path = typer.Argument(
         ...,
         file_okay=True,
@@ -389,11 +393,13 @@ def synthesize(
     from everyvoice.preprocessor import Preprocessor
     from everyvoice.wizard.utils import sanitize_path
 
+    from .config import FastSpeech2Config
     from .model import FastSpeech2
 
     if model_path is None:
-        logger.error
+        logger.error("Model path is required.")
         sys.exit(1)
+
     output_dir.mkdir(exist_ok=True, parents=True)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     # Load checkpoints
@@ -404,9 +410,11 @@ def synthesize(
     if "wav" in output_type:
         if vocoder_path:
             model.config.training.vocoder_path = vocoder_path
-        assert (
-            model.config.training.vocoder_path
-        ), "Sorry, no vocoder was provided, please add it to model.config.training.vocoder_path or as --vocoder-path /path/to/vocoder in the command line"
+        if not model.config.training.vocoder_path:
+            logger.error(
+                "Sorry, no vocoder was provided, please add it to model.config.training.vocoder_path or as --vocoder-path /path/to/vocoder in the command line"
+            )
+            sys.exit(1)
 
     if text and filelist:
         logger.warning(
@@ -440,8 +448,11 @@ def synthesize(
         if "wav" in output_type:
             from scipy.io.wavfile import write
 
+            # We sys.exit(1) above if this is false
+            assert model.config.training.vocoder_path
+
             if (
-                os.path.basename(model.config.training.vocoder_path)  # type: ignore
+                os.path.basename(model.config.training.vocoder_path)
                 == "generator_universal.pth.tar"
             ):
                 from everyvoice.model.vocoder.original_hifigan_helper import (
@@ -473,7 +484,9 @@ def synthesize(
                 logger.info(
                     f"Loading Vocoder from {model.config.training.vocoder_path}"
                 )
-                ckpt = torch.load(model.config.training.vocoder_path, map_location=device)  # type: ignore
+                ckpt = torch.load(
+                    model.config.training.vocoder_path, map_location=device
+                )
                 logger.info("Generating waveform...")
                 wav, sr = synthesize_data(spec, ckpt)
                 logger.info(f"Writing file {data_path}")
