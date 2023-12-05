@@ -36,52 +36,42 @@ class FastSpeech2(pl.LightningModule):
         if self.config.model.use_phonological_feats:
             self.text_input_layer = nn.Linear(
                 self.config.model.phonological_feats_size,
-                self.config.model.encoder.hidden_dim,
+                self.config.model.encoder.input_dim,
                 bias=False,
             )
         else:
             self.text_input_layer = nn.Embedding(
                 len(self.text_processor.symbols),
-                self.config.model.encoder.hidden_dim,
+                self.config.model.encoder.input_dim,
                 padding_idx=self.text_processor.text_to_sequence(
                     self.text_processor._pad_symbol
                 )[0],
             )
         self.position_embedding = PositionalEmbedding(
-            self.config.model.encoder.hidden_dim
+            self.config.model.encoder.input_dim
         )
 
-        if self.config.model.encoder.conformer:
-            self.encoder = Conformer(
-                input_dim=self.config.model.encoder.hidden_dim,
-                num_heads=self.config.model.encoder.heads,
-                ffn_dim=self.config.model.encoder.feedforward_dim,
-                num_layers=self.config.model.encoder.layers,
-                depthwise_conv_kernel_size=self.config.model.encoder.conv_kernel_size,
-                dropout=self.config.model.encoder.dropout,
-            )
-        else:
-            raise NotImplementedError(
-                "Only a standard TorchAudio Conformer is currently supported."
-            )
+        self.encoder = Conformer(
+            input_dim=self.config.model.encoder.input_dim,
+            num_heads=self.config.model.encoder.heads,
+            ffn_dim=self.config.model.encoder.feedforward_dim,
+            num_layers=self.config.model.encoder.layers,
+            depthwise_conv_kernel_size=self.config.model.encoder.conv_kernel_size,
+            dropout=self.config.model.encoder.dropout,
+        )
         self.variance_adaptor = VarianceAdaptor(config)
 
-        if self.config.model.decoder.conformer:
-            self.decoder = Conformer(
-                input_dim=self.config.model.decoder.hidden_dim,
-                num_heads=self.config.model.decoder.heads,
-                ffn_dim=self.config.model.decoder.feedforward_dim,
-                num_layers=self.config.model.decoder.layers,
-                depthwise_conv_kernel_size=self.config.model.decoder.conv_kernel_size,
-                dropout=self.config.model.decoder.dropout,
-            )
-        else:
-            raise NotImplementedError(
-                "Only a standard TorchAudio Conformer is currently supported."
-            )
+        self.decoder = Conformer(
+            input_dim=self.config.model.decoder.input_dim,
+            num_heads=self.config.model.decoder.heads,
+            ffn_dim=self.config.model.decoder.feedforward_dim,
+            num_layers=self.config.model.decoder.layers,
+            depthwise_conv_kernel_size=self.config.model.decoder.conv_kernel_size,
+            dropout=self.config.model.decoder.dropout,
+        )
 
         self.mel_linear = nn.Linear(
-            self.config.model.decoder.hidden_dim, self.config.preprocessing.audio.n_mels
+            self.config.model.decoder.input_dim, self.config.preprocessing.audio.n_mels
         )  # TODO: replace with option for linear spec or complex
         if self.config.model.use_postnet:
             self.postnet = PostNet(
@@ -94,20 +84,13 @@ class FastSpeech2(pl.LightningModule):
         if self.config.model.multispeaker:
             self.speaker_embedding = nn.Embedding(
                 len(self.embedding_lookup.speaker2id),
-                self.config.model.encoder.hidden_dim,
+                self.config.model.encoder.input_dim,
             )  # TODO: replace with d_vector multispeaker embedding
         self.language_embedding = None
         if self.config.model.multilingual:
             self.language_embedding = nn.Embedding(
-                len(self.embedding_lookup.lang2id), self.config.model.encoder.hidden_dim
+                len(self.embedding_lookup.lang2id), self.config.model.encoder.input_dim
             )
-        # Freeze Layers
-        if self.config.training.freeze_layers.encoder:
-            self.encoder.freeze()
-        if self.config.training.freeze_layers.decoder:
-            self.decoder.freeze()
-        if self.config.training.freeze_layers.postnet:
-            self.encoder.freeze()
 
     def forward(self, batch, control=InferenceControl(), inference=False):
         # For model diagram see https://github.com/ming024/FastSpeech2/blob/master/img/model.png
@@ -272,18 +255,12 @@ class FastSpeech2(pl.LightningModule):
             gt_energy_for_plotting = batch["energy"][0].cpu().numpy()
             pred_pitch_for_plotting = output["pitch_prediction"][0].cpu().numpy()
             pred_energy_for_plotting = output["energy_prediction"][0].cpu().numpy()
-            if (
-                self.config.model.variance_adaptor.variance_predictors.pitch.level
-                == "phone"
-            ):
+            if self.config.model.variance_predictors.pitch.level == "phone":
                 pred_pitch_for_plotting = expand(pred_pitch_for_plotting, duration_np)
                 if not self.config.model.learn_alignment:
                     # pitch targets are frame-wise if alignment is learned
                     gt_pitch_for_plotting = expand(gt_pitch_for_plotting, duration_np)
-            if (
-                self.config.model.variance_adaptor.variance_predictors.energy.level
-                == "phone"
-            ):
+            if self.config.model.variance_predictors.energy.level == "phone":
                 pred_energy_for_plotting = expand(pred_energy_for_plotting, duration_np)
                 if not self.config.model.learn_alignment:
                     # energy targets are frame-wise if alignment is learned

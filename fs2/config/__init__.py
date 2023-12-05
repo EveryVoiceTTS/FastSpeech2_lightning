@@ -1,6 +1,6 @@
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any, Dict, Optional, Union
 
 from everyvoice.config.preprocessing_config import PreprocessingConfig
 from everyvoice.config.shared_types import (
@@ -16,16 +16,23 @@ from everyvoice.utils import load_config_from_json_or_yaml_path
 from pydantic import Field, FilePath, ValidationInfo, model_validator
 
 
-class TransformerConfig(ConfigModel):
-    layers: int = 4
-    heads: int = 2
-    hidden_dim: int = 256
-    feedforward_dim: int = 1024
-    conv_filter_size: int = 1024
-    conv_kernel_size: int = 9
-    dropout: float = 0.2
-    depthwise: bool = True
-    conformer: bool = True
+class ConformerConfig(ConfigModel):
+    layers: int = Field(4, description="The number of layers in the Conformer.")
+    heads: int = Field(
+        2, description="The number of heads in the multi-headed attention modules."
+    )
+    input_dim: int = Field(
+        256,
+        description="The number of hidden dimensions in the input. The input_dim value declared in the encoder and decoder modules must match the input_dim value declared in each variance predictor module.",
+    )
+    feedforward_dim: int = Field(
+        1024, description="The number of dimensions in the feedforward layers."
+    )
+    conv_kernel_size: int = Field(
+        9,
+        description="The size of the kernel in each convoluational layer of the Conformer.",
+    )
+    dropout: float = Field(0.2, description="The amount of dropout to apply.")
 
 
 class FastSpeech2Variances(ConfigModel):
@@ -39,69 +46,93 @@ class VarianceLevelEnum(str, Enum):
     frame = "frame"
 
 
-class VarianceTransformEnum(str, Enum):
-    log = "log"
-    cwt = "cwt"
-    none = "none"
-
-
 class VarianceLossEnum(str, Enum):
     mse = "mse"
     mae = "mae"
-    l1 = "l1"
-    soft_dtw = "soft_dtw"
 
 
 class VariancePredictorBase(ConfigModel):
-    transform: VarianceTransformEnum = VarianceTransformEnum.none
-    loss: VarianceLossEnum = VarianceLossEnum.mse
-    n_layers: int = 5
-    loss_weights: float = 5e-2
-    kernel_size: int = 3
-    dropout: float = 0.5
-    hidden_dim: int = 256
-    n_bins: int = 256
-    depthwise: bool = True
+    loss: VarianceLossEnum = Field(
+        VarianceLossEnum.mse,
+        description="The loss function to use when calculate variance loss. Either 'mse' or 'mae'.",
+    )
+    n_layers: int = Field(
+        5, description="The number of layers in the variance predictor module."
+    )
+    kernel_size: int = Field(
+        3,
+        description="The kernel size of each convolutional layer in the variance predictor module.",
+    )
+    dropout: float = Field(0.5, description="The amount of dropout to apply.")
+    input_dim: int = Field(
+        256,
+        description="The number of hidden dimensions in the input. This must match the input_dim value declared in the encoder and decoder modules.",
+    )
+    n_bins: int = Field(
+        256, description="The number of bins to use in the variance predictor module."
+    )
+    depthwise: bool = Field(
+        True, description="Whether to use depthwise separable convolutions."
+    )
 
 
 class VariancePredictorConfig(VariancePredictorBase):
-    level: VarianceLevelEnum = VarianceLevelEnum.phone
+    level: VarianceLevelEnum = Field(
+        VarianceLevelEnum.phone,
+        description="The level for the variance predictor to use. 'frame' will make predictions at the frame level. 'phone' will average predictions across all frames in each phone.",
+    )
 
 
 class VariancePredictors(ConfigModel):
-    energy: VariancePredictorConfig = Field(default_factory=VariancePredictorConfig)
-    duration: VariancePredictorBase = Field(default_factory=VariancePredictorBase)
-    pitch: VariancePredictorConfig = Field(default_factory=VariancePredictorConfig)
-
-
-# TODO: maybe flatten this to just variance_adaptor: VariancePredictors
-class VarianceAdaptorConfig(ConfigModel):
-    variance_predictors: VariancePredictors = Field(default_factory=VariancePredictors)
+    energy: VariancePredictorConfig = Field(
+        default_factory=VariancePredictorConfig,  # type: ignore
+        description="The variance predictor for energy",
+    )
+    duration: VariancePredictorBase = Field(
+        default_factory=VariancePredictorBase,  # type: ignore
+        description="The variance predictor for duration",
+    )
+    pitch: VariancePredictorConfig = Field(
+        default_factory=VariancePredictorConfig,  # type: ignore
+        description="The variance predictor for pitch",
+    )
 
 
 class FastSpeech2ModelConfig(ConfigModel):
-    encoder: TransformerConfig = Field(default_factory=TransformerConfig)
-    decoder: TransformerConfig = Field(default_factory=TransformerConfig)
-    variance_adaptor: VarianceAdaptorConfig = Field(
-        default_factory=VarianceAdaptorConfig
+    encoder: ConformerConfig = Field(default_factory=ConformerConfig, description="The configuration of the encoder module.")  # type: ignore
+    decoder: ConformerConfig = Field(default_factory=ConformerConfig, description="The configuration of the decoder module.")  # type: ignore
+    variance_predictors: VariancePredictors = Field(
+        default_factory=VariancePredictors,  # type: ignore
+        description="Configuration for energy, duration, and pitch variance predictors.",
     )
-    learn_alignment: bool = True
-    max_length: int = 1000
-    mel_loss: VarianceLossEnum = VarianceLossEnum.mse
-    mel_loss_weight: float = 5e-1
-    phonological_feats_size: int = 38
-    use_phonological_feats: bool = False
-    use_postnet: bool = True
-    multilingual: bool = False
-    multispeaker: bool = False
-
-
-class FastSpeech2FreezeLayersConfig(ConfigModel):
-    all_layers: bool = False
-    encoder: bool = False
-    decoder: bool = False
-    postnet: bool = False
-    variance: FastSpeech2Variances = Field(default_factory=FastSpeech2Variances)
+    learn_alignment: bool = Field(
+        True,
+        description="Whether to jointly learn alignments using monotonic alignment search module (See Badlani et. al. 2021: https://arxiv.org/abs/2108.10447). If set to False, you will have to provide text/audio alignments separately before training a text-to-spec (feature prediction) model.",
+    )
+    max_length: int = Field(
+        1000, description="The maximum length (i.e. number of symbols) for text inputs."
+    )
+    mel_loss: VarianceLossEnum = Field(
+        VarianceLossEnum.mse,
+        description="The loss function to use when calculating Mel spectrogram loss.",
+    )
+    phonological_feats_size: int = Field(
+        38,
+        description="Advanced. The number of dimension used in the phonological feature vector representation. The default is 38, but this can be changed by modifying the everyvoice/text/features.py module.",
+    )
+    use_phonological_feats: bool = Field(
+        False,
+        description="Whether to train using phonological feature vectors as inputs instead of one-hot encoded text inputs.",
+    )
+    use_postnet: bool = Field(True, description="Whether to use a postnet module.")
+    multilingual: bool = Field(
+        False,
+        description="Whether to train a multilingual model. For this to work, your filelist must contain a column/field for 'language' with values for each utterance.",
+    )
+    multispeaker: bool = Field(
+        False,
+        description="Whether to train a multispeaker model. For this to work, your filelist must contain a column/field for 'speaker' with values for each utterance.",
+    )
 
 
 class EarlyStoppingMetricEnum(str, Enum):
@@ -115,42 +146,54 @@ class EarlyStoppingConfig(ConfigModel):
     patience: int = 4
 
 
-class TFConfig(ConfigModel):
-    ratio: float = 1.0
-    linear_schedule: bool = False
-    linear_schedule_start: int = 0
-    linear_schedule_end: int = 20
-    linear_schedule_end_ratio: float = 0.0
-
-
 class FastSpeech2TrainingConfig(BaseTrainingConfig):
-    use_weighted_sampler: bool = False
-    optimizer: NoamOptimizer = Field(default_factory=NoamOptimizer)
-    freeze_layers: FastSpeech2FreezeLayersConfig = Field(
-        default_factory=FastSpeech2FreezeLayersConfig
+    use_weighted_sampler: bool = Field(
+        False,
+        description="Whether to use a sampler which oversamples from the minority language or speaker class for balanced training.",
     )
-    early_stopping: EarlyStoppingConfig = Field(default_factory=EarlyStoppingConfig)
-    tf: TFConfig = Field(default_factory=TFConfig)
+    optimizer: NoamOptimizer = Field(
+        default_factory=NoamOptimizer,  # type: ignore
+        description="The optimizer to use during training.",
+    )
+    # TODO: Implement early stopping
+    # early_stopping: EarlyStoppingConfig = Field(default_factory=EarlyStoppingConfig)
     vocoder_path: Union[FilePath, None] = None
 
 
 class FastSpeech2Config(PartialLoadConfig):
-    model: FastSpeech2ModelConfig = Field(default_factory=FastSpeech2ModelConfig)
-    path_to_model_config_file: Optional[FilePath] = None
+    model: FastSpeech2ModelConfig = Field(
+        default_factory=FastSpeech2ModelConfig,  # type: ignore
+        description="The model configuration settings.",
+    )
+    path_to_model_config_file: Optional[FilePath] = Field(
+        None, description="The path of a model configuration file."
+    )
 
     training: FastSpeech2TrainingConfig = Field(
-        default_factory=FastSpeech2TrainingConfig
+        default_factory=FastSpeech2TrainingConfig,  # type: ignore
+        description="The training configuration hyperparameters.",
     )
-    path_to_training_config_file: Optional[FilePath] = None
+    path_to_training_config_file: Optional[FilePath] = Field(
+        None, description="The path of a training configuration file."
+    )
 
-    preprocessing: PreprocessingConfig = Field(default_factory=PreprocessingConfig)
-    path_to_preprocessing_config_file: Optional[FilePath] = None
+    preprocessing: PreprocessingConfig = Field(
+        default_factory=PreprocessingConfig,  # type: ignore
+        description="The preprocessing configuration, including information about audio settings.",
+    )
+    path_to_preprocessing_config_file: Optional[FilePath] = Field(
+        None, description="The path of a preprocessing configuration file."
+    )
 
-    text: TextConfig = Field(default_factory=TextConfig)
-    path_to_text_config_file: Optional[FilePath] = None
+    text: TextConfig = Field(
+        default_factory=TextConfig, description="The text configuration."
+    )
+    path_to_text_config_file: Optional[FilePath] = Field(
+        None, description="The path of a text configuration file."
+    )
 
     @model_validator(mode="before")  # type: ignore
-    def load_partials(self, info: ValidationInfo):
+    def load_partials(self: Dict[Any, Any], info: ValidationInfo):
         config_path = (
             info.context.get("config_path", None) if info.context is not None else None
         )
