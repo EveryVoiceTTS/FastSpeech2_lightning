@@ -189,7 +189,7 @@ class FastSpeech2(pl.LightningModule):
             audio = torch.load(
                 self.config.preprocessing.save_dir
                 / "audio"
-                / self.config.preprocessing.value_separator.join(
+                / "--".join(
                     [
                         batch["basename"][0],
                         batch["speaker"][0],
