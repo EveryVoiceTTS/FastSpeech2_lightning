@@ -496,7 +496,7 @@ def synthesize(
             def __init__(self, output_types, output_dir, config: FastSpeech2Config):
                 self.save_dir = output_dir
                 self.config = config
-                self.sep = config.preprocessing.value_separator
+                self.sep = "--"
                 self.output_types: List[SynthesisOutputs] = output_types
                 logger.info(f"Saving output to {self.save_dir / 'synthesized_spec'}")
                 if "pt" in self.output_types:
