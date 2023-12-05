@@ -303,14 +303,12 @@ def audit(
                 assert duration.size(0) == text.size(0)
                 e_asserted_duration = (
                     duration.size(0)
-                    if original_config.model.variance_adaptor.variance_predictors.energy.level
-                    == "phone"
+                    if original_config.model.variance_predictors.energy.level == "phone"
                     else torch.sum(duration)
                 )
                 p_asserted_duration = (
                     duration.size(0)
-                    if original_config.model.variance_adaptor.variance_predictors.pitch.level
-                    == "phone"
+                    if original_config.model.variance_predictors.pitch.level == "phone"
                     else torch.sum(duration)
                 )
                 e_data = torch.load(e_path)

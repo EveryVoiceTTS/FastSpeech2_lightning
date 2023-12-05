@@ -11,7 +11,7 @@ class FastSpeech2Loss(nn.Module):
         self.config = config
         self.loss_fns = {
             "mse": nn.MSELoss(),
-            "l1": nn.L1Loss(),
+            "mae": nn.L1Loss(),
         }
         self.attn_ctc_loss = AttentionCTCLoss()
 
@@ -43,35 +43,25 @@ class FastSpeech2Loss(nn.Module):
         losses = {}
 
         # Calculate pitch loss
-        if (
-            self.config.model.variance_adaptor.variance_predictors.pitch.level
-            == "phone"
-        ):
+        if self.config.model.variance_predictors.pitch.level == "phone":
             pitch_mask = src_mask
         else:
             pitch_mask = tgt_mask
 
         pitch_prediction = pitch_prediction * pitch_mask
         pitch_target = pitch_target * pitch_mask
-        pitch_loss_fn = (
-            self.config.model.variance_adaptor.variance_predictors.pitch.loss
-        )
+        pitch_loss_fn = self.config.model.variance_predictors.pitch.loss
         losses["pitch"] = self.loss_fns[pitch_loss_fn](pitch_prediction, pitch_target)
 
         # Calculate energy loss
-        if (
-            self.config.model.variance_adaptor.variance_predictors.energy.level
-            == "phone"
-        ):
+        if self.config.model.variance_predictors.energy.level == "phone":
             energy_mask = src_mask
         else:
             energy_mask = tgt_mask
 
         energy_prediction = energy_prediction * energy_mask
         energy_target = energy_target * energy_mask
-        energy_loss_fn = (
-            self.config.model.variance_adaptor.variance_predictors.energy.loss
-        )
+        energy_loss_fn = self.config.model.variance_predictors.energy.loss
         losses["energy"] = self.loss_fns[energy_loss_fn](
             energy_prediction, energy_target
         )
@@ -79,9 +69,7 @@ class FastSpeech2Loss(nn.Module):
         # Calculate duration loss
         log_duration_target = torch.log(duration_target.float() + 1) * src_mask
         log_duration_prediction = log_duration_prediction * src_mask
-        duration_loss_fn = (
-            self.config.model.variance_adaptor.variance_predictors.duration.loss
-        )
+        duration_loss_fn = self.config.model.variance_predictors.duration.loss
         losses["duration"] = self.loss_fns[duration_loss_fn](
             log_duration_prediction, log_duration_target
         )
