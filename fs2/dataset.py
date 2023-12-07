@@ -21,7 +21,7 @@ class FastSpeechDataset(Dataset):
         self.dataset = dataset
         self.config = config
         self.lookup = LookupTables(config)
-        self.sep = config.preprocessing.value_separator
+        self.sep = "--"
         self.text_processor = TextProcessor(config)
         self.preprocessed_dir = Path(self.config.preprocessing.save_dir)
         self.sampling_rate = self.config.preprocessing.audio.input_sampling_rate

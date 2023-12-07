@@ -90,51 +90,51 @@ class VarianceAdaptor(nn.Module):
             self.stats = Stats(**json.load(f))
         # Duration Predictor
         self.duration_predictor = VariancePredictor(
-            input_dim=self.config.model.encoder.hidden_dim,
-            n_layers=self.config.model.variance_adaptor.variance_predictors.duration.n_layers,
-            n_channels=self.config.model.variance_adaptor.variance_predictors.duration.hidden_dim,
+            input_dim=self.config.model.encoder.input_dim,
+            n_layers=self.config.model.variance_predictors.duration.n_layers,
+            n_channels=self.config.model.variance_predictors.duration.input_dim,
             output_dim=1,
-            kernel_size=self.config.model.variance_adaptor.variance_predictors.duration.kernel_size,
-            dropout_rate=self.config.model.variance_adaptor.variance_predictors.duration.dropout,
-            depthwise=self.config.model.variance_adaptor.variance_predictors.duration.depthwise,
+            kernel_size=self.config.model.variance_predictors.duration.kernel_size,
+            dropout_rate=self.config.model.variance_predictors.duration.dropout,
+            depthwise=self.config.model.variance_predictors.duration.depthwise,
         )
         self.length_regulator = LengthRegulator()
         # Pitch Predictor
         self.pitch_predictor = VariancePredictor(
-            input_dim=self.config.model.encoder.hidden_dim,
-            n_layers=self.config.model.variance_adaptor.variance_predictors.pitch.n_layers,
-            n_channels=self.config.model.variance_adaptor.variance_predictors.pitch.hidden_dim,
+            input_dim=self.config.model.encoder.input_dim,
+            n_layers=self.config.model.variance_predictors.pitch.n_layers,
+            n_channels=self.config.model.variance_predictors.pitch.input_dim,
             output_dim=1,
-            kernel_size=self.config.model.variance_adaptor.variance_predictors.pitch.kernel_size,
-            dropout_rate=self.config.model.variance_adaptor.variance_predictors.pitch.dropout,
-            depthwise=self.config.model.variance_adaptor.variance_predictors.pitch.depthwise,
+            kernel_size=self.config.model.variance_predictors.pitch.kernel_size,
+            dropout_rate=self.config.model.variance_predictors.pitch.dropout,
+            depthwise=self.config.model.variance_predictors.pitch.depthwise,
         )
         self.pitch_embedding = nn.Embedding(
-            self.config.model.variance_adaptor.variance_predictors.pitch.n_bins,
-            self.config.model.variance_adaptor.variance_predictors.pitch.hidden_dim,
+            self.config.model.variance_predictors.pitch.n_bins,
+            self.config.model.variance_predictors.pitch.input_dim,
             # padding_idx=0,
         )
         self.pitch_bins = nn.Parameter(
             torch.linspace(
                 self.stats.pitch.norm_min,
                 self.stats.pitch.norm_max,
-                self.config.model.variance_adaptor.variance_predictors.pitch.n_bins - 1,
+                self.config.model.variance_predictors.pitch.n_bins - 1,
             ),
             requires_grad=False,
         )
         # Energy Predictor
         self.energy_predictor = VariancePredictor(
-            input_dim=self.config.model.encoder.hidden_dim,
-            n_layers=self.config.model.variance_adaptor.variance_predictors.energy.n_layers,
-            n_channels=self.config.model.variance_adaptor.variance_predictors.energy.hidden_dim,
+            input_dim=self.config.model.encoder.input_dim,
+            n_layers=self.config.model.variance_predictors.energy.n_layers,
+            n_channels=self.config.model.variance_predictors.energy.input_dim,
             output_dim=1,
-            kernel_size=self.config.model.variance_adaptor.variance_predictors.energy.kernel_size,
-            dropout_rate=self.config.model.variance_adaptor.variance_predictors.energy.dropout,
-            depthwise=self.config.model.variance_adaptor.variance_predictors.energy.depthwise,
+            kernel_size=self.config.model.variance_predictors.energy.kernel_size,
+            dropout_rate=self.config.model.variance_predictors.energy.dropout,
+            depthwise=self.config.model.variance_predictors.energy.depthwise,
         )
         self.energy_embedding = nn.Embedding(
-            self.config.model.variance_adaptor.variance_predictors.energy.n_bins,
-            self.config.model.variance_adaptor.variance_predictors.energy.hidden_dim,
+            self.config.model.variance_predictors.energy.n_bins,
+            self.config.model.variance_predictors.energy.input_dim,
             # padding_idx=0,
         )
 
@@ -142,8 +142,7 @@ class VarianceAdaptor(nn.Module):
             torch.linspace(
                 self.stats.energy.norm_min,
                 self.stats.energy.norm_max,
-                self.config.model.variance_adaptor.variance_predictors.energy.n_bins
-                - 1,
+                self.config.model.variance_predictors.energy.n_bins - 1,
             ),
             requires_grad=False,
         )
@@ -153,7 +152,7 @@ class VarianceAdaptor(nn.Module):
             self.attention = ConvAttention(
                 self.config.preprocessing.audio.n_mels,
                 0,
-                self.config.model.encoder.hidden_dim,
+                self.config.model.encoder.input_dim,
                 use_query_proj=True,
                 align_query_enc_type="3xconv",
             )
@@ -271,15 +270,9 @@ class VarianceAdaptor(nn.Module):
                     "Your pitch and/or energy targets are already averaged across phones, but when you are learning alignment with phone-level energy or pitch modelling, you must have an un-averaged target for these as the duration of phones changes during training. This should happen automatically if you re-run the preprocessing step for energy and pitch."
                 )
                 sys.exit(1)
-            if (
-                self.config.model.variance_adaptor.variance_predictors.energy.level
-                == "phone"
-            ):
+            if self.config.model.variance_predictors.energy.level == "phone":
                 energy_target = self.average_variance(energy_target, duration_target)
-            if (
-                self.config.model.variance_adaptor.variance_predictors.pitch.level
-                == "phone"
-            ):
+            if self.config.model.variance_predictors.pitch.level == "phone":
                 pitch_target = self.average_variance(pitch_target, duration_target)
 
             assert torch.all(torch.eq(duration_target.sum(dim=1), batch["mel_lens"]))
@@ -287,10 +280,7 @@ class VarianceAdaptor(nn.Module):
         # If phone-level variance, use src_mask before duration predictor and upsampling of x
         # using length regulator
         # otherwise use tgt_mask after upsampling
-        if (
-            self.config.model.variance_adaptor.variance_predictors.energy.level
-            == "phone"
-        ):
+        if self.config.model.variance_predictors.energy.level == "phone":
             energy_prediction, energy_embedding = self.get_variance_embedding(
                 x,
                 energy_target,
@@ -311,10 +301,7 @@ class VarianceAdaptor(nn.Module):
                 print(energy_embedding.size())
                 breakpoint()
                 raise e
-        if (
-            self.config.model.variance_adaptor.variance_predictors.pitch.level
-            == "phone"
-        ):
+        if self.config.model.variance_predictors.pitch.level == "phone":
             pitch_prediction, pitch_embedding = self.get_variance_embedding(
                 x,
                 pitch_target,
@@ -355,10 +342,7 @@ class VarianceAdaptor(nn.Module):
                 x, duration_rounded, max_length=max_target_len
             )
 
-        if (
-            self.config.model.variance_adaptor.variance_predictors.energy.level
-            == "frame"
-        ):
+        if self.config.model.variance_predictors.energy.level == "frame":
             energy_prediction, energy_embedding = self.get_variance_embedding(
                 x,
                 energy_target,
@@ -372,10 +356,7 @@ class VarianceAdaptor(nn.Module):
             )
             x = x + energy_embedding
 
-        if (
-            self.config.model.variance_adaptor.variance_predictors.pitch.level
-            == "frame"
-        ):
+        if self.config.model.variance_predictors.pitch.level == "frame":
             pitch_prediction, pitch_embedding = self.get_variance_embedding(
                 x,
                 pitch_target,

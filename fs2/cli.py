@@ -303,14 +303,12 @@ def audit(
                 assert duration.size(0) == text.size(0)
                 e_asserted_duration = (
                     duration.size(0)
-                    if original_config.model.variance_adaptor.variance_predictors.energy.level
-                    == "phone"
+                    if original_config.model.variance_predictors.energy.level == "phone"
                     else torch.sum(duration)
                 )
                 p_asserted_duration = (
                     duration.size(0)
-                    if original_config.model.variance_adaptor.variance_predictors.pitch.level
-                    == "phone"
+                    if original_config.model.variance_predictors.pitch.level == "phone"
                     else torch.sum(duration)
                 )
                 e_data = torch.load(e_path)
@@ -511,7 +509,7 @@ def synthesize(  # noqa: C901
             def __init__(self, output_types, output_dir, config: FastSpeech2Config):
                 self.save_dir = output_dir
                 self.config = config
-                self.sep = config.preprocessing.value_separator
+                self.sep = "--"
                 self.output_types: List[SynthesisOutputs] = output_types
                 logger.info(f"Saving output to {self.save_dir / 'synthesized_spec'}")
                 if "pt" in self.output_types:
@@ -557,7 +555,7 @@ def synthesize(  # noqa: C901
                         )
                         output_hop_size = (
                             sampling_rate_change
-                            * model.config.preprocessing.audio.fft_hop_frames
+                            * model.config.preprocessing.audio.fft_hop_size
                         )
                     else:
                         from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import (
@@ -575,7 +573,7 @@ def synthesize(  # noqa: C901
                         )
                         output_hop_size = (
                             sampling_rate_change
-                            * vocoder_config.preprocessing.audio.fft_hop_frames
+                            * vocoder_config.preprocessing.audio.fft_hop_size
                         )
                         wavs, sr = synthesize_data(outputs[model.output_key], ckpt)
                         # synthesize 16 bit audio
