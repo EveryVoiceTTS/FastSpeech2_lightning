@@ -1,7 +1,8 @@
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Annotated, Any, Dict, Optional, Union
 
+from annotated_types import Ge
 from everyvoice.config.preprocessing_config import PreprocessingConfig
 from everyvoice.config.shared_types import (
     BaseTrainingConfig,
@@ -158,6 +159,31 @@ class FastSpeech2TrainingConfig(BaseTrainingConfig):
     # TODO: Implement early stopping
     # early_stopping: EarlyStoppingConfig = Field(default_factory=EarlyStoppingConfig)
     vocoder_path: Union[FilePath, None] = None
+    mel_loss_weight: float = Field(
+        1.0, description="Multiply the spec loss by this weight"
+    )
+    postnet_loss_weight: float = Field(
+        1.0, description="Multiply the postnet loss by this weight"
+    )
+    pitch_loss_weight: float = Field(
+        1.0, description="Multiply the pitch loss by this weight"
+    )
+    energy_loss_weight: float = Field(
+        1.0, description="Multiply the energy loss by this weight"
+    )
+    duration_loss_weight: float = Field(
+        1.0, description="Multiply the duration loss by this weight"
+    )
+    attn_ctc_loss_weight: float = Field(
+        1.0, description="Multiply the Attention CTC loss by this weight"
+    )
+    attn_bin_loss_weight: float = Field(
+        1.0, description="Multiply the Attention Binarization loss by this weight"
+    )
+    attn_bin_loss_warmup_epochs: Annotated[int, Ge(1)] = Field(
+        100,
+        description="Scale the Attention Binarization loss by (current_epoch / attn_bin_loss_warmup_epochs) until the number of epochs defined by attn_bin_loss_warmup_epochs is reached.",
+    )
 
 
 class FastSpeech2Config(PartialLoadConfig):
