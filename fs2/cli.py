@@ -630,7 +630,7 @@ def synthesize(  # noqa: C901
         model.config.training.validation_filelist = filelist
         data = FastSpeech2DataModule(model.config)
         tensorboard_logger = TensorBoardLogger(
-            **(model.config.training.logger.model_dump())
+            **(model.config.training.logger.model_dump(exclude={"sub_dir_callable"}))
         )
         trainer = Trainer(
             logger=tensorboard_logger,
