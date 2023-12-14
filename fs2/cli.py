@@ -16,6 +16,8 @@ from loguru import logger
 from merge_args import merge_args
 from tqdm import tqdm
 
+from .synthesis_outputs import SynthesisOutputs
+
 app = typer.Typer(
     pretty_exceptions_show_locals=False,
     help="A PyTorch Lightning implementation of the FastSpeech2 Text-to-Speech Feature Prediction Model",
@@ -29,12 +31,6 @@ class PreprocessCategories(str, Enum):
     text = "text"
     pitch = "pitch"
     energy = "energy"
-
-
-class SynthesisOutputs(str, Enum):
-    wav = "wav"
-    npy = "npy"
-    pt = "pt"
 
 
 class BenchmarkType(str, Enum):
@@ -391,7 +387,6 @@ def synthesize(  # noqa: C901
     from everyvoice.preprocessor import Preprocessor
     from everyvoice.wizard.utils import sanitize_path
 
-    from .config import FastSpeech2Config
     from .model import FastSpeech2
 
     if model_path is None:
@@ -405,7 +400,7 @@ def synthesize(  # noqa: C901
     model: FastSpeech2 = FastSpeech2.load_from_checkpoint(model_path).to(device)
     model.eval()
     preprocessor = Preprocessor(model.config)
-    if "wav" in output_type:
+    if SynthesisOutputs.wav in output_type:
         if vocoder_path:
             model.config.training.vocoder_path = vocoder_path
         if not model.config.training.vocoder_path:
@@ -500,131 +495,10 @@ def synthesize(  # noqa: C901
 
     elif filelist:
         from pytorch_lightning import Trainer
-        from pytorch_lightning.callbacks import Callback
         from pytorch_lightning.loggers import TensorBoardLogger
 
         from .dataset import FastSpeech2DataModule
-
-        class PredictionWritingCallback(Callback):
-            def __init__(self, output_types, output_dir, config: FastSpeech2Config):
-                self.save_dir = output_dir
-                self.config = config
-                self.sep = "--"
-                self.output_types: List[SynthesisOutputs] = output_types
-                logger.info(f"Saving output to {self.save_dir / 'synthesized_spec'}")
-                if "pt" in self.output_types:
-                    (self.save_dir / "synthesized_spec").mkdir(
-                        parents=True, exist_ok=True
-                    )
-                if "npy" in self.output_types:
-                    (self.save_dir / "original_hifigan_spec").mkdir(
-                        parents=True, exist_ok=True
-                    )
-                if "wav" in self.output_types:
-                    (self.save_dir / "wav").mkdir(parents=True, exist_ok=True)
-
-            def on_predict_batch_end(
-                self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx
-            ):
-                if "wav" in self.output_types:
-                    if (
-                        os.path.basename(model.config.training.vocoder_path)
-                        == "generator_universal.pth.tar"
-                    ):
-                        from everyvoice.model.vocoder.original_hifigan_helper import (
-                            get_vocoder,
-                            vocoder_infer,
-                        )
-
-                        logger.info(
-                            f"Loading Vocoder from {model.config.training.vocoder_path}"
-                        )
-                        ckpt = get_vocoder(
-                            model.config.training.vocoder_path, device=device
-                        )
-                        logger.info("Generating waveform...")
-                        wavs = vocoder_infer(
-                            outputs[model.output_key],
-                            ckpt,
-                        )
-                        sr = model.config.preprocessing.audio.output_sampling_rate
-                        # Necessary when passing --filelist
-                        sampling_rate_change = (
-                            model.config.preprocessing.audio.output_sampling_rate
-                            // model.config.preprocessing.audio.input_sampling_rate
-                        )
-                        output_hop_size = (
-                            sampling_rate_change
-                            * model.config.preprocessing.audio.fft_hop_size
-                        )
-                    else:
-                        from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import (
-                            HiFiGANConfig,
-                        )
-                        from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
-                            synthesize_data,
-                        )
-
-                        ckpt = torch.load(self.config.training.vocoder_path)
-                        vocoder_config: HiFiGANConfig = ckpt["config"]  # type: ignore
-                        sampling_rate_change = (
-                            vocoder_config.preprocessing.audio.output_sampling_rate
-                            // vocoder_config.preprocessing.audio.input_sampling_rate
-                        )
-                        output_hop_size = (
-                            sampling_rate_change
-                            * vocoder_config.preprocessing.audio.fft_hop_size
-                        )
-                        wavs, sr = synthesize_data(outputs[model.output_key], ckpt)
-                        # synthesize 16 bit audio
-                        if wavs.dtype != "int16":
-                            wavs = wavs * model.config.preprocessing.audio.max_wav_value
-                            wavs = wavs.astype("int16")
-                if "npy" in self.output_types:
-                    import numpy as np
-
-                    specs = outputs[model.output_key].transpose(1, 2).cpu().numpy()
-
-                for b in range(batch["text"].size(0)):
-                    basename = batch["basename"][b]
-                    speaker = batch["speaker"][b]
-                    language = batch["language"][b]
-                    unmasked_len = outputs["tgt_lens"][
-                        b
-                    ]  # the vocoder output includes padding so we have to remove that
-                    if "pt" in self.output_types:
-                        torch.save(
-                            outputs[model.output_key][b][:unmasked_len]
-                            .transpose(0, 1)
-                            .cpu(),
-                            self.save_dir
-                            / "synthesized_spec"
-                            / self.sep.join(
-                                [
-                                    basename,
-                                    speaker,
-                                    language,
-                                    f"spec-pred-{self.config.preprocessing.audio.input_sampling_rate}-{self.config.preprocessing.audio.spec_type}.pt",
-                                ]
-                            ),
-                        )
-                    if "wav" in self.output_types:
-                        from scipy.io.wavfile import write
-
-                        write(
-                            self.save_dir
-                            / "wav"
-                            / self.sep.join([basename, speaker, language, "pred.wav"]),
-                            sr,
-                            wavs[b][: (unmasked_len * output_hop_size)],
-                        )
-                    if "npy" in self.output_types:
-                        np.save(
-                            self.save_dir
-                            / "original_hifigan_spec"
-                            / self.sep.join([basename, speaker, language, "pred.npy"]),
-                            specs[b][:, :unmasked_len].squeeze(),
-                        )
+        from .prediction_writing_callback import PredictionWritingCallback
 
         model.config.training.training_filelist = filelist
         model.config.training.validation_filelist = filelist
@@ -639,7 +513,11 @@ def synthesize(  # noqa: C901
             max_epochs=model.config.training.max_epochs,
             callbacks=[
                 PredictionWritingCallback(
-                    output_types=output_type, output_dir=output_dir, config=model.config
+                    output_types=output_type,
+                    output_dir=output_dir,
+                    config=model.config,
+                    output_key=model.output_key,
+                    device=device,
                 )
             ],
         )
