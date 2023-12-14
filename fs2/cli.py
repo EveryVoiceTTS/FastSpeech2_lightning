@@ -498,7 +498,7 @@ def synthesize(  # noqa: C901
         from pytorch_lightning.loggers import TensorBoardLogger
 
         from .dataset import FastSpeech2DataModule
-        from .prediction_writing_callback import PredictionWritingCallback
+        from .prediction_writing_callback import get_synthesis_output_callbacks
 
         model.config.training.training_filelist = filelist
         model.config.training.validation_filelist = filelist
@@ -511,15 +511,13 @@ def synthesize(  # noqa: C901
             accelerator=accelerator,
             devices=devices,
             max_epochs=model.config.training.max_epochs,
-            callbacks=[
-                PredictionWritingCallback(
-                    output_types=output_type,
-                    output_dir=output_dir,
-                    config=model.config,
-                    output_key=model.output_key,
-                    device=device,
-                )
-            ],
+            callbacks=get_synthesis_output_callbacks(
+                output_type=output_type,
+                output_dir=output_dir,
+                config=model.config,
+                output_key=model.output_key,
+                device=device,
+            ),
         )
         trainer.predict(model, data)
 
