@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 from typing import List, Sequence
 
@@ -151,26 +150,31 @@ class PredictionWritingWavCallback(Callback):
         logger.info(f"Saving wav output to {self.save_dir / 'synthesized_spec'}")
         (self.save_dir / "wav").mkdir(parents=True, exist_ok=True)
 
+        logger.info(f"Loading Vocoder from {self.config.training.vocoder_path}")
+        if self.config.training.vocoder_path is None:
+            logger.error("You must provide a vocoder")
+        else:
+            if self.config.training.vocoder_path.name == "generator_universal.pth.tar":
+                from everyvoice.model.vocoder.original_hifigan_helper import get_vocoder
+
+                self.vocoder = get_vocoder(
+                    self.config.training.vocoder_path, device=self.device
+                )
+            else:
+                self.vocoder = torch.load(self.config.training.vocoder_path)
+
     def on_predict_batch_end(
         self, _trainer, _pl_module, outputs, batch, _batch_idx, _dataloader_idx=0
     ):
         from scipy.io.wavfile import write
 
-        if (
-            os.path.basename(self.config.training.vocoder_path)
-            == "generator_universal.pth.tar"
-        ):
-            from everyvoice.model.vocoder.original_hifigan_helper import (
-                get_vocoder,
-                vocoder_infer,
-            )
+        if self.config.training.vocoder_path.name == "generator_universal.pth.tar":
+            from everyvoice.model.vocoder.original_hifigan_helper import vocoder_infer
 
-            logger.info(f"Loading Vocoder from {self.config.training.vocoder_path}")
-            vocoder = get_vocoder(self.config.training.vocoder_path, device=self.device)
             logger.info("Generating waveform...")
             wavs = vocoder_infer(
                 outputs[self.output_key],
-                vocoder,
+                self.vocoder,
             )
             sr = self.config.preprocessing.audio.output_sampling_rate
             # Necessary when passing --filelist
@@ -189,8 +193,7 @@ class PredictionWritingWavCallback(Callback):
                 synthesize_data,
             )
 
-            vocoder = torch.load(self.config.training.vocoder_path)
-            vocoder_config: HiFiGANConfig = vocoder["config"]  # type: ignore
+            vocoder_config: HiFiGANConfig = self.vocoder["config"]  # type: ignore
             sampling_rate_change = (
                 vocoder_config.preprocessing.audio.output_sampling_rate
                 // vocoder_config.preprocessing.audio.input_sampling_rate
@@ -198,7 +201,7 @@ class PredictionWritingWavCallback(Callback):
             output_hop_size = (
                 sampling_rate_change * vocoder_config.preprocessing.audio.fft_hop_size
             )
-            wavs, sr = synthesize_data(outputs[self.output_key], vocoder)
+            wavs, sr = synthesize_data(outputs[self.output_key], self.vocoder)
             # synthesize 16 bit audio
             if wavs.dtype != "int16":
                 wavs = wavs * self.config.preprocessing.audio.max_wav_value
