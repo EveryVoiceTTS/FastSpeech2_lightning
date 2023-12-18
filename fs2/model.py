@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Union
+from typing import Any, Dict, Union
 
 import numpy as np
 import pytorch_lightning as pl
@@ -171,6 +171,11 @@ class FastSpeech2(pl.LightningModule):
             "pitch_prediction": variance_adaptor_out["pitch_prediction"],
             "pitch_target": variance_adaptor_out["pitch_target"],
         }
+
+    def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
+        # Add the language and speaker embedding lookups
+        checkpoint["lang2id"] = self.embedding_lookup.lang2id
+        checkpoint["speaker2id"] = self.embedding_lookup.speaker2id
 
     def predict_step(self, batch, batch_idx):
         with torch.no_grad():
