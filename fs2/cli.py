@@ -360,8 +360,8 @@ def synthesize(  # noqa: C901
         dir_okay=True,
         help="The directory where your synthesized audio should be written",
     ),
-    text: str = typer.Option(
-        "",
+    texts: List[str] = typer.Option(
+        [],
         "--text",
         "-t",
         help="Some text to synthesize. Choose --filelist if you want to synthesize more than one sample at a time.",
@@ -399,9 +399,18 @@ def synthesize(  # noqa: C901
     from everyvoice.wizard.utils import sanitize_path
 
     from .model import FastSpeech2
+    from .synthesize_text_dataset import SynthesizeTextDataSet
 
     if model_path is None:
         logger.error("Model path is required.")
+        sys.exit(1)
+
+    if texts and filelist:
+        logger.warning(
+            "Got arguments for both text and a filelist - this will only process the text. Please re-run without out providing text if you want to run batch synthesis"
+        )
+    if not texts and not filelist:
+        logger.error("You must define either --text or --filelist")
         sys.exit(1)
 
     output_dir.mkdir(exist_ok=True, parents=True)
@@ -410,7 +419,6 @@ def synthesize(  # noqa: C901
     logger.info(f"Loading checkpoint from {model_path}")
     model: FastSpeech2 = FastSpeech2.load_from_checkpoint(model_path).to(device)
     model.eval()
-    preprocessor = Preprocessor(model.config)
     if SynthesisOutputs.wav in output_type:
         if vocoder_path:
             model.config.training.vocoder_path = vocoder_path
@@ -420,117 +428,65 @@ def synthesize(  # noqa: C901
             )
             sys.exit(1)
 
-    if text and filelist:
-        logger.warning(
-            "Got arguments for both text and a filelist - this will only process the text. Please re-run without out providing text if you want to run batch synthesis"
+    dataset: SynthesizeTextDataSet
+    if texts:
+        logger.info(f"Processing text '{texts}'")
+
+        dataset = SynthesizeTextDataSet(
+            [
+                {
+                    "basename": sanitize_path(text),
+                    "text": text,
+                    "language_id": "language",
+                    "speaker_id": "speaker",
+                }
+                for text in texts
+            ],
+            preprocessor=Preprocessor(model.config),
+            lang2id=model.lang2id,
+            speaker2id=model.speaker2id,
+            device=device,
         )
-
-    # Single Inference
-    if text:
-        logger.info(f"Processing text '{text}'")
-        text_len = min(10, len(text))
-        data_path = output_dir / sanitize_path(text)[:text_len]
-        text_tensor = preprocessor.extract_text_inputs(text)
-        # Create Batch
-        logger.info("Creating batch")
-        src_lens = torch.LongTensor([text_tensor.size(0)])
-        max_src_len = max(src_lens)
-        batch = {
-            "text": text_tensor,
-            "src_lens": src_lens,
-            "max_src_len": max_src_len,
-            "speaker_id": torch.LongTensor([0]),
-            "language_id": torch.LongTensor([0]),
-        }
-        batch = {k: v.to(device) for k, v in batch.items()}
-        batch["max_mel_len"] = 1_000_000
-        batch["mel_lens"] = None
-        # Run model
-        with torch.no_grad():
-            logger.info("Predicting spectral features")
-            spec = model.forward(batch, inference=True)[model.output_key]
-        if "wav" in output_type:
-            from scipy.io.wavfile import write
-
-            # We sys.exit(1) above if this is false
-            assert model.config.training.vocoder_path
-
-            if (
-                os.path.basename(model.config.training.vocoder_path)
-                == "generator_universal.pth.tar"
-            ):
-                from everyvoice.model.vocoder.original_hifigan_helper import (
-                    get_vocoder,
-                    vocoder_infer,
-                )
-
-                logger.info(
-                    f"Loading Vocoder from {model.config.training.vocoder_path}"
-                )
-                ckpt = get_vocoder(model.config.training.vocoder_path, device=device)
-                logger.info("Generating waveform...")
-                wav = vocoder_infer(spec, ckpt)[0]
-                logger.info(f"Writing file {data_path}")
-                # synthesize 16 bit audio
-                if wav.dtype != "int16":
-                    wav = wav * model.config.preprocessing.audio.max_wav_value
-                    wav = wav.astype("int16")
-                write(
-                    f"{data_path}.wav",
-                    model.config.preprocessing.audio.output_sampling_rate,
-                    wav,
-                )
-            else:
-                from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
-                    synthesize_data,
-                )
-
-                logger.info(
-                    f"Loading Vocoder from {model.config.training.vocoder_path}"
-                )
-                ckpt = torch.load(
-                    model.config.training.vocoder_path, map_location=device
-                )
-                logger.info("Generating waveform...")
-                wav, sr = synthesize_data(spec, ckpt)
-                logger.info(f"Writing file {data_path}")
-                write(f"{data_path}.wav", sr, wav)
-        if "npy" in output_type:
-            import numpy as np
-
-            logger.info("Formatting for use with original HiFiGAN")
-            spec = spec.squeeze().transpose(0, 1).cpu().numpy()
-            np.save(f"{data_path}.npy", spec)
-        if "pt" in output_type:
-            torch.save(spec, f"{data_path}.pt")
-
     elif filelist:
-        from pytorch_lightning import Trainer
-        from pytorch_lightning.loggers import TensorBoardLogger
-
-        from .dataset import FastSpeech2DataModule
-        from .prediction_writing_callback import get_synthesis_output_callbacks
-
-        model.config.training.training_filelist = filelist
-        model.config.training.validation_filelist = filelist
-        data = FastSpeech2DataModule(model.config)
-        tensorboard_logger = TensorBoardLogger(
-            **(model.config.training.logger.model_dump(exclude={"sub_dir_callable"}))
+        data = model.config.training.filelist_loader(filelist)
+        dataset = SynthesizeTextDataSet(
+            [
+                {
+                    "basename": sanitize_path(d["basename"]),
+                    "text": d["text"],
+                    "language_id": d.get("language", None),
+                    "speaker_id": d.get("speaker", None),
+                }
+                for d in data
+            ],
+            preprocessor=Preprocessor(model.config),
+            lang2id=model.lang2id,
+            speaker2id=model.speaker2id,
+            device=device,
         )
-        trainer = Trainer(
-            logger=tensorboard_logger,
-            accelerator=accelerator,
-            devices=devices,
-            max_epochs=model.config.training.max_epochs,
-            callbacks=get_synthesis_output_callbacks(
-                output_type=output_type,
-                output_dir=output_dir,
-                config=model.config,
-                output_key=model.output_key,
-                device=device,
-            ),
-        )
-        trainer.predict(model, data)
+
+    from pytorch_lightning import Trainer
+    from pytorch_lightning.loggers import TensorBoardLogger
+
+    from .prediction_writing_callback import get_synthesis_output_callbacks
+
+    tensorboard_logger = TensorBoardLogger(
+        **(model.config.training.logger.model_dump(exclude={"sub_dir_callable"}))
+    )
+    trainer = Trainer(
+        logger=tensorboard_logger,
+        accelerator=accelerator,
+        devices=devices,
+        max_epochs=model.config.training.max_epochs,
+        callbacks=get_synthesis_output_callbacks(
+            output_type=output_type,
+            output_dir=output_dir,
+            config=model.config,
+            output_key=model.output_key,
+            device=device,
+        ),
+    )
+    trainer.predict(model, dataset)
 
 
 if __name__ == "__main__":
