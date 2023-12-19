@@ -174,7 +174,7 @@ class FastSpeech2(pl.LightningModule):
 
     def predict_step(self, batch, batch_idx):
         with torch.no_grad():
-            return self(batch, inference=False)
+            return self(batch, inference=True)
 
     def training_step(self, batch, batch_idx):
         output = self(batch)
