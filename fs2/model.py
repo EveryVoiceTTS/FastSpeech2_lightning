@@ -1,14 +1,15 @@
 import json
 import os
-from typing import Union
+from typing import Any, Dict, Union
 
 import numpy as np
 import pytorch_lightning as pl
 import torch
 from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import synthesize_data
 from everyvoice.text import TextProcessor
-from everyvoice.text.lookups import LookupTables
+from everyvoice.text.lookups import LookupTable
 from everyvoice.utils.heavy import expand
+from loguru import logger
 from torch import nn
 from torchaudio.models import Conformer
 
@@ -22,15 +23,20 @@ from .variance_adaptor import VarianceAdaptor
 
 
 class FastSpeech2(pl.LightningModule):
-    def __init__(self, config: FastSpeech2Config):
+    def __init__(
+        self, config: FastSpeech2Config, lang2id: LookupTable, speaker2id: LookupTable
+    ):
+        """ """
         super().__init__()
         self.config = config
         self.batch_size = config.training.batch_size
         self.text_processor = TextProcessor(config)
-        self.embedding_lookup = LookupTables(config)
+        self.lang2id = lang2id
+        self.speaker2id = speaker2id
         self.save_hyperparameters(ignore=[])
         self.loss = FastSpeech2Loss(config=config)
         self.text_input_layer: Union[nn.Linear, nn.Embedding]
+        # TODO: Get ride off self.stats that depends on files under `preprocessed/`.
         with open(self.config.preprocessing.save_dir / "stats.json") as f:
             self.stats: Stats = Stats(**json.load(f))
         if self.config.model.use_phonological_feats:
@@ -83,14 +89,32 @@ class FastSpeech2(pl.LightningModule):
         self.speaker_embedding = None
         if self.config.model.multispeaker:
             self.speaker_embedding = nn.Embedding(
-                len(self.embedding_lookup.speaker2id),
+                len(self.speaker2id),
                 self.config.model.encoder.input_dim,
             )  # TODO: replace with d_vector multispeaker embedding
         self.language_embedding = None
         if self.config.model.multilingual:
             self.language_embedding = nn.Embedding(
-                len(self.embedding_lookup.lang2id), self.config.model.encoder.input_dim
+                len(self.lang2id), self.config.model.encoder.input_dim
             )
+
+    def on_load_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
+        # TODO Won't be needed if __init__ gets lang2id & speaker2id.
+        if "lang2id" in checkpoint:
+            self.lang2id = checkpoint["lang2id"]
+        else:
+            logger.info("lang2id not found in your checkpoint")
+
+        if "speaker2id" in checkpoint:
+            self.speaker2id = checkpoint["speaker2id"]
+        else:
+            logger.info("speaker2id not found in your checkpoint")
+
+    def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
+        # TODO Won't be needed if __init__ gets lang2id & speaker2id.
+        logger.info("Saving lang2id & speaker2id to checkpoint")
+        checkpoint["lang2id"] = self.lang2id
+        checkpoint["speaker2id"] = self.speaker2id
 
     def forward(self, batch, control=InferenceControl(), inference=False):
         # For model diagram see https://github.com/ming024/FastSpeech2/blob/master/img/model.png

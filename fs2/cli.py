@@ -68,7 +68,7 @@ def benchmark(
     batch = loader.collate_method(
         [loader.train_dataset[i] for i in range(config.training.batch_size)]
     )
-    model = FastSpeech2(config=config)
+    model = FastSpeech2(config=config, lang2id={}, speaker2id={})
     device = "cpu"
     if gpu:
         device = "cuda"
@@ -191,11 +191,21 @@ def preprocess(
 @app.command()
 @merge_args(train_base_command_interface)
 def train(**kwargs):
-    from everyvoice.base_cli.helpers import train_base_command
+    from everyvoice.base_cli.helpers import load_config_base_command, train_base_command
+    from everyvoice.text.lookups import lookuptables_from_config
 
     from .config import FastSpeech2Config
     from .dataset import FastSpeech2DataModule
     from .model import FastSpeech2
+
+    config_args = kwargs["config_args"]
+    config_file = kwargs["config_file"]
+    config = load_config_base_command(FastSpeech2Config, config_args, config_file)
+    lang2id, speaker2id = lookuptables_from_config(config)
+    model_kwargs = {
+        "lang2id": lang2id,
+        "speaker2id": speaker2id,
+    }
 
     train_base_command(
         model_config=FastSpeech2Config,
@@ -203,6 +213,7 @@ def train(**kwargs):
         data_module=FastSpeech2DataModule,
         monitor="training/total_loss",
         gradient_clip_val=1.0,
+        model_kwargs=model_kwargs,
         **kwargs,
     )
 
