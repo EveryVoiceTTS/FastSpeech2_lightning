@@ -1,6 +1,7 @@
 from pathlib import Path
-from typing import List, Sequence
+from typing import List, Sequence, Tuple
 
+import numpy as np
 import torch
 from loguru import logger
 from pytorch_lightning.callbacks import Callback
@@ -152,60 +153,86 @@ class PredictionWritingWavCallback(Callback):
 
         logger.info(f"Loading Vocoder from {self.config.training.vocoder_path}")
         if self.config.training.vocoder_path is None:
-            logger.error("You must provide a vocoder")
+            import sys
+
+            logger.error(
+                "Sorry, no vocoder was provided, please add it to model.config.training.vocoder_path"
+                " or as --vocoder-path /path/to/vocoder in the command line"
+            )
+            sys.exit(1)
         else:
-            if self.config.training.vocoder_path.name == "generator_universal.pth.tar":
+            vocoder = torch.load(
+                self.config.training.vocoder_path, map_location=torch.device("cpu")
+            )
+            if "generator" in vocoder.keys():
+                # Necessary when passing --filelist
                 from everyvoice.model.vocoder.original_hifigan_helper import get_vocoder
 
                 self.vocoder = get_vocoder(
                     self.config.training.vocoder_path, device=self.device
                 )
+                sampling_rate_change = (
+                    self.config.preprocessing.audio.output_sampling_rate
+                    // self.config.preprocessing.audio.input_sampling_rate
+                )
+                self.output_hop_size = (
+                    sampling_rate_change * self.config.preprocessing.audio.fft_hop_size
+                )
+                self.synthesize = self._infer_generator_universal
             else:
+                from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import (
+                    HiFiGANConfig,
+                )
+
                 self.vocoder = torch.load(self.config.training.vocoder_path)
+                vocoder_config: HiFiGANConfig = self.vocoder["config"]  # type: ignore
+                sampling_rate_change = (
+                    vocoder_config.preprocessing.audio.output_sampling_rate
+                    // vocoder_config.preprocessing.audio.input_sampling_rate
+                )
+                self.output_hop_size = (
+                    sampling_rate_change
+                    * vocoder_config.preprocessing.audio.fft_hop_size
+                )
+                self.synthesize = self._infer_everyvoice
+
+    def _infer_generator_universal(self, outputs) -> Tuple[np.ndarray, int]:
+        """
+        Generate wavs using the generator_universal model.
+        """
+        from everyvoice.model.vocoder.original_hifigan_helper import vocoder_infer
+
+        wavs = vocoder_infer(
+            outputs[self.output_key],
+            self.vocoder,
+        )
+        sr = self.config.preprocessing.audio.output_sampling_rate
+
+        return wavs, sr
+
+    def _infer_everyvoice(self, outputs) -> Tuple[np.ndarray, int]:
+        """
+        Generate wabs using Everyvoice model.
+        """
+        from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
+            synthesize_data,
+        )
+
+        wavs, sr = synthesize_data(outputs[self.output_key], self.vocoder)
+        # synthesize 16 bit audio
+        if wavs.dtype != "int16":
+            wavs = wavs * self.config.preprocessing.audio.max_wav_value
+            wavs = wavs.astype("int16")
+
+        return wavs, sr
 
     def on_predict_batch_end(
         self, _trainer, _pl_module, outputs, batch, _batch_idx, _dataloader_idx=0
     ):
         from scipy.io.wavfile import write
 
-        if self.config.training.vocoder_path.name == "generator_universal.pth.tar":
-            from everyvoice.model.vocoder.original_hifigan_helper import vocoder_infer
-
-            logger.info("Generating waveform...")
-            wavs = vocoder_infer(
-                outputs[self.output_key],
-                self.vocoder,
-            )
-            sr = self.config.preprocessing.audio.output_sampling_rate
-            # Necessary when passing --filelist
-            sampling_rate_change = (
-                self.config.preprocessing.audio.output_sampling_rate
-                // self.config.preprocessing.audio.input_sampling_rate
-            )
-            output_hop_size = (
-                sampling_rate_change * self.config.preprocessing.audio.fft_hop_size
-            )
-        else:
-            from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import (
-                HiFiGANConfig,
-            )
-            from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
-                synthesize_data,
-            )
-
-            vocoder_config: HiFiGANConfig = self.vocoder["config"]  # type: ignore
-            sampling_rate_change = (
-                vocoder_config.preprocessing.audio.output_sampling_rate
-                // vocoder_config.preprocessing.audio.input_sampling_rate
-            )
-            output_hop_size = (
-                sampling_rate_change * vocoder_config.preprocessing.audio.fft_hop_size
-            )
-            wavs, sr = synthesize_data(outputs[self.output_key], self.vocoder)
-            # synthesize 16 bit audio
-            if wavs.dtype != "int16":
-                wavs = wavs * self.config.preprocessing.audio.max_wav_value
-                wavs = wavs.astype("int16")
+        logger.info("Generating waveform...")
+        wavs, sr = self.synthesize(outputs)
 
         for b in range(batch["text"].size(0)):
             basename = batch["basename"][b]
@@ -220,5 +247,5 @@ class PredictionWritingWavCallback(Callback):
                 / "wav"
                 / self.sep.join([basename, speaker, language, "pred.wav"]),
                 sr,
-                wavs[b][: (unmasked_len * output_hop_size)],
+                wavs[b][: (unmasked_len * self.output_hop_size)],
             )
