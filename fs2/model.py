@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Any, Dict, Union
+from typing import Union
 
 import numpy as np
 import pytorch_lightning as pl
@@ -9,7 +9,6 @@ from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import synthesi
 from everyvoice.text import TextProcessor
 from everyvoice.text.lookups import LookupTable
 from everyvoice.utils.heavy import expand
-from loguru import logger
 from torch import nn
 from torchaudio.models import Conformer
 
@@ -97,24 +96,6 @@ class FastSpeech2(pl.LightningModule):
             self.language_embedding = nn.Embedding(
                 len(self.lang2id), self.config.model.encoder.input_dim
             )
-
-    def on_load_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
-        # TODO Won't be needed if __init__ gets lang2id & speaker2id.
-        if "lang2id" in checkpoint:
-            self.lang2id = checkpoint["lang2id"]
-        else:
-            logger.info("lang2id not found in your checkpoint")
-
-        if "speaker2id" in checkpoint:
-            self.speaker2id = checkpoint["speaker2id"]
-        else:
-            logger.info("speaker2id not found in your checkpoint")
-
-    def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
-        # TODO Won't be needed if __init__ gets lang2id & speaker2id.
-        logger.info("Saving lang2id & speaker2id to checkpoint")
-        checkpoint["lang2id"] = self.lang2id
-        checkpoint["speaker2id"] = self.speaker2id
 
     def forward(self, batch, control=InferenceControl(), inference=False):
         # For model diagram see https://github.com/ming024/FastSpeech2/blob/master/img/model.png
