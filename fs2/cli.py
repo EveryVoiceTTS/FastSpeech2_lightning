@@ -4,7 +4,7 @@ import sys
 from enum import Enum
 from glob import glob
 from pathlib import Path
-from typing import List
+from typing import Any, Dict, List, Optional
 
 import typer
 from everyvoice.base_cli.interfaces import (
@@ -366,6 +366,18 @@ def synthesize(  # noqa: C901
         "-t",
         help="Some text to synthesize. Choose --filelist if you want to synthesize more than one sample at a time.",
     ),
+    language: Optional[str] = typer.Option(
+        None,
+        "--language",
+        "-l",
+        help="Specify which language to use in a multilingual system. [requires --text]",
+    ),
+    speaker: Optional[str] = typer.Option(
+        None,
+        "--speaker",
+        "-s",
+        help="Specify which speaker to use in a multispeaker system. [requires --text]",
+    ),
     accelerator: str = typer.Option("auto", "--accelerator", "-a"),
     devices: str = typer.Option(
         "auto", "--devices", "-d", help="The number of GPUs to use"
@@ -413,6 +425,14 @@ def synthesize(  # noqa: C901
         logger.error("You must define either --text or --filelist")
         sys.exit(1)
 
+    if not texts:
+        if language is not None:
+            logger.error("Specifying a language is only valid when using --text.")
+            sys.exit(1)
+        if speaker is not None:
+            logger.error("Specifying a speaker is only valid when using --text.")
+            sys.exit(1)
+
     output_dir.mkdir(exist_ok=True, parents=True)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     # Load checkpoints
@@ -428,42 +448,53 @@ def synthesize(  # noqa: C901
             )
             sys.exit(1)
 
-    dataset: SynthesizeTextDataSet
+    data: List[Dict[str, Any]]
     if texts:
         logger.info(f"Processing text '{texts}'")
-
-        dataset = SynthesizeTextDataSet(
-            [
-                {
-                    "basename": sanitize_path(text),
-                    "text": text,
-                    "language_id": "language",
-                    "speaker_id": "speaker",
-                }
-                for text in texts
-            ],
-            preprocessor=Preprocessor(model.config),
-            lang2id=model.lang2id,
-            speaker2id=model.speaker2id,
-            device=device,
-        )
+        data = [
+            {
+                "basename": sanitize_path(text),
+                "text": text,
+                "language": language,
+                "speaker": speaker,
+            }
+            for text in texts
+        ]
     elif filelist:
         data = model.config.training.filelist_loader(filelist)
-        dataset = SynthesizeTextDataSet(
-            [
-                {
-                    "basename": sanitize_path(d["basename"]),
-                    "text": d["text"],
-                    "language_id": d.get("language", None),
-                    "speaker_id": d.get("speaker", None),
-                }
-                for d in data
-            ],
-            preprocessor=Preprocessor(model.config),
-            lang2id=model.lang2id,
-            speaker2id=model.speaker2id,
-            device=device,
+        data = [
+            {
+                "basename": sanitize_path(d["basename"]),
+                "text": d["text"],
+                "language": d.get("language", None),
+                "speaker": d.get("speaker", None),
+            }
+            for d in data
+        ]
+
+    languages = set(d["language"] for d in data if d["language"] is not None)
+    extra_languages = languages.difference(model.lang2id.keys())
+    if len(extra_languages) > 0:
+        logger.error(
+            f"You provide '{languages}' which is/are not a language(s) supported by the model {set(model.lang2id.keys())}"
         )
+        sys.exit(1)
+
+    speakers = set(d["speaker"] for d in data if d["speaker"] is not None)
+    extra_speakers = speakers.difference(model.speaker2id.keys())
+    if len(extra_speakers) > 0:
+        logger.error(
+            f"You provide '{speakers}' which is/are not a speaker(s) supported by the model {set(model.speaker2id.keys())}"
+        )
+        sys.exit(1)
+
+    dataset = SynthesizeTextDataSet(
+        data,
+        preprocessor=Preprocessor(model.config),
+        lang2id=model.lang2id,
+        speaker2id=model.speaker2id,
+        device=device,
+    )
 
     from pytorch_lightning import Trainer
     from pytorch_lightning.loggers import TensorBoardLogger
