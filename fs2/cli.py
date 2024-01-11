@@ -130,7 +130,7 @@ def check_data(
     from .config import FastSpeech2Config
 
     config = load_config_base_command(
-        model_config=FastSpeech2Config,  # type: ignore
+        model_config=FastSpeech2Config,
         **kwargs,
     )
     filelist = generic_dict_loader(filelist)
@@ -159,7 +159,7 @@ def preprocess(
     from .config import FastSpeech2Config
 
     preprocessor, config, processed = preprocess_base_command(
-        model_config=FastSpeech2Config,  # type: ignore
+        model_config=FastSpeech2Config,
         steps=[step.name for step in steps],
         **kwargs,
     )
@@ -202,9 +202,9 @@ def train(**kwargs):
     from .model import FastSpeech2
 
     train_base_command(
-        model_config=FastSpeech2Config,  # type: ignore
-        model=FastSpeech2,  # type: ignore
-        data_module=FastSpeech2DataModule,  # type: ignore
+        model_config=FastSpeech2Config,
+        model=FastSpeech2,
+        data_module=FastSpeech2DataModule,
         monitor="training/total_loss",
         gradient_clip_val=1.0,
         **kwargs,

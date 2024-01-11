@@ -86,24 +86,30 @@ class VariancePredictorConfig(VariancePredictorBase):
 
 class VariancePredictors(ConfigModel):
     energy: VariancePredictorConfig = Field(
-        default_factory=VariancePredictorConfig,  # type: ignore
+        default_factory=VariancePredictorConfig,
         description="The variance predictor for energy",
     )
     duration: VariancePredictorBase = Field(
-        default_factory=VariancePredictorBase,  # type: ignore
+        default_factory=VariancePredictorBase,
         description="The variance predictor for duration",
     )
     pitch: VariancePredictorConfig = Field(
-        default_factory=VariancePredictorConfig,  # type: ignore
+        default_factory=VariancePredictorConfig,
         description="The variance predictor for pitch",
     )
 
 
 class FastSpeech2ModelConfig(ConfigModel):
-    encoder: ConformerConfig = Field(default_factory=ConformerConfig, description="The configuration of the encoder module.")  # type: ignore
-    decoder: ConformerConfig = Field(default_factory=ConformerConfig, description="The configuration of the decoder module.")  # type: ignore
+    encoder: ConformerConfig = Field(
+        default_factory=ConformerConfig,
+        description="The configuration of the encoder module.",
+    )
+    decoder: ConformerConfig = Field(
+        default_factory=ConformerConfig,
+        description="The configuration of the decoder module.",
+    )
     variance_predictors: VariancePredictors = Field(
-        default_factory=VariancePredictors,  # type: ignore
+        default_factory=VariancePredictors,
         description="Configuration for energy, duration, and pitch variance predictors.",
     )
     learn_alignment: bool = Field(
@@ -153,7 +159,7 @@ class FastSpeech2TrainingConfig(BaseTrainingConfig):
         description="Whether to use a sampler which oversamples from the minority language or speaker class for balanced training.",
     )
     optimizer: NoamOptimizer = Field(
-        default_factory=NoamOptimizer,  # type: ignore
+        default_factory=NoamOptimizer,
         description="The optimizer to use during training.",
     )
     # TODO: Implement early stopping
@@ -188,7 +194,7 @@ class FastSpeech2TrainingConfig(BaseTrainingConfig):
 
 class FastSpeech2Config(PartialLoadConfig):
     model: FastSpeech2ModelConfig = Field(
-        default_factory=FastSpeech2ModelConfig,  # type: ignore
+        default_factory=FastSpeech2ModelConfig,
         description="The model configuration settings.",
     )
     path_to_model_config_file: Optional[FilePath] = Field(
@@ -196,7 +202,7 @@ class FastSpeech2Config(PartialLoadConfig):
     )
 
     training: FastSpeech2TrainingConfig = Field(
-        default_factory=FastSpeech2TrainingConfig,  # type: ignore
+        default_factory=FastSpeech2TrainingConfig,
         description="The training configuration hyperparameters.",
     )
     path_to_training_config_file: Optional[FilePath] = Field(
@@ -204,7 +210,7 @@ class FastSpeech2Config(PartialLoadConfig):
     )
 
     preprocessing: PreprocessingConfig = Field(
-        default_factory=PreprocessingConfig,  # type: ignore
+        default_factory=PreprocessingConfig,
         description="The preprocessing configuration, including information about audio settings.",
     )
     path_to_preprocessing_config_file: Optional[FilePath] = Field(
