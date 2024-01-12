@@ -261,7 +261,7 @@ def audit(
             glob(
                 os.path.join(
                     (original_config.preprocessing.save_dir / "duration"),
-                    "**/*{x['basename']}*.pt",
+                    f"**/*{x['basename']}*.pt",
                 ),
                 recursive=True,
             )
@@ -272,7 +272,7 @@ def audit(
             glob(
                 os.path.join(
                     (original_config.preprocessing.save_dir / "energy"),
-                    "**/*{x['basename']}*.pt",
+                    f"**/*{x['basename']}*.pt",
                 ),
                 recursive=True,
             )
@@ -283,7 +283,7 @@ def audit(
             glob(
                 os.path.join(
                     (original_config.preprocessing.save_dir / "pitch"),
-                    "**/*{x['basename']}*.pt",
+                    f"**/*{x['basename']}*.pt",
                 ),
                 recursive=True,
             )
@@ -294,7 +294,7 @@ def audit(
             glob(
                 os.path.join(
                     (original_config.preprocessing.save_dir / "text"),
-                    "**/*{x['basename']}*.pt",
+                    f"**/*{x['basename']}*.pt",
                 ),
                 recursive=True,
             )
@@ -419,7 +419,8 @@ def synthesize(  # noqa: C901
 
     if texts and filelist:
         logger.warning(
-            "Got arguments for both text and a filelist - this will only process the text. Please re-run without out providing text if you want to run batch synthesis"
+            "Got arguments for both text and a filelist - this will only process the text."
+            " Please re-run without providing text if you want to run batch synthesis."
         )
     if not texts and not filelist:
         logger.error("You must define either --text or --filelist")
@@ -460,7 +461,7 @@ def synthesize(  # noqa: C901
             }
             for text in texts
         ]
-    elif filelist:
+    else:
         data = model.config.training.filelist_loader(filelist)
         data = [
             {
