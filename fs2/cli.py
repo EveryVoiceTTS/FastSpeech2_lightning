@@ -4,7 +4,7 @@ import sys
 from enum import Enum
 from glob import glob
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 import typer
 from everyvoice.base_cli.interfaces import (
@@ -142,7 +142,7 @@ def preprocess(
     compute_stats: bool = typer.Option(
         True, "-S", "--stats", help="Calculate stats for energy and pitch"
     ),
-    steps: List[PreprocessCategories] = typer.Option(
+    steps: list[PreprocessCategories] = typer.Option(
         [cat.value for cat in PreprocessCategories],
         "-s",
         "--steps",
@@ -360,7 +360,7 @@ def synthesize(  # noqa: C901
         dir_okay=True,
         help="The directory where your synthesized audio should be written",
     ),
-    texts: List[str] = typer.Option(
+    texts: list[str] = typer.Option(
         [],
         "--text",
         "-t",
@@ -391,7 +391,7 @@ def synthesize(  # noqa: C901
         dir_okay=False,
         help="Synthesize all audio in a given filelist. Use --text if you want to just synthesize one sample.",
     ),
-    output_type: List[SynthesisOutputs] = typer.Option(
+    output_type: list[SynthesisOutputs] = typer.Option(
         [SynthesisOutputs.wav.value],
         "-O",
         "--output-type",
@@ -449,7 +449,7 @@ def synthesize(  # noqa: C901
             )
             sys.exit(1)
 
-    data: List[Dict[str, Any]]
+    data: list[dict[str, Any]]
     if texts:
         logger.info(f"Processing text '{texts}'")
         data = [

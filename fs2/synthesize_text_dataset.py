@@ -1,4 +1,4 @@
-from typing import Dict, Sequence
+from typing import Sequence
 
 import torch
 from everyvoice.preprocessor import Preprocessor
@@ -10,7 +10,7 @@ from torch.utils.data import Dataset
 class SynthesizeTextDataSet(Dataset):
     def __init__(
         self,
-        data: Sequence[Dict[str, str]],
+        data: Sequence[dict[str, str]],
         preprocessor: Preprocessor,
         lang2id: LookupTable,
         speaker2id: LookupTable,

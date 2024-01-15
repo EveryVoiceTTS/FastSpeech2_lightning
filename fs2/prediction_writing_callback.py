@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Sequence, Tuple
+from typing import Sequence, Tuple
 
 import numpy as np
 import torch
@@ -21,7 +21,7 @@ def get_synthesis_output_callbacks(
     Given a list of desired output file format, create the proper callbacks
     that will generate those files.
     """
-    callbacks: List[Callback] = []
+    callbacks: list[Callback] = []
     if SynthesisOutputs.npy in output_type:
         callbacks.append(
             PredictionWritingNpyCallback(
