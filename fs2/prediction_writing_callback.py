@@ -220,7 +220,7 @@ class PredictionWritingWavCallback(Callback):
 
         wavs, sr = synthesize_data(outputs[self.output_key], self.vocoder)
         # synthesize 16 bit audio
-        if wavs.dtype != "int16":
+        if (wavs >= 0.0) & (wavs <= 1.0):
             wavs = wavs * self.config.preprocessing.audio.max_wav_value
             wavs = wavs.astype("int16")
 
