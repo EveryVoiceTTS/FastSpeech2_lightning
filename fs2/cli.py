@@ -420,7 +420,7 @@ def synthesize(  # noqa: C901
     if texts and filelist:
         logger.warning(
             "Got arguments for both text and a filelist - this will only process the text."
-            " Please re-run without providing text if you want to run batch synthesis."
+            " Please re-run without providing text if you want to run batch synthesis on the provided file."
         )
     if not texts and not filelist:
         logger.error("You must define either --text or --filelist")
@@ -440,6 +440,7 @@ def synthesize(  # noqa: C901
     logger.info(f"Loading checkpoint from {model_path}")
     model: FastSpeech2 = FastSpeech2.load_from_checkpoint(model_path).to(device)
     model.eval()
+    # output to .wav will require a valid spec-to-wav model
     if SynthesisOutputs.wav in output_type:
         if vocoder_path:
             model.config.training.vocoder_path = vocoder_path
@@ -477,7 +478,7 @@ def synthesize(  # noqa: C901
     extra_languages = languages.difference(model.lang2id.keys())
     if len(extra_languages) > 0:
         logger.error(
-            f"You provide '{languages}' which is/are not a language(s) supported by the model {set(model.lang2id.keys())}"
+            f"You provided '{languages}' which is/are not a language(s) supported by the model {set(model.lang2id.keys())}"
         )
         sys.exit(1)
 
@@ -485,7 +486,7 @@ def synthesize(  # noqa: C901
     extra_speakers = speakers.difference(model.speaker2id.keys())
     if len(extra_speakers) > 0:
         logger.error(
-            f"You provide '{speakers}' which is/are not a speaker(s) supported by the model {set(model.speaker2id.keys())}"
+            f"You provided '{speakers}' which is/are not a speaker(s) supported by the model {set(model.speaker2id.keys())}"
         )
         sys.exit(1)
 

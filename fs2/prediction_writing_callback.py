@@ -18,7 +18,7 @@ def get_synthesis_output_callbacks(
     device: torch.device,
 ):
     """
-    Given a list of desired output file format, create the proper callbacks
+    Given a list of desired output file formats, return the proper callbacks
     that will generate those files.
     """
     callbacks: list[Callback] = []
@@ -52,7 +52,7 @@ def get_synthesis_output_callbacks(
 
 class PredictionWritingNpyCallback(Callback):
     """
-    Given text-to-spec, this callback does spec-to-wav and writes numpy files.
+    This callback runs inference on a provided text-to-spec model and writes the output to numpy files in the format required (B, K, T) for fine-tuning a hifi-gan model using the author's repository (i.e. not EveryVoice): https://github.com/jik876/hifi-gan
     """
 
     def __init__(
@@ -90,7 +90,7 @@ class PredictionWritingNpyCallback(Callback):
 
 class PredictionWritingPtCallback(Callback):
     """
-    Given text-to-spec, this callback does spec-to-wav and writes pytorch files.
+    This callback runs inference on a provided text-to-spec model and saves the resulting Mel spectrograms to disk as pytorch files. These can be used to fine-tune an EveryVoice spec-to-wav model.
     """
 
     def __init__(
