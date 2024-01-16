@@ -61,30 +61,32 @@ class PredictionWritingNpyCallback(Callback):
         output_key: str,
     ):
         self.output_key = output_key
-        self.save_dir = output_dir
+        self.save_dir = output_dir / "original_hifigan_spec"
         self.sep = "--"
-        logger.info(f"Saving numpy output to {self.save_dir / 'synthesized_spec'}")
-        (self.save_dir / "original_hifigan_spec").mkdir(parents=True, exist_ok=True)
+        logger.info(f"Saving numpy output to {self.save_dir}")
+        self.save_dir.mkdir(parents=True, exist_ok=True)
+
+    def _get_filename(self, basename: str, speaker: str, language: str) -> Path:
+        return self.save_dir / self.sep.join([basename, speaker, language, "pred.npy"])
 
     def on_predict_batch_end(
         self, _trainer, _pl_module, outputs, batch, _batch_idx, _dataloader_idx=0
     ):
         import numpy as np
 
+        if not isinstance(batch, list):
+            batch = [batch]
+
         specs = outputs[self.output_key].transpose(1, 2).cpu().numpy()
 
-        for b in range(batch["text"].size(0)):
-            basename = batch["basename"][b]
-            speaker = batch["speaker"][b]
-            language = batch["language"][b]
-            unmasked_len = outputs["tgt_lens"][
-                b
-            ]  # the vocoder output includes padding so we have to remove that
+        for item, unmasked_len, spec in zip(batch, outputs["tgt_lens"], specs):
             np.save(
-                self.save_dir
-                / "original_hifigan_spec"
-                / self.sep.join([basename, speaker, language, "pred.npy"]),
-                specs[b][:, :unmasked_len].squeeze(),
+                self._get_filename(
+                    basename=item["basename"],
+                    speaker=item["speaker"],
+                    language=item["language"],
+                ),
+                spec[:, :unmasked_len].squeeze(),
             )
 
 
@@ -100,33 +102,37 @@ class PredictionWritingPtCallback(Callback):
         output_key: str,
     ):
         self.output_key = output_key
-        self.save_dir = output_dir
+        self.save_dir = output_dir / "synthesized_spec"
         self.config = config
         self.sep = "--"
-        logger.info(f"Saving pytorch output to {self.save_dir / 'synthesized_spec'}")
-        (self.save_dir / "synthesized_spec").mkdir(parents=True, exist_ok=True)
+        logger.info(f"Saving pytorch output to {self.save_dir}")
+        self.save_dir.mkdir(parents=True, exist_ok=True)
+
+    def _get_filename(self, basename: str, speaker: str, language: str) -> Path:
+        return self.save_dir / self.sep.join(
+            [
+                basename,
+                speaker,
+                language,
+                f"spec-pred-{self.config.preprocessing.audio.input_sampling_rate}-{self.config.preprocessing.audio.spec_type}.pt",
+            ]
+        )
 
     def on_predict_batch_end(
         self, _trainer, _pl_module, outputs, batch, _batch_idx, _dataloader_idx=0
     ):
-        for b in range(batch["text"].size(0)):
-            basename = batch["basename"][b]
-            speaker = batch["speaker"][b]
-            language = batch["language"][b]
-            unmasked_len = outputs["tgt_lens"][
-                b
-            ]  # the vocoder output includes padding so we have to remove that
+        if not isinstance(batch, list):
+            batch = [batch]
+
+        for item, unmasked_len, data in zip(
+            batch, outputs["tgt_lens"], outputs[self.output_key]
+        ):
             torch.save(
-                outputs[self.output_key][b][:unmasked_len].transpose(0, 1).cpu(),
-                self.save_dir
-                / "synthesized_spec"
-                / self.sep.join(
-                    [
-                        basename,
-                        speaker,
-                        language,
-                        f"spec-pred-{self.config.preprocessing.audio.input_sampling_rate}-{self.config.preprocessing.audio.spec_type}.pt",
-                    ]
+                data[:unmasked_len].transpose(0, 1).cpu(),
+                self._get_filename(
+                    basename=item["basename"],
+                    speaker=item["speaker"],
+                    language=item["language"],
                 ),
             )
 
@@ -145,11 +151,11 @@ class PredictionWritingWavCallback(Callback):
     ):
         self.output_key = output_key
         self.device = device
-        self.save_dir = output_dir
+        self.save_dir = output_dir / "wav"
         self.config = config
         self.sep = "--"
-        logger.info(f"Saving wav output to {self.save_dir / 'synthesized_spec'}")
-        (self.save_dir / "wav").mkdir(parents=True, exist_ok=True)
+        logger.info(f"Saving wav output to {self.save_dir}")
+        self.save_dir.mkdir(parents=True, exist_ok=True)
 
         logger.info(f"Loading Vocoder from {self.config.training.vocoder_path}")
         if self.config.training.vocoder_path is None:
@@ -226,26 +232,29 @@ class PredictionWritingWavCallback(Callback):
 
         return wavs, sr
 
+    def _get_filename(self, basename: str, speaker: str, language: str) -> Path:
+        return self.save_dir / self.sep.join([basename, speaker, language, "pred.wav"])
+
     def on_predict_batch_end(
         self, _trainer, _pl_module, outputs, batch, _batch_idx, _dataloader_idx=0
     ):
         from scipy.io.wavfile import write
 
+        if not isinstance(batch, list):
+            batch = [batch]
+
         logger.info("Generating waveform...")
         wavs, sr = self.synthesize(outputs)
 
-        for b in range(batch["text"].size(0)):
-            basename = batch["basename"][b]
-            speaker = batch["speaker"][b]
-            language = batch["language"][b]
-            unmasked_len = outputs["tgt_lens"][
-                b
-            ]  # the vocoder output includes padding so we have to remove that
-
+        # TODO: The batch is not a batch but rather a single example.  Is this the case because we are not using a dataloader?
+        for item, wav, unmasked_len in zip(batch, wavs, outputs["tgt_lens"]):
             write(
-                self.save_dir
-                / "wav"
-                / self.sep.join([basename, speaker, language, "pred.wav"]),
+                self._get_filename(
+                    basename=item["basename"],
+                    speaker=item["speaker"],
+                    language=item["language"],
+                ),
                 sr,
-                wavs[b][: (unmasked_len * self.output_hop_size)],
+                # the vocoder output includes padding so we have to remove that
+                wav[: (unmasked_len * self.output_hop_size)],
             )

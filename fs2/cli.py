@@ -547,7 +547,21 @@ def synthesize(  # noqa: C901
             device=device,
         ),
     )
-    trainer.predict(model, dataset)
+    if True:
+        trainer.predict(model, dataset)
+    else:
+        # TODO: We need to wrap the dataset inside a dataloader to run in batch mode?!
+        from torch.utils.data import DataLoader
+
+        trainer.predict(
+            model,
+            DataLoader(
+                dataset=dataset,
+                batch_size=4,
+                num_workers=4,
+                # collate_fn =???,
+            ),
+        )
 
 
 if __name__ == "__main__":
