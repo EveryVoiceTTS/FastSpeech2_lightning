@@ -464,7 +464,7 @@ def synthesize(  # noqa: C901
 
     data: list[dict[str, Any]]
     if texts:
-        print(f"Processing text '{texts}'", file=sys.stderr)
+        print(f"Processing text {texts}", file=sys.stderr)
         data = [
             {
                 "basename": sanitize_path(text),
@@ -486,20 +486,34 @@ def synthesize(  # noqa: C901
             for d in data
         ]
 
-    languages = set(d["language"] for d in data if d["language"] is not None)
+    languages = set(d["language"] for d in data)
+    if None in languages and model.config.model.multilingual:
+        print(
+            "Your model is multilingual and you've failed to provide a language for all your sentences."
+            f" Available languages are {set(model.lang2id.keys())}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     extra_languages = languages.difference(model.lang2id.keys())
     if len(extra_languages) > 0:
         print(
-            f"You provided '{languages}' which is/are not a language(s) supported by the model {set(model.lang2id.keys())}",
+            f"You provided {languages} which is/are not a language(s) supported by the model {set(model.lang2id.keys())}.",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    speakers = set(d["speaker"] for d in data if d["speaker"] is not None)
+    speakers = set(d["speaker"] for d in data)
+    if None in speakers and model.config.model.multispeaker:
+        print(
+            "Your model is multispeaker and you've failed to provide a speaker for all your sentences."
+            f" Available speakers are {set(model.speaker2id.keys())}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     extra_speakers = speakers.difference(model.speaker2id.keys())
     if len(extra_speakers) > 0:
         print(
-            f"You provided '{speakers}' which is/are not a speaker(s) supported by the model {set(model.speaker2id.keys())}",
+            f"You provided {speakers} which is/are not a speaker(s) supported by the model {set(model.speaker2id.keys())}.",
             file=sys.stderr,
         )
         sys.exit(1)
