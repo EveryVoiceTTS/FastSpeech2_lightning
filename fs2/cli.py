@@ -367,7 +367,8 @@ def synthesize(  # noqa: C901
         [],
         "--text",
         "-t",
-        help="Some text to synthesize. Choose --filelist if you want to synthesize more than one sample at a time.",
+        help="Some text to synthesize.  This option can be repeated to synthesize multiple sentences."
+        " It is recommended to use --filelist if you want to synthesize a lot of sentences or have different speaker/language per sentence.",
     ),
     language: Optional[str] = typer.Option(
         None,
