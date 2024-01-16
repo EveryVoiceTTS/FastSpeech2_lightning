@@ -7,11 +7,11 @@ from loguru import logger
 from pytorch_lightning.callbacks import Callback
 
 from .config import FastSpeech2Config
-from .synthesis_outputs import SynthesisOutputs
+from .synthesize_output_formats import SynthesizeOutputFormats
 
 
 def get_synthesis_output_callbacks(
-    output_type: Sequence[SynthesisOutputs],
+    output_type: Sequence[SynthesizeOutputFormats],
     output_dir: Path,
     config: FastSpeech2Config,
     output_key: str,
@@ -22,14 +22,14 @@ def get_synthesis_output_callbacks(
     that will generate those files.
     """
     callbacks: list[Callback] = []
-    if SynthesisOutputs.npy in output_type:
+    if SynthesizeOutputFormats.npy in output_type:
         callbacks.append(
             PredictionWritingNpyCallback(
                 output_dir=output_dir,
                 output_key=output_key,
             )
         )
-    if SynthesisOutputs.pt in output_type:
+    if SynthesizeOutputFormats.pt in output_type:
         callbacks.append(
             PredictionWritingPtCallback(
                 output_dir=output_dir,
@@ -37,7 +37,7 @@ def get_synthesis_output_callbacks(
                 output_key=output_key,
             )
         )
-    if SynthesisOutputs.wav in output_type:
+    if SynthesizeOutputFormats.wav in output_type:
         callbacks.append(
             PredictionWritingWavCallback(
                 output_dir=output_dir,

@@ -15,7 +15,7 @@ from everyvoice.base_cli.interfaces import (
 from merge_args import merge_args
 from tqdm import tqdm
 
-from .synthesis_outputs import SynthesisOutputs
+from .synthesize_output_formats import SynthesizeOutputFormats
 
 app = typer.Typer(
     pretty_exceptions_show_locals=False,
@@ -395,8 +395,8 @@ def synthesize(  # noqa: C901
         dir_okay=False,
         help="Synthesize all audio in a given filelist. Use --text if you want to just synthesize one sample.",
     ),
-    output_type: list[SynthesisOutputs] = typer.Option(
-        [SynthesisOutputs.wav.value],
+    output_type: list[SynthesizeOutputFormats] = typer.Option(
+        [SynthesizeOutputFormats.wav.value],
         "-O",
         "--output-type",
         help="Which format to synthesize to. **wav** is the default and will synthesize to a playable audio file. **npy** will generate spectrograms required to fine-tune [HiFiGAN](https://github.com/jik876/hifi-gan) (Mel-band oriented tensors, K, T). **pt** will generate predicted Mel spectrograms in the EveryVoice format (time-oriented Tensors, T, K)",
@@ -452,7 +452,7 @@ def synthesize(  # noqa: C901
     model: FastSpeech2 = FastSpeech2.load_from_checkpoint(model_path).to(device)
     model.eval()
     # output to .wav will require a valid spec-to-wav model
-    if SynthesisOutputs.wav in output_type:
+    if SynthesizeOutputFormats.wav in output_type:
         if vocoder_path:
             model.config.training.vocoder_path = vocoder_path
         if not model.config.training.vocoder_path:
