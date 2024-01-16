@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 from typing import Union
 
 import numpy as np
@@ -9,6 +10,7 @@ from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import synthesi
 from everyvoice.text import TextProcessor
 from everyvoice.text.lookups import LookupTable
 from everyvoice.utils.heavy import expand
+from loguru import logger
 from torch import nn
 from torchaudio.models import Conformer
 
@@ -20,16 +22,23 @@ from .type_definitions import InferenceControl, Stats
 from .utils import mask_from_lens, plot_attn_maps, plot_mel
 from .variance_adaptor import VarianceAdaptor
 
+DEFAULT_LANG2ID: LookupTable = {}
+DEFAULT_SPEAKER2ID: LookupTable = {}
+
 
 class FastSpeech2(pl.LightningModule):
     def __init__(
-        self, config: FastSpeech2Config, lang2id: LookupTable, speaker2id: LookupTable
+        self,
+        config: FastSpeech2Config,
+        lang2id: LookupTable = DEFAULT_LANG2ID,
+        speaker2id: LookupTable = DEFAULT_SPEAKER2ID,
     ):
         """ """
         super().__init__()
         self.config = config
         self.batch_size = config.training.batch_size
         self.text_processor = TextProcessor(config)
+        # TODO Should we fallback to a default lang2id/speaker2id if we are loading an old model?
         self.lang2id = lang2id
         self.speaker2id = speaker2id
         self.save_hyperparameters(ignore=[])
@@ -87,12 +96,22 @@ class FastSpeech2(pl.LightningModule):
             self.output_key = "output"
         self.speaker_embedding = None
         if self.config.model.multispeaker:
+            if len(self.speaker2id) == 0:
+                logger.error(
+                    "Your model is multispeaker but speaker2id LookupTable is empty"
+                )
+                sys.exit(1)
             self.speaker_embedding = nn.Embedding(
                 len(self.speaker2id),
                 self.config.model.encoder.input_dim,
             )  # TODO: replace with d_vector multispeaker embedding
         self.language_embedding = None
         if self.config.model.multilingual:
+            if len(self.lang2id) == 0:
+                logger.error(
+                    "Your model is multilingual but language2id LookupTable is empty"
+                )
+                sys.exit(1)
             self.language_embedding = nn.Embedding(
                 len(self.lang2id), self.config.model.encoder.input_dim
             )
