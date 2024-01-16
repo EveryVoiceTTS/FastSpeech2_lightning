@@ -12,7 +12,6 @@ from everyvoice.base_cli.interfaces import (
     preprocess_base_command_interface,
     train_base_command_interface,
 )
-from loguru import logger
 from merge_args import merge_args
 from tqdm import tqdm
 
@@ -163,7 +162,10 @@ def preprocess(
     if compute_stats:
         stats_path = config.preprocessing.save_dir / "stats.json"
         if stats_path.exists() and not kwargs["overwrite"]:
-            logger.info(f"{stats_path} exists, please re-run with --overwrite flag")
+            print(
+                f"{stats_path} exists, please re-run with --overwrite flag",
+                file=sys.stderr,
+            )
         e_scaler, p_scaler = preprocessor.compute_stats(
             energy="energy" in processed, pitch="pitch" in processed
         )
@@ -338,8 +340,9 @@ def audit(
                 data = torch.load(path)
                 check_stats(data, path, stats.pitch)
         else:
-            logger.info(
-                "Nothing to check. Please re-run with --should_check_stats or --dimensions"
+            print(
+                "Nothing to check. Please re-run with --should_check_stats or --dimensions",
+                file=sys.stderr,
             )
 
 
@@ -414,30 +417,37 @@ def synthesize(  # noqa: C901
     from .synthesize_text_dataset import SynthesizeTextDataSet
 
     if model_path is None:
-        logger.error("Model path is required.")
+        # TODO A CLI Shouldn't not using logging to communicate with the user.
+        print("Model path is required.", file=sys.stderr)
         sys.exit(1)
 
     if texts and filelist:
-        logger.warning(
+        print(
             "Got arguments for both text and a filelist - this will only process the text."
-            " Please re-run without providing text if you want to run batch synthesis on the provided file."
+            " Please re-run without providing text if you want to run batch synthesis on the provided file.",
+            file=sys.stderr,
         )
     if not texts and not filelist:
-        logger.error("You must define either --text or --filelist")
+        print("You must define either --text or --filelist", file=sys.stderr)
         sys.exit(1)
 
     if not texts:
         if language is not None:
-            logger.error("Specifying a language is only valid when using --text.")
+            print(
+                "Specifying a language is only valid when using --text.",
+                file=sys.stderr,
+            )
             sys.exit(1)
         if speaker is not None:
-            logger.error("Specifying a speaker is only valid when using --text.")
+            print(
+                "Specifying a speaker is only valid when using --text.", file=sys.stderr
+            )
             sys.exit(1)
 
     output_dir.mkdir(exist_ok=True, parents=True)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     # Load checkpoints
-    logger.info(f"Loading checkpoint from {model_path}")
+    print(f"Loading checkpoint from {model_path}", file=sys.stderr)
     model: FastSpeech2 = FastSpeech2.load_from_checkpoint(model_path).to(device)
     model.eval()
     # output to .wav will require a valid spec-to-wav model
@@ -445,14 +455,15 @@ def synthesize(  # noqa: C901
         if vocoder_path:
             model.config.training.vocoder_path = vocoder_path
         if not model.config.training.vocoder_path:
-            logger.error(
-                "Sorry, no vocoder was provided, please add it to model.config.training.vocoder_path or as --vocoder-path /path/to/vocoder in the command line"
+            print(
+                "Sorry, no vocoder was provided, please add it to model.config.training.vocoder_path or as --vocoder-path /path/to/vocoder in the command line",
+                file=sys.stderr,
             )
             sys.exit(1)
 
     data: list[dict[str, Any]]
     if texts:
-        logger.info(f"Processing text '{texts}'")
+        print(f"Processing text '{texts}'", file=sys.stderr)
         data = [
             {
                 "basename": sanitize_path(text),
@@ -477,16 +488,18 @@ def synthesize(  # noqa: C901
     languages = set(d["language"] for d in data if d["language"] is not None)
     extra_languages = languages.difference(model.lang2id.keys())
     if len(extra_languages) > 0:
-        logger.error(
-            f"You provided '{languages}' which is/are not a language(s) supported by the model {set(model.lang2id.keys())}"
+        print(
+            f"You provided '{languages}' which is/are not a language(s) supported by the model {set(model.lang2id.keys())}",
+            file=sys.stderr,
         )
         sys.exit(1)
 
     speakers = set(d["speaker"] for d in data if d["speaker"] is not None)
     extra_speakers = speakers.difference(model.speaker2id.keys())
     if len(extra_speakers) > 0:
-        logger.error(
-            f"You provided '{speakers}' which is/are not a speaker(s) supported by the model {set(model.speaker2id.keys())}"
+        print(
+            f"You provided '{speakers}' which is/are not a speaker(s) supported by the model {set(model.speaker2id.keys())}",
+            file=sys.stderr,
         )
         sys.exit(1)
 
