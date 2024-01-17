@@ -5,7 +5,7 @@ import torch
 from everyvoice.dataloader import BaseDataModule
 from everyvoice.text import TextProcessor
 from everyvoice.text.lookups import LookupTables
-from everyvoice.utils import _flatten, check_dataset_size
+from everyvoice.utils import _flatten, check_dataset_size, generic_dict_loader
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 
@@ -147,12 +147,8 @@ class FastSpeech2DataModule(BaseDataModule):
         return data
 
     def load_dataset(self):
-        self.train_dataset = self.config.training.filelist_loader(
-            self.config.training.training_filelist
-        )
-        self.val_dataset = self.config.training.filelist_loader(
-            self.config.training.validation_filelist
-        )
+        self.train_dataset = generic_dict_loader(self.config.training.training_filelist)
+        self.val_dataset = generic_dict_loader(self.config.training.validation_filelist)
 
     def prepare_data(self):
         train_samples = len(self.train_dataset)
