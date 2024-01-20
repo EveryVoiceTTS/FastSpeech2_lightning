@@ -1,11 +1,12 @@
 import json
 import os
 import sys
-from typing import Union
+from typing import Dict, Optional, Union
 
 import numpy as np
 import pytorch_lightning as pl
 import torch
+from everyvoice.model.feature_prediction.config import FeaturePredictionConfig
 from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import synthesize_data
 from everyvoice.text import TextProcessor
 from everyvoice.text.lookups import LookupTable
@@ -24,29 +25,33 @@ from .variance_adaptor import VarianceAdaptor
 
 DEFAULT_LANG2ID: LookupTable = {}
 DEFAULT_SPEAKER2ID: LookupTable = {}
+DEFAULT_STATS: Optional[Stats] = None
 
 
 class FastSpeech2(pl.LightningModule):
     def __init__(
         self,
-        config: FastSpeech2Config,
+        config: Union[Dict, FastSpeech2Config],
         lang2id: LookupTable = DEFAULT_LANG2ID,
         speaker2id: LookupTable = DEFAULT_SPEAKER2ID,
+        stats: Optional[Stats] = DEFAULT_STATS,
     ):
         """ """
         super().__init__()
+        if not isinstance(config, FeaturePredictionConfig):
+            config = FeaturePredictionConfig(**config)
+        if stats is not None and not isinstance(stats, Stats):
+            stats = Stats(**stats)
         self.config = config
         self.batch_size = config.training.batch_size
         self.text_processor = TextProcessor(config)
         # TODO Should we fallback to a default lang2id/speaker2id if we are loading an old model?
         self.lang2id = lang2id
         self.speaker2id = speaker2id
+        self.stats = stats
         self.save_hyperparameters(ignore=[])
         self.loss = FastSpeech2Loss(config=config)
         self.text_input_layer: Union[nn.Linear, nn.Embedding]
-        # TODO: Get ride off self.stats that depends on files under `preprocessed/`.
-        with open(self.config.preprocessing.save_dir / "stats.json") as f:
-            self.stats: Stats = Stats(**json.load(f))
         if self.config.model.use_phonological_feats:
             self.text_input_layer = nn.Linear(
                 self.config.model.phonological_feats_size,
@@ -73,7 +78,14 @@ class FastSpeech2(pl.LightningModule):
             depthwise_conv_kernel_size=self.config.model.encoder.conv_kernel_size,
             dropout=self.config.model.encoder.dropout,
         )
-        self.variance_adaptor = VarianceAdaptor(config)
+        if self.stats is None:
+            logger.error(
+                """Your model doesn't have a value for self.stats either because the file is missing or the checkpoint didn't save them.
+                              We cannot initialize the variance adaptors without variance predictor statistics."""
+            )
+            self.variance_adaptor = None
+        else:
+            self.variance_adaptor = VarianceAdaptor(self.config, self.stats)
 
         self.decoder = Conformer(
             input_dim=self.config.model.decoder.input_dim,
@@ -195,6 +207,42 @@ class FastSpeech2(pl.LightningModule):
             "pitch_prediction": variance_adaptor_out["pitch_prediction"],
             "pitch_target": variance_adaptor_out["pitch_target"],
         }
+
+    def on_load_checkpoint(self, checkpoint):
+        """Deserialize the checkpoint hyperparameters.
+        Note, this shouldn't fail on different versions of pydantic anymore,
+        but it will fail on breaking changes to the config. We should catch those exceptions
+        and handle them appropriately."""
+        self.config = FeaturePredictionConfig(
+            **checkpoint["hyper_parameters"]["config"]
+        )
+        if (
+            "stats" in checkpoint["hyper_parameters"]
+            and checkpoint["hyper_parameters"]["stats"]
+        ):
+            self.stats = Stats(**checkpoint["hyper_parameters"]["stats"])
+        else:
+            self.stats = None
+
+    def on_save_checkpoint(self, checkpoint):
+        """Serialize the checkpoint hyperparameters"""
+        checkpoint["hyper_parameters"]["config"] = self.config.model_dump(
+            mode="json",
+            exclude={
+                "path_to_preprocessing_config_file": True,
+                "path_to_text_config_file": True,
+                "path_to_audio_config_file": True,
+                "path_to_training_config_file": True,
+                "path_to_model_config_file": True,
+                "path_to_aligner_config_file": True,
+                "path_to_vocoder_config_file": True,
+                "path_to_feature_prediction_config_file": True,
+            },
+        )
+        if self.stats is not None:
+            checkpoint["hyper_parameters"]["stats"] = self.stats.model_dump(mode="json")
+        else:
+            checkpoint["hyper_parameters"]["stats"] = json.dumps(None)
 
     def predict_step(self, batch, batch_idx):
         with torch.no_grad():

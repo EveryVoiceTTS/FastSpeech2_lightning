@@ -1,4 +1,3 @@
-import json
 import sys
 
 import numpy as np
@@ -83,11 +82,10 @@ class LengthRegulator(nn.Module):
 class VarianceAdaptor(nn.Module):
     """Variance Adaptor"""
 
-    def __init__(self, config: FastSpeech2Config):
+    def __init__(self, config: FastSpeech2Config, stats: Stats):
         super().__init__()
         self.config = config
-        with open(self.config.preprocessing.save_dir / "stats.json") as f:
-            self.stats = Stats(**json.load(f))
+        self.stats = stats
         # Duration Predictor
         self.duration_predictor = VariancePredictor(
             input_dim=self.config.model.encoder.input_dim,
