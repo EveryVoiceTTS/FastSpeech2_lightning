@@ -4,7 +4,7 @@ import sys
 from enum import Enum
 from glob import glob
 from pathlib import Path
-from typing import List
+from typing import Any, Optional
 
 import typer
 from everyvoice.base_cli.interfaces import (
@@ -12,9 +12,10 @@ from everyvoice.base_cli.interfaces import (
     preprocess_base_command_interface,
     train_base_command_interface,
 )
-from loguru import logger
 from merge_args import merge_args
 from tqdm import tqdm
+
+from .synthesize_output_formats import SynthesizeOutputFormats
 
 app = typer.Typer(
     pretty_exceptions_show_locals=False,
@@ -29,12 +30,6 @@ class PreprocessCategories(str, Enum):
     text = "text"
     pitch = "pitch"
     energy = "energy"
-
-
-class SynthesisOutputs(str, Enum):
-    wav = "wav"
-    npy = "npy"
-    pt = "pt"
 
 
 class BenchmarkType(str, Enum):
@@ -72,7 +67,7 @@ def benchmark(
     batch = loader.collate_method(
         [loader.train_dataset[i] for i in range(config.training.batch_size)]
     )
-    model = FastSpeech2(config=config)
+    model = FastSpeech2(config=config, lang2id={}, speaker2id={})
     device = "cpu"
     if gpu:
         device = "cuda"
@@ -146,7 +141,7 @@ def preprocess(
     compute_stats: bool = typer.Option(
         True, "-S", "--stats", help="Calculate stats for energy and pitch"
     ),
-    steps: List[PreprocessCategories] = typer.Option(
+    steps: list[PreprocessCategories] = typer.Option(
         [cat.value for cat in PreprocessCategories],
         "-s",
         "--steps",
@@ -167,7 +162,10 @@ def preprocess(
     if compute_stats:
         stats_path = config.preprocessing.save_dir / "stats.json"
         if stats_path.exists() and not kwargs["overwrite"]:
-            logger.info(f"{stats_path} exists, please re-run with --overwrite flag")
+            print(
+                f"{stats_path} exists, please re-run with --overwrite flag",
+                file=sys.stderr,
+            )
         e_scaler, p_scaler = preprocessor.compute_stats(
             energy="energy" in processed, pitch="pitch" in processed
         )
@@ -195,11 +193,21 @@ def preprocess(
 @app.command()
 @merge_args(train_base_command_interface)
 def train(**kwargs):
-    from everyvoice.base_cli.helpers import train_base_command
+    from everyvoice.base_cli.helpers import load_config_base_command, train_base_command
+    from everyvoice.text.lookups import lookuptables_from_config
 
     from .config import FastSpeech2Config
     from .dataset import FastSpeech2DataModule
     from .model import FastSpeech2
+
+    config_args = kwargs["config_args"]
+    config_file = kwargs["config_file"]
+    config = load_config_base_command(FastSpeech2Config, config_args, config_file)
+    lang2id, speaker2id = lookuptables_from_config(config)
+    model_kwargs = {
+        "lang2id": lang2id,
+        "speaker2id": speaker2id,
+    }
 
     train_base_command(
         model_config=FastSpeech2Config,
@@ -207,6 +215,7 @@ def train(**kwargs):
         data_module=FastSpeech2DataModule,
         monitor="training/total_loss",
         gradient_clip_val=1.0,
+        model_kwargs=model_kwargs,
         **kwargs,
     )
 
@@ -254,7 +263,7 @@ def audit(
             glob(
                 os.path.join(
                     (original_config.preprocessing.save_dir / "duration"),
-                    "**/*{x['basename']}*.pt",
+                    f"**/*{x['basename']}*.pt",
                 ),
                 recursive=True,
             )
@@ -265,7 +274,7 @@ def audit(
             glob(
                 os.path.join(
                     (original_config.preprocessing.save_dir / "energy"),
-                    "**/*{x['basename']}*.pt",
+                    f"**/*{x['basename']}*.pt",
                 ),
                 recursive=True,
             )
@@ -276,7 +285,7 @@ def audit(
             glob(
                 os.path.join(
                     (original_config.preprocessing.save_dir / "pitch"),
-                    "**/*{x['basename']}*.pt",
+                    f"**/*{x['basename']}*.pt",
                 ),
                 recursive=True,
             )
@@ -287,7 +296,7 @@ def audit(
             glob(
                 os.path.join(
                     (original_config.preprocessing.save_dir / "text"),
-                    "**/*{x['basename']}*.pt",
+                    f"**/*{x['basename']}*.pt",
                 ),
                 recursive=True,
             )
@@ -331,8 +340,9 @@ def audit(
                 data = torch.load(path)
                 check_stats(data, path, stats.pitch)
         else:
-            logger.info(
-                "Nothing to check. Please re-run with --should_check_stats or --dimensions"
+            print(
+                "Nothing to check. Please re-run with --should_check_stats or --dimensions",
+                file=sys.stderr,
             )
 
 
@@ -353,11 +363,24 @@ def synthesize(  # noqa: C901
         dir_okay=True,
         help="The directory where your synthesized audio should be written",
     ),
-    text: str = typer.Option(
-        "",
+    texts: list[str] = typer.Option(
+        [],
         "--text",
         "-t",
-        help="Some text to synthesize. Choose --filelist if you want to synthesize more than one sample at a time.",
+        help="Some text to synthesize.  This option can be repeated to synthesize multiple sentences."
+        " It is recommended to use --filelist if you want to synthesize a lot of sentences or have different speaker/language per sentence.",
+    ),
+    language: Optional[str] = typer.Option(
+        None,
+        "--language",
+        "-l",
+        help="Specify which language to use in a multilingual system. [requires --text]",
+    ),
+    speaker: Optional[str] = typer.Option(
+        None,
+        "--speaker",
+        "-s",
+        help="Specify which speaker to use in a multispeaker system. [requires --text]",
     ),
     accelerator: str = typer.Option("auto", "--accelerator", "-a"),
     devices: str = typer.Option(
@@ -372,8 +395,8 @@ def synthesize(  # noqa: C901
         dir_okay=False,
         help="Synthesize all audio in a given filelist. Use --text if you want to just synthesize one sample.",
     ),
-    output_type: List[SynthesisOutputs] = typer.Option(
-        [SynthesisOutputs.wav.value],
+    output_type: list[SynthesizeOutputFormats] = typer.Option(
+        [SynthesizeOutputFormats.wav.value],
         "-O",
         "--output-type",
         help="Which format to synthesize to. **wav** is the default and will synthesize to a playable audio file. **npy** will generate spectrograms required to fine-tune [HiFiGAN](https://github.com/jik876/hifi-gan) (Mel-band oriented tensors, K, T). **pt** will generate predicted Mel spectrograms in the EveryVoice format (time-oriented Tensors, T, K)",
@@ -391,259 +414,154 @@ def synthesize(  # noqa: C901
     from everyvoice.preprocessor import Preprocessor
     from everyvoice.wizard.utils import sanitize_path
 
-    from .config import FastSpeech2Config
     from .model import FastSpeech2
+    from .synthesize_text_dataset import SynthesizeTextDataSet
 
     if model_path is None:
-        logger.error("Model path is required.")
+        # TODO A CLI Shouldn't not using logging to communicate with the user.
+        print("Model path is required.", file=sys.stderr)
         sys.exit(1)
+
+    if texts and filelist:
+        print(
+            "Got arguments for both text and a filelist - this will only process the text."
+            " Please re-run without providing text if you want to run batch synthesis on the provided file.",
+            file=sys.stderr,
+        )
+    if not texts and not filelist:
+        print("You must define either --text or --filelist", file=sys.stderr)
+        sys.exit(1)
+
+    if not texts:
+        if language is not None:
+            print(
+                "Specifying a language is only valid when using --text.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        if speaker is not None:
+            print(
+                "Specifying a speaker is only valid when using --text.", file=sys.stderr
+            )
+            sys.exit(1)
 
     output_dir.mkdir(exist_ok=True, parents=True)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     # Load checkpoints
-    logger.info(f"Loading checkpoint from {model_path}")
+    print(f"Loading checkpoint from {model_path}", file=sys.stderr)
     model: FastSpeech2 = FastSpeech2.load_from_checkpoint(model_path).to(device)
     model.eval()
-    preprocessor = Preprocessor(model.config)
-    if "wav" in output_type:
+    # output to .wav will require a valid spec-to-wav model
+    if SynthesizeOutputFormats.wav in output_type:
         if vocoder_path:
             model.config.training.vocoder_path = vocoder_path
         if not model.config.training.vocoder_path:
-            logger.error(
-                "Sorry, no vocoder was provided, please add it to model.config.training.vocoder_path or as --vocoder-path /path/to/vocoder in the command line"
+            print(
+                "Sorry, no vocoder was provided, please add it to model.config.training.vocoder_path or as --vocoder-path /path/to/vocoder in the command line",
+                file=sys.stderr,
             )
             sys.exit(1)
 
-    if text and filelist:
-        logger.warning(
-            "Got arguments for both text and a filelist - this will only process the text. Please re-run without out providing text if you want to run batch synthesis"
+    data: list[dict[str, Any]]
+    if texts:
+        print(f"Processing text {texts}", file=sys.stderr)
+        data = [
+            {
+                "basename": sanitize_path(text),
+                "text": text,
+                "language": language,
+                "speaker": speaker,
+            }
+            for text in texts
+        ]
+    else:
+        data = model.config.training.filelist_loader(filelist)
+        data = [
+            {
+                "basename": sanitize_path(d["basename"]),
+                "text": d["text"],
+                "language": d.get("language", None),
+                "speaker": d.get("speaker", None),
+            }
+            for d in data
+        ]
+
+    languages = set(d["language"] for d in data)
+    if None in languages and model.config.model.multilingual:
+        print(
+            "Your model is multilingual and you've failed to provide a language for all your sentences."
+            f" Available languages are {set(model.lang2id.keys())}",
+            file=sys.stderr,
         )
-
-    # Single Inference
-    if text:
-        logger.info(f"Processing text '{text}'")
-        text_len = min(10, len(text))
-        data_path = output_dir / sanitize_path(text)[:text_len]
-        text_tensor = preprocessor.extract_text_inputs(text)
-        # Create Batch
-        logger.info("Creating batch")
-        src_lens = torch.LongTensor([text_tensor.size(0)])
-        max_src_len = max(src_lens)
-        batch = {
-            "text": text_tensor,
-            "src_lens": src_lens,
-            "max_src_len": max_src_len,
-            "speaker_id": torch.LongTensor([0]),
-            "language_id": torch.LongTensor([0]),
-        }
-        batch = {k: v.to(device) for k, v in batch.items()}
-        batch["max_mel_len"] = 1_000_000
-        batch["mel_lens"] = None
-        # Run model
-        with torch.no_grad():
-            logger.info("Predicting spectral features")
-            spec = model.forward(batch, inference=True)[model.output_key]
-        if "wav" in output_type:
-            from scipy.io.wavfile import write
-
-            # We sys.exit(1) above if this is false
-            assert model.config.training.vocoder_path
-
-            if (
-                os.path.basename(model.config.training.vocoder_path)
-                == "generator_universal.pth.tar"
-            ):
-                from everyvoice.model.vocoder.original_hifigan_helper import (
-                    get_vocoder,
-                    vocoder_infer,
-                )
-
-                logger.info(
-                    f"Loading Vocoder from {model.config.training.vocoder_path}"
-                )
-                ckpt = get_vocoder(model.config.training.vocoder_path, device=device)
-                logger.info("Generating waveform...")
-                wav = vocoder_infer(spec, ckpt)[0]
-                logger.info(f"Writing file {data_path}")
-                # synthesize 16 bit audio
-                if wav.dtype != "int16":
-                    wav = wav * model.config.preprocessing.audio.max_wav_value
-                    wav = wav.astype("int16")
-                write(
-                    f"{data_path}.wav",
-                    model.config.preprocessing.audio.output_sampling_rate,
-                    wav,
-                )
-            else:
-                from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
-                    synthesize_data,
-                )
-
-                logger.info(
-                    f"Loading Vocoder from {model.config.training.vocoder_path}"
-                )
-                ckpt = torch.load(
-                    model.config.training.vocoder_path, map_location=device
-                )
-                logger.info("Generating waveform...")
-                wav, sr = synthesize_data(spec, ckpt)
-                logger.info(f"Writing file {data_path}")
-                write(f"{data_path}.wav", sr, wav)
-        if "npy" in output_type:
-            import numpy as np
-
-            logger.info("Formatting for use with original HiFiGAN")
-            spec = spec.squeeze().transpose(0, 1).cpu().numpy()
-            np.save(f"{data_path}.npy", spec)
-        if "pt" in output_type:
-            torch.save(spec, f"{data_path}.pt")
-
-    elif filelist:
-        from pytorch_lightning import Trainer
-        from pytorch_lightning.callbacks import Callback
-        from pytorch_lightning.loggers import TensorBoardLogger
-
-        from .dataset import FastSpeech2DataModule
-
-        class PredictionWritingCallback(Callback):
-            def __init__(self, output_types, output_dir, config: FastSpeech2Config):
-                self.save_dir = output_dir
-                self.config = config
-                self.sep = "--"
-                self.output_types: List[SynthesisOutputs] = output_types
-                logger.info(f"Saving output to {self.save_dir / 'synthesized_spec'}")
-                if "pt" in self.output_types:
-                    (self.save_dir / "synthesized_spec").mkdir(
-                        parents=True, exist_ok=True
-                    )
-                if "npy" in self.output_types:
-                    (self.save_dir / "original_hifigan_spec").mkdir(
-                        parents=True, exist_ok=True
-                    )
-                if "wav" in self.output_types:
-                    (self.save_dir / "wav").mkdir(parents=True, exist_ok=True)
-
-            def on_predict_batch_end(
-                self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx
-            ):
-                if "wav" in self.output_types:
-                    if (
-                        os.path.basename(model.config.training.vocoder_path)
-                        == "generator_universal.pth.tar"
-                    ):
-                        from everyvoice.model.vocoder.original_hifigan_helper import (
-                            get_vocoder,
-                            vocoder_infer,
-                        )
-
-                        logger.info(
-                            f"Loading Vocoder from {model.config.training.vocoder_path}"
-                        )
-                        ckpt = get_vocoder(
-                            model.config.training.vocoder_path, device=device
-                        )
-                        logger.info("Generating waveform...")
-                        wavs = vocoder_infer(
-                            outputs[model.output_key],
-                            ckpt,
-                        )
-                        sr = model.config.preprocessing.audio.output_sampling_rate
-                        # Necessary when passing --filelist
-                        sampling_rate_change = (
-                            model.config.preprocessing.audio.output_sampling_rate
-                            // model.config.preprocessing.audio.input_sampling_rate
-                        )
-                        output_hop_size = (
-                            sampling_rate_change
-                            * model.config.preprocessing.audio.fft_hop_size
-                        )
-                    else:
-                        from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import (
-                            HiFiGANConfig,
-                        )
-                        from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
-                            synthesize_data,
-                        )
-
-                        ckpt = torch.load(self.config.training.vocoder_path)
-                        vocoder_config: HiFiGANConfig = ckpt["config"]  # type: ignore
-                        sampling_rate_change = (
-                            vocoder_config.preprocessing.audio.output_sampling_rate
-                            // vocoder_config.preprocessing.audio.input_sampling_rate
-                        )
-                        output_hop_size = (
-                            sampling_rate_change
-                            * vocoder_config.preprocessing.audio.fft_hop_size
-                        )
-                        wavs, sr = synthesize_data(outputs[model.output_key], ckpt)
-                        # synthesize 16 bit audio
-                        if wavs.dtype != "int16":
-                            wavs = wavs * model.config.preprocessing.audio.max_wav_value
-                            wavs = wavs.astype("int16")
-                if "npy" in self.output_types:
-                    import numpy as np
-
-                    specs = outputs[model.output_key].transpose(1, 2).cpu().numpy()
-
-                for b in range(batch["text"].size(0)):
-                    basename = batch["basename"][b]
-                    speaker = batch["speaker"][b]
-                    language = batch["language"][b]
-                    unmasked_len = outputs["tgt_lens"][
-                        b
-                    ]  # the vocoder output includes padding so we have to remove that
-                    if "pt" in self.output_types:
-                        torch.save(
-                            outputs[model.output_key][b][:unmasked_len]
-                            .transpose(0, 1)
-                            .cpu(),
-                            self.save_dir
-                            / "synthesized_spec"
-                            / self.sep.join(
-                                [
-                                    basename,
-                                    speaker,
-                                    language,
-                                    f"spec-pred-{self.config.preprocessing.audio.input_sampling_rate}-{self.config.preprocessing.audio.spec_type}.pt",
-                                ]
-                            ),
-                        )
-                    if "wav" in self.output_types:
-                        from scipy.io.wavfile import write
-
-                        write(
-                            self.save_dir
-                            / "wav"
-                            / self.sep.join([basename, speaker, language, "pred.wav"]),
-                            sr,
-                            wavs[b][: (unmasked_len * output_hop_size)],
-                        )
-                    if "npy" in self.output_types:
-                        np.save(
-                            self.save_dir
-                            / "original_hifigan_spec"
-                            / self.sep.join([basename, speaker, language, "pred.npy"]),
-                            specs[b][:, :unmasked_len].squeeze(),
-                        )
-
-        model.config.training.training_filelist = filelist
-        model.config.training.validation_filelist = filelist
-        data = FastSpeech2DataModule(model.config)
-        tensorboard_logger = TensorBoardLogger(
-            **(model.config.training.logger.model_dump(exclude={"sub_dir_callable"}))
+        sys.exit(1)
+    extra_languages = languages.difference(model.lang2id.keys())
+    if len(extra_languages) > 0:
+        print(
+            f"You provided {languages} which is/are not a language(s) supported by the model {set(model.lang2id.keys())}.",
+            file=sys.stderr,
         )
-        trainer = Trainer(
-            logger=tensorboard_logger,
-            accelerator=accelerator,
-            devices=devices,
-            max_epochs=model.config.training.max_epochs,
-            callbacks=[
-                PredictionWritingCallback(
-                    output_types=output_type, output_dir=output_dir, config=model.config
-                )
-            ],
+        sys.exit(1)
+
+    speakers = set(d["speaker"] for d in data)
+    if None in speakers and model.config.model.multispeaker:
+        print(
+            "Your model is multispeaker and you've failed to provide a speaker for all your sentences."
+            f" Available speakers are {set(model.speaker2id.keys())}",
+            file=sys.stderr,
         )
-        trainer.predict(model, data)
+        sys.exit(1)
+    extra_speakers = speakers.difference(model.speaker2id.keys())
+    if len(extra_speakers) > 0:
+        print(
+            f"You provided {speakers} which is/are not a speaker(s) supported by the model {set(model.speaker2id.keys())}.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    dataset = SynthesizeTextDataSet(
+        data,
+        preprocessor=Preprocessor(model.config),
+        lang2id=model.lang2id,
+        speaker2id=model.speaker2id,
+        device=device,
+    )
+
+    from pytorch_lightning import Trainer
+    from pytorch_lightning.loggers import TensorBoardLogger
+
+    from .prediction_writing_callback import get_synthesis_output_callbacks
+
+    tensorboard_logger = TensorBoardLogger(
+        **(model.config.training.logger.model_dump(exclude={"sub_dir_callable"}))
+    )
+    trainer = Trainer(
+        logger=tensorboard_logger,
+        accelerator=accelerator,
+        devices=devices,
+        max_epochs=model.config.training.max_epochs,
+        callbacks=get_synthesis_output_callbacks(
+            output_type=output_type,
+            output_dir=output_dir,
+            config=model.config,
+            output_key=model.output_key,
+            device=device,
+        ),
+    )
+    if True:
+        trainer.predict(model, dataset)
+    else:
+        # TODO: We need to wrap the dataset inside a dataloader to run in batch mode?!
+        from torch.utils.data import DataLoader
+
+        trainer.predict(
+            model,
+            DataLoader(
+                dataset=dataset,
+                batch_size=4,
+                num_workers=4,
+                # collate_fn =???,
+            ),
+        )
 
 
 if __name__ == "__main__":

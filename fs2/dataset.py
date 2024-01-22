@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from everyvoice.dataloader import BaseDataModule
 from everyvoice.text import TextProcessor
-from everyvoice.text.lookups import LookupTables
+from everyvoice.text.lookups import lookuptables_from_config
 from everyvoice.utils import _flatten, check_dataset_size
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
@@ -20,13 +20,11 @@ class FastSpeechDataset(Dataset):
     def __init__(self, dataset, config: FastSpeech2Config):
         self.dataset = dataset
         self.config = config
-        self.lookup = LookupTables(config)
         self.sep = "--"
         self.text_processor = TextProcessor(config)
         self.preprocessed_dir = Path(self.config.preprocessing.save_dir)
         self.sampling_rate = self.config.preprocessing.audio.input_sampling_rate
-        self.speaker2id = self.lookup.speaker2id
-        self.lang2id = self.lookup.lang2id
+        self.lang2id, self.speaker2id = lookuptables_from_config(self.config)
 
     def _load_file(self, bn, spk, lang, dir, fn):
         return torch.load(
