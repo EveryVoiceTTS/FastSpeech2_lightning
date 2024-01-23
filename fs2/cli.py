@@ -206,7 +206,7 @@ def train(**kwargs):
     config = load_config_base_command(FastSpeech2Config, config_args, config_file)
     lang2id, speaker2id = lookuptables_from_config(config)
 
-    # TODO: What about when we are fine-tuning? Do the bins in the Variance Adaptor not change?
+    # TODO: What about when we are fine-tuning? Do the bins in the Variance Adaptor not change? https://github.com/roedoejet/FastSpeech2_lightning/issues/28
     with open(config.preprocessing.save_dir / "stats.json") as f:
         stats: Stats = Stats(**json.load(f))
 

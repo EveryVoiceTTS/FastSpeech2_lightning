@@ -25,16 +25,15 @@ from .variance_adaptor import VarianceAdaptor
 
 DEFAULT_LANG2ID: LookupTable = {}
 DEFAULT_SPEAKER2ID: LookupTable = {}
-DEFAULT_STATS: Optional[Stats] = None
 
 
 class FastSpeech2(pl.LightningModule):
     def __init__(
         self,
         config: Union[Dict, FastSpeech2Config],
+        stats: Optional[Union[Dict, Stats]] = None,
         lang2id: LookupTable = DEFAULT_LANG2ID,
         speaker2id: LookupTable = DEFAULT_SPEAKER2ID,
-        stats: Optional[Stats] = DEFAULT_STATS,
     ):
         """ """
         super().__init__()
@@ -216,13 +215,6 @@ class FastSpeech2(pl.LightningModule):
         self.config = FeaturePredictionConfig(
             **checkpoint["hyper_parameters"]["config"]
         )
-        if (
-            "stats" in checkpoint["hyper_parameters"]
-            and checkpoint["hyper_parameters"]["stats"]
-        ):
-            self.stats = Stats(**checkpoint["hyper_parameters"]["stats"])
-        else:
-            self.stats = None
 
     def on_save_checkpoint(self, checkpoint):
         """Serialize the checkpoint hyperparameters"""
@@ -239,10 +231,6 @@ class FastSpeech2(pl.LightningModule):
                 "path_to_feature_prediction_config_file": True,
             },
         )
-        if self.stats is not None:
-            checkpoint["hyper_parameters"]["stats"] = self.stats.model_dump(mode="json")
-        else:
-            checkpoint["hyper_parameters"]["stats"] = json.dumps(None)
 
     def predict_step(self, batch, batch_idx):
         with torch.no_grad():
