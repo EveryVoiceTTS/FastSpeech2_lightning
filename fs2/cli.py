@@ -344,6 +344,89 @@ def audit(
             )
 
 
+def validate_languages_with_model(
+    data: list[dict[str, Any]],
+    config,
+    model_languages: set[str],
+) -> None:
+    """
+    Make sure the data's languages are compatible with the model.
+    """
+    data_languages = set(d["language"] for d in data)
+    if config.model.multilingual:
+        if data_languages == {None} and len(model_languages) == 1:
+            # The user did not provide a language and the model only has one language, make it the default.
+            default_language = list(model_languages)[0]
+            for d in data:
+                d["language"] = default_language
+            data_languages = set(d["language"] for d in data)
+
+        if None in data_languages:
+            print(
+                "Your model is multilingual and you've failed to provide a language for all your sentences."
+                f" Available languages are {model_languages}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        extra_languages = data_languages.difference(model_languages)
+        if len(extra_languages) > 0:
+            print(
+                f"You provided {data_languages} which is/are not a language(s) supported by the model {model_languages}.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+    else:
+        extra_languages = data_languages.difference({None})
+        if len(extra_languages) > 0:
+            print(
+                f"The current model is not multilingual but you've provide {extra_languages}.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+
+def validate_speakers_with_model(
+    data: list[dict[str, Any]],
+    config,
+    model_speakers: set[str],
+) -> None:
+    """
+    Make sure the data's speakers are compatible with the model.
+    """
+    data_speakers = set(d["speaker"] for d in data)
+    if config.model.multispeaker:
+        if data_speakers == {None} and len(model_speakers) == 1:
+            speaker = list(model_speakers)[0]
+            for d in data:
+                d["speaker"] = speaker
+            data_speakers = set(d["speaker"] for d in data)
+
+        if None in data_speakers:
+            print(
+                "Your model is multispeaker and you've failed to provide a speaker for all your sentences."
+                f" Available speakers are {model_speakers}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        extra_speakers = data_speakers.difference(model_speakers)
+        if len(extra_speakers) > 0:
+            print(
+                f"You provided {data_speakers} which is/are not a speaker(s) supported by the model {model_speakers}.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+    else:
+        extra_speakers = data_speakers.difference({None})
+        if len(extra_speakers) > 0:
+            print(
+                f"The current model doesn't support multi speakers but you've provide {extra_speakers}.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+
 @app.command()
 def synthesize(  # noqa: C901
     model_path: Path = typer.Argument(
@@ -484,37 +567,16 @@ def synthesize(  # noqa: C901
             for d in data
         ]
 
-    languages = set(d["language"] for d in data)
-    if None in languages and model.config.model.multilingual:
-        print(
-            "Your model is multilingual and you've failed to provide a language for all your sentences."
-            f" Available languages are {set(model.lang2id.keys())}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    extra_languages = languages.difference(model.lang2id.keys())
-    if len(extra_languages) > 0:
-        print(
-            f"You provided {languages} which is/are not a language(s) supported by the model {set(model.lang2id.keys())}.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    speakers = set(d["speaker"] for d in data)
-    if None in speakers and model.config.model.multispeaker:
-        print(
-            "Your model is multispeaker and you've failed to provide a speaker for all your sentences."
-            f" Available speakers are {set(model.speaker2id.keys())}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    extra_speakers = speakers.difference(model.speaker2id.keys())
-    if len(extra_speakers) > 0:
-        print(
-            f"You provided {speakers} which is/are not a speaker(s) supported by the model {set(model.speaker2id.keys())}.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    validate_languages_with_model(
+        data=data,
+        config=model.config,
+        model_languages=set(model.lang2id.keys()),
+    )
+    validate_speakers_with_model(
+        data=data,
+        config=model.config,
+        model_speakers=set(model.speaker2id.keys()),
+    )
 
     dataset = SynthesizeTextDataSet(
         data,
