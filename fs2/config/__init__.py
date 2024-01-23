@@ -1,6 +1,6 @@
 from enum import Enum
 from pathlib import Path
-from typing import Annotated, Any, Dict, Optional, Union
+from typing import Annotated, Any, Optional
 
 from annotated_types import Ge
 from everyvoice.config.preprocessing_config import PreprocessingConfig
@@ -164,7 +164,7 @@ class FastSpeech2TrainingConfig(BaseTrainingConfig):
     )
     # TODO: Implement early stopping
     # early_stopping: EarlyStoppingConfig = Field(default_factory=EarlyStoppingConfig)
-    vocoder_path: Union[FilePath, None] = None
+    vocoder_path: Optional[FilePath] = None
     mel_loss_weight: float = Field(
         1.0, description="Multiply the spec loss by this weight"
     )
@@ -225,7 +225,7 @@ class FastSpeech2Config(PartialLoadConfig):
     )
 
     @model_validator(mode="before")  # type: ignore
-    def load_partials(self: Dict[Any, Any], info: ValidationInfo):
+    def load_partials(self: dict[Any, Any], info: ValidationInfo):
         config_path = (
             info.context.get("config_path", None) if info.context is not None else None
         )

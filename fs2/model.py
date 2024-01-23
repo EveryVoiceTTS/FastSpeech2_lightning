@@ -1,7 +1,6 @@
 import json
 import os
 import sys
-from typing import Union
 
 import numpy as np
 import pytorch_lightning as pl
@@ -43,7 +42,7 @@ class FastSpeech2(pl.LightningModule):
         self.speaker2id = speaker2id
         self.save_hyperparameters(ignore=[])
         self.loss = FastSpeech2Loss(config=config)
-        self.text_input_layer: Union[nn.Linear, nn.Embedding]
+        self.text_input_layer: nn.Linear | nn.Embedding
         # TODO: Get ride off self.stats that depends on files under `preprocessed/`.
         with open(self.config.preprocessing.save_dir / "stats.json") as f:
             self.stats: Stats = Stats(**json.load(f))

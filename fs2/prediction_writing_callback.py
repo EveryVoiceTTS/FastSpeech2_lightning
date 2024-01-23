@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Sequence, Tuple
+from typing import Sequence
 
 import numpy as np
 import torch
@@ -202,7 +202,7 @@ class PredictionWritingWavCallback(Callback):
                 )
                 self.synthesize = self._infer_everyvoice
 
-    def _infer_generator_universal(self, outputs) -> Tuple[np.ndarray, int]:
+    def _infer_generator_universal(self, outputs) -> tuple[np.ndarray, int]:
         """
         Generate wavs using the generator_universal model.
         """
@@ -216,7 +216,7 @@ class PredictionWritingWavCallback(Callback):
 
         return wavs, sr
 
-    def _infer_everyvoice(self, outputs) -> Tuple[np.ndarray, int]:
+    def _infer_everyvoice(self, outputs) -> tuple[np.ndarray, int]:
         """
         Generate wabs using Everyvoice model.
         """
