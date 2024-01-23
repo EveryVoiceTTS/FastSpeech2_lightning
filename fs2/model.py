@@ -1,4 +1,3 @@
-import json
 import os
 import sys
 from typing import Dict, Optional, Union
@@ -218,19 +217,8 @@ class FastSpeech2(pl.LightningModule):
 
     def on_save_checkpoint(self, checkpoint):
         """Serialize the checkpoint hyperparameters"""
-        checkpoint["hyper_parameters"]["config"] = self.config.model_dump(
-            mode="json",
-            exclude={
-                "path_to_preprocessing_config_file": True,
-                "path_to_text_config_file": True,
-                "path_to_audio_config_file": True,
-                "path_to_training_config_file": True,
-                "path_to_model_config_file": True,
-                "path_to_aligner_config_file": True,
-                "path_to_vocoder_config_file": True,
-                "path_to_feature_prediction_config_file": True,
-            },
-        )
+        # Convert the config to a checkpoint-safe config
+        checkpoint["hyper_parameters"]["config"] = self.config.model_checkpoint_dump()
 
     def predict_step(self, batch, batch_idx):
         with torch.no_grad():
