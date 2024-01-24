@@ -161,11 +161,6 @@ def preprocess(
 
     if compute_stats:
         stats_path = config.preprocessing.save_dir / "stats.json"
-        if stats_path.exists() and not kwargs["overwrite"]:
-            print(
-                f"{stats_path} exists, please re-run with --overwrite flag",
-                file=sys.stderr,
-            )
         e_scaler, p_scaler = preprocessor.compute_stats(
             energy="energy" in processed, pitch="pitch" in processed
         )
