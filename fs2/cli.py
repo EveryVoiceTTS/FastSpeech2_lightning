@@ -15,7 +15,7 @@ from everyvoice.base_cli.interfaces import (
 from merge_args import merge_args
 from tqdm import tqdm
 
-from .synthesize_output_formats import SynthesizeOutputFormats
+from .type_definitions import SynthesizeOutputFormats
 
 app = typer.Typer(
     pretty_exceptions_show_locals=False,

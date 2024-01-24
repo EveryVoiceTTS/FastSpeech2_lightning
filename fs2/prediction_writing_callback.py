@@ -7,7 +7,7 @@ from loguru import logger
 from pytorch_lightning.callbacks import Callback
 
 from .config import FastSpeech2Config
-from .synthesize_output_formats import SynthesizeOutputFormats
+from .type_definitions import SynthesizeOutputFormats
 
 
 def get_synthesis_output_callbacks(
@@ -191,7 +191,7 @@ class PredictionWritingWavCallback(Callback):
                 )
 
                 self.vocoder = torch.load(self.config.training.vocoder_path)
-                vocoder_config: HiFiGANConfig = self.vocoder["config"]  # type: ignore
+                vocoder_config: HiFiGANConfig = self.vocoder["hyper_parameters"]["config"]  # type: ignore
                 sampling_rate_change = (
                     vocoder_config.preprocessing.audio.output_sampling_rate
                     // vocoder_config.preprocessing.audio.input_sampling_rate
@@ -226,7 +226,7 @@ class PredictionWritingWavCallback(Callback):
 
         wavs, sr = synthesize_data(outputs[self.output_key], self.vocoder)
         # synthesize 16 bit audio
-        if (wavs >= 0.0) & (wavs <= 1.0):
+        if (wavs >= -1.0).all() & (wavs <= 1.0).all():
             wavs = wavs * self.config.preprocessing.audio.max_wav_value
             wavs = wavs.astype("int16")
 
@@ -245,8 +245,11 @@ class PredictionWritingWavCallback(Callback):
 
         logger.info("Generating waveform...")
         wavs, sr = self.synthesize(outputs)
-
         # TODO: The batch is not a batch but rather a single example.  Is this the case because we are not using a dataloader?
+        if (
+            wavs.ndim < 2
+        ):  # TODO: Here is a temporary fix for the next part which removes padding based on the batch
+            wavs = np.expand_dims(wavs, 0)
         for item, wav, unmasked_len in zip(batch, wavs, outputs["tgt_lens"]):
             write(
                 self._get_filename(

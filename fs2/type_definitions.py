@@ -1,4 +1,14 @@
+from enum import Enum
+
 from pydantic import BaseModel, ConfigDict
+
+
+class SynthesizeOutputFormats(str, Enum):
+    """Valid output formats for synthesize"""
+
+    wav = "wav"
+    npy = "npy"
+    pt = "pt"
 
 
 class InferenceControl(BaseModel):
