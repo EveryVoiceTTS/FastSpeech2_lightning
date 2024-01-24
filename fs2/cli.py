@@ -530,15 +530,11 @@ def synthesize(  # noqa: C901
     )
 
     from pytorch_lightning import Trainer
-    from pytorch_lightning.loggers import TensorBoardLogger
 
     from .prediction_writing_callback import get_synthesis_output_callbacks
 
-    tensorboard_logger = TensorBoardLogger(
-        **(model.config.training.logger.model_dump(exclude={"sub_dir_callable"}))
-    )
     trainer = Trainer(
-        logger=tensorboard_logger,
+        logger=False,  # We don't need to log things to tensorboard during inference
         accelerator=accelerator,
         devices=devices,
         max_epochs=model.config.training.max_epochs,
