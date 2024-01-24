@@ -1,6 +1,6 @@
 import os
 import sys
-from typing import Dict, Optional, Union
+from typing import Optional
 
 import numpy as np
 import pytorch_lightning as pl
@@ -29,8 +29,8 @@ DEFAULT_SPEAKER2ID: LookupTable = {}
 class FastSpeech2(pl.LightningModule):
     def __init__(
         self,
-        config: Union[Dict, FastSpeech2Config],
-        stats: Optional[Union[Dict, Stats]] = None,
+        config: dict | FastSpeech2Config,
+        stats: Optional[dict | Stats] = None,
         lang2id: LookupTable = DEFAULT_LANG2ID,
         speaker2id: LookupTable = DEFAULT_SPEAKER2ID,
     ):
@@ -49,7 +49,7 @@ class FastSpeech2(pl.LightningModule):
         self.stats = stats
         self.save_hyperparameters(ignore=[])
         self.loss = FastSpeech2Loss(config=config)
-        self.text_input_layer: Union[nn.Linear, nn.Embedding]
+        self.text_input_layer: nn.Linear | nn.Embedding
         if self.config.model.use_phonological_feats:
             self.text_input_layer = nn.Linear(
                 self.config.model.phonological_feats_size,

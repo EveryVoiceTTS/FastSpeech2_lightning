@@ -191,7 +191,11 @@ class PredictionWritingWavCallback(Callback):
                 )
 
                 self.vocoder = torch.load(self.config.training.vocoder_path)
-                vocoder_config: HiFiGANConfig = self.vocoder["hyper_parameters"]["config"]  # type: ignore
+                vocoder_config: dict | HiFiGANConfig = self.vocoder["hyper_parameters"][
+                    "config"
+                ]
+                if isinstance(vocoder_config, dict):
+                    vocoder_config = HiFiGANConfig(**vocoder_config)
                 sampling_rate_change = (
                     vocoder_config.preprocessing.audio.output_sampling_rate
                     // vocoder_config.preprocessing.audio.input_sampling_rate
@@ -248,7 +252,7 @@ class PredictionWritingWavCallback(Callback):
         # TODO: The batch is not a batch but rather a single example.  Is this the case because we are not using a dataloader?
         if (
             wavs.ndim < 2
-        ):  # TODO: Here is a temporary fix for the next part which removes padding based on the batch
+        ):  # TODO: Here is a temporary fix for the next part which removes padding based on the batch. This should be removed in the fix for https://github.com/roedoejet/FastSpeech2_lightning/issues/25
             wavs = np.expand_dims(wavs, 0)
         for item, wav, unmasked_len in zip(batch, wavs, outputs["tgt_lens"]):
             write(
