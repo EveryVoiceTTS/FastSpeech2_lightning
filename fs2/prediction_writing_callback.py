@@ -69,22 +69,25 @@ class PredictionWritingNpyCallback(Callback):
     def _get_filename(self, basename: str, speaker: str, language: str) -> Path:
         return self.save_dir / self.sep.join([basename, speaker, language, "pred.npy"])
 
-    def on_predict_batch_end(
+    def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
         self, _trainer, _pl_module, outputs, batch, _batch_idx, _dataloader_idx=0
     ):
         import numpy as np
 
-        if not isinstance(batch, list):
-            batch = [batch]
-
         specs = outputs[self.output_key].transpose(1, 2).cpu().numpy()
 
-        for item, unmasked_len, spec in zip(batch, outputs["tgt_lens"], specs):
+        for basename, speaker, language, spec, unmasked_len in zip(
+            batch["basename"],
+            batch["speaker"],
+            batch["language"],
+            specs,
+            outputs["tgt_lens"],
+        ):
             np.save(
                 self._get_filename(
-                    basename=item["basename"],
-                    speaker=item["speaker"],
-                    language=item["language"],
+                    basename=basename,
+                    speaker=speaker,
+                    language=language,
                 ),
                 spec[:, :unmasked_len].squeeze(),
             )
@@ -118,21 +121,22 @@ class PredictionWritingPtCallback(Callback):
             ]
         )
 
-    def on_predict_batch_end(
+    def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
         self, _trainer, _pl_module, outputs, batch, _batch_idx, _dataloader_idx=0
     ):
-        if not isinstance(batch, list):
-            batch = [batch]
-
-        for item, unmasked_len, data in zip(
-            batch, outputs["tgt_lens"], outputs[self.output_key]
+        for basename, speaker, language, data, unmasked_len in zip(
+            batch["basename"],
+            batch["speaker"],
+            batch["language"],
+            outputs[self.output_key],
+            outputs["tgt_lens"],
         ):
             torch.save(
-                data[:unmasked_len].transpose(0, 1).cpu(),
+                data[:unmasked_len].cpu(),
                 self._get_filename(
-                    basename=item["basename"],
-                    speaker=item["speaker"],
-                    language=item["language"],
+                    basename=basename,
+                    speaker=speaker,
+                    language=language,
                 ),
             )
 
@@ -239,27 +243,37 @@ class PredictionWritingWavCallback(Callback):
     def _get_filename(self, basename: str, speaker: str, language: str) -> Path:
         return self.save_dir / self.sep.join([basename, speaker, language, "pred.wav"])
 
-    def on_predict_batch_end(
-        self, _trainer, _pl_module, outputs, batch, _batch_idx, _dataloader_idx=0
+    def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
+        self,
+        _trainer,
+        _pl_module,
+        outputs,
+        batch,
+        _batch_idx,
+        _dataloader_idx=0,
     ):
         from scipy.io.wavfile import write
 
-        if not isinstance(batch, list):
-            batch = [batch]
+        logger.trace("Generating waveform...")
 
-        logger.info("Generating waveform...")
         wavs, sr = self.synthesize(outputs)
-        # TODO: The batch is not a batch but rather a single example.  Is this the case because we are not using a dataloader?
-        if (
-            wavs.ndim < 2
-        ):  # TODO: Here is a temporary fix for the next part which removes padding based on the batch. This should be removed in the fix for https://github.com/roedoejet/FastSpeech2_lightning/issues/25
-            wavs = np.expand_dims(wavs, 0)
-        for item, wav, unmasked_len in zip(batch, wavs, outputs["tgt_lens"]):
+
+        for basename, speaker, language, wav, unmasked_len in zip(
+            batch["basename"],
+            batch["speaker"],
+            batch["language"],
+            wavs,
+            outputs["tgt_lens"],
+        ):
+            if wav.ndim < 2:
+                # TODO: Here is a temporary fix for the next part which removes padding based on the batch. This should be removed in the fix for https://github.com/roedoejet/FastSpeech2_lightning/issues/25
+                wav = np.expand_dims(wav, 0)
+
             write(
                 self._get_filename(
-                    basename=item["basename"],
-                    speaker=item["speaker"],
-                    language=item["language"],
+                    basename=basename,
+                    speaker=speaker,
+                    language=language,
                 ),
                 sr,
                 # the vocoder output includes padding so we have to remove that
