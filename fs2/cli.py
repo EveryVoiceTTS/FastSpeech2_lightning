@@ -19,6 +19,7 @@ from .type_definitions import SynthesizeOutputFormats
 
 app = typer.Typer(
     pretty_exceptions_show_locals=False,
+    context_settings={"help_option_names": ["-h", "--help"]},
     help="A PyTorch Lightning implementation of the FastSpeech2 Text-to-Speech Feature Prediction Model",
 )
 
