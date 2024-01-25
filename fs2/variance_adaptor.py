@@ -68,6 +68,7 @@ class LengthRegulator(nn.Module):
             for i in range(x.shape[0])
         ]
         lengths = torch.tensor([t.shape[0] for t in repeated_list]).long()
+        # FIXME: int(max_length) when max_length is None is invalid
         max_length = min(lengths.max(), int(max_length))
         mask = (
             torch.arange(max_length).expand(len(lengths), max_length)

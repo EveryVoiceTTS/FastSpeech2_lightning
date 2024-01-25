@@ -437,6 +437,18 @@ def synthesize(  # noqa: C901
         "-v",
         help="The path to a trained vocoder in case one was not specified in your model configuration.",
     ),
+    batch_size: int = typer.Option(
+        4,
+        "--batch-size",
+        "-b",
+        help="Batch size.",
+    ),
+    num_workers: int = typer.Option(
+        4,
+        "--num-workers",
+        "-n",
+        help="Number of workers to process the data.",
+    ),
 ):
     """Given some text and a trained model, generate some audio. i.e. perform typical speech synthesis"""
     # TODO: allow for changing of language/speaker and variance control
@@ -553,7 +565,6 @@ def synthesize(  # noqa: C901
         preprocessor=Preprocessor(model.config),
         lang2id=model.lang2id,
         speaker2id=model.speaker2id,
-        device=device,
     )
 
     from pytorch_lightning import Trainer
@@ -573,21 +584,20 @@ def synthesize(  # noqa: C901
             device=device,
         ),
     )
-    if True:
-        trainer.predict(model, dataset)
-    else:
-        # TODO: We need to wrap the dataset inside a dataloader to run in batch mode?!
-        from torch.utils.data import DataLoader
 
-        trainer.predict(
-            model,
-            DataLoader(
-                dataset=dataset,
-                batch_size=4,
-                num_workers=4,
-                # collate_fn =???,
-            ),
-        )
+    from torch.utils.data import DataLoader
+
+    from .synthesize_text_dataset import collator
+
+    trainer.predict(
+        model,
+        DataLoader(
+            dataset=dataset,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            collate_fn=collator,
+        ),
+    )
 
 
 if __name__ == "__main__":
