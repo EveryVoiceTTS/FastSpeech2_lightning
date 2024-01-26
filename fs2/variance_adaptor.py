@@ -7,8 +7,8 @@ from loguru import logger
 from torch import nn
 from torch.nn.utils.rnn import pad_sequence
 
-from .alignment import mas_width1
-from .attention import ConvAttention
+from .attn.alignment import mas_width1
+from .attn.attention import ConvAttention
 from .config import FastSpeech2Config
 from .layers import VarianceConvolutionLayer
 from .type_definitions import InferenceControl, Stats, StatsInfo

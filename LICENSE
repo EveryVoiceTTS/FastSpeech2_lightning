@@ -1,4 +1,4 @@
-For everything except fs2/alignment.py, fs2/attention.py and fs2/attention_loss.py:
+For everything except files in fs2/attn/:
 
 MIT License
 
@@ -22,7 +22,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-For fs2/alignment.py, fs2/attention.py and fs2/attention_loss.py:
+For files in fs2/attn/:
 
 Copyright (c) 2021, NVIDIA CORPORATION.  All rights reserved.
 

@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from .attention_loss import AttentionBinarizationLoss, AttentionCTCLoss
+from .attn.attention_loss import AttentionBinarizationLoss, AttentionCTCLoss
 from .config import FastSpeech2Config
 
 
