@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Source: https://arxiv.org/abs/2108.10447
+
 import numpy as np
 from numba import jit, prange
 
