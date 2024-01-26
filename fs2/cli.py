@@ -12,6 +12,7 @@ from everyvoice.base_cli.interfaces import (
     preprocess_base_command_interface,
     train_base_command_interface,
 )
+from loguru import logger
 from merge_args import merge_args
 from tqdm import tqdm
 
@@ -345,87 +346,33 @@ def audit(
             )
 
 
-def validate_languages_with_model(
-    data: list[dict[str, Any]],
-    config,
-    model_languages: set[str],
+def validate_data_keys_with_model_keys(
+    data_keys: set[str], model_keys: set[str], key: str
 ) -> None:
     """
-    Make sure the data's languages are compatible with the model.
+    Make sure the user-supplied language or speaker specification is compatible with the model.
+    In current version of model, we can validate either key="language" or key="speaker"
     """
-    data_languages = set(d["language"] for d in data)
-    if config.model.multilingual:
-        if data_languages == {None} and len(model_languages) == 1:
-            # The user did not provide a language and the model only has one language, make it the default.
-            default_language = list(model_languages)[0]
-            for d in data:
-                d["language"] = default_language
-            data_languages = set(d["language"] for d in data)
+    if key not in ["language", "speaker"]:
+        raise ValueError("We can currently only validate language and speaker.")
 
-        if None in data_languages:
-            print(
-                "Your model is multilingual and you've failed to provide a language for all your sentences."
-                f" Available languages are {model_languages}",
-                file=sys.stderr,
-            )
-            sys.exit(1)
+    if None in data_keys:
+        print(
+            f"You have not specified a {key} for all your sentences."
+            f" Available values are {model_keys}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
-        extra_languages = data_languages.difference(model_languages)
-        if len(extra_languages) > 0:
-            print(
-                f"You provided {data_languages} which is/are not a language(s) supported by the model {model_languages}.",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-    else:
-        extra_languages = data_languages.difference({None})
-        if len(extra_languages) > 0:
-            print(
-                f"The current model is not multilingual but you've provide {extra_languages}.",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-
-
-def validate_speakers_with_model(
-    data: list[dict[str, Any]],
-    config,
-    model_speakers: set[str],
-) -> None:
-    """
-    Make sure the data's speakers are compatible with the model.
-    """
-    data_speakers = set(d["speaker"] for d in data)
-    if config.model.multispeaker:
-        if data_speakers == {None} and len(model_speakers) == 1:
-            speaker = list(model_speakers)[0]
-            for d in data:
-                d["speaker"] = speaker
-            data_speakers = set(d["speaker"] for d in data)
-
-        if None in data_speakers:
-            print(
-                "Your model is multispeaker and you've failed to provide a speaker for all your sentences."
-                f" Available speakers are {model_speakers}",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-
-        extra_speakers = data_speakers.difference(model_speakers)
-        if len(extra_speakers) > 0:
-            print(
-                f"You provided {data_speakers} which is/are not a speaker(s) supported by the model {model_speakers}.",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-    else:
-        extra_speakers = data_speakers.difference({None})
-        if len(extra_speakers) > 0:
-            print(
-                f"The current model doesn't support multi speakers but you've provide {extra_speakers}.",
-                file=sys.stderr,
-            )
-            sys.exit(1)
+    extra = data_keys.difference(model_keys)
+    if len(extra) > 0:
+        print(
+            f"You provided {data_keys} which are not {key}s that are supported by the model {model_keys or {}}."
+            if len(data_keys) > 1
+            else f"You provided {data_keys} which is not a {key} supported by the model {model_keys or {}}.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 
 @app.command()
@@ -494,7 +441,7 @@ def synthesize(  # noqa: C901
     # TODO: allow for changing of language/speaker and variance control
     import torch
     from everyvoice.preprocessor import Preprocessor
-    from everyvoice.wizard.utils import sanitize_path
+    from everyvoice.utils import slugify
 
     from .model import FastSpeech2
     from .synthesize_text_dataset import SynthesizeTextDataSet
@@ -514,19 +461,6 @@ def synthesize(  # noqa: C901
         print("You must define either --text or --filelist", file=sys.stderr)
         sys.exit(1)
 
-    if not texts:
-        if language is not None:
-            print(
-                "Specifying a language is only valid when using --text.",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        if speaker is not None:
-            print(
-                "Specifying a speaker is only valid when using --text.", file=sys.stderr
-            )
-            sys.exit(1)
-
     output_dir.mkdir(exist_ok=True, parents=True)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     # Load checkpoints
@@ -545,11 +479,13 @@ def synthesize(  # noqa: C901
             sys.exit(1)
 
     data: list[dict[str, Any]]
+    DEFAULT_LANGUAGE = next(iter(model.lang2id.keys()))
+    DEFAULT_SPEAKER = next(iter(model.speaker2id.keys()))
     if texts:
         print(f"Processing text {texts}", file=sys.stderr)
         data = [
             {
-                "basename": sanitize_path(text),
+                "basename": slugify(text),
                 "text": text,
                 "language": language,
                 "speaker": speaker,
@@ -558,25 +494,55 @@ def synthesize(  # noqa: C901
         ]
     else:
         data = model.config.training.filelist_loader(filelist)
-        data = [
-            {
-                "basename": sanitize_path(d["basename"]),
-                "text": d["text"],
-                "language": d.get("language", None),
-                "speaker": d.get("speaker", None),
-            }
-            for d in data
-        ]
+        try:
+            data = [
+                {
+                    "basename": slugify(
+                        d.get("basename", d["text"]), limit_to_n_characters=30
+                    ),  # if 'basename' doesn't exist, create a basename from the first 30 chars of the text slug
+                    "text": d["text"],
+                    "language": language or d.get("language", DEFAULT_LANGUAGE),
+                    "speaker": speaker or d.get("speaker", DEFAULT_SPEAKER),
+                }
+                for d in data
+            ]
+        except KeyError:
+            # TODO: Errors should have better formatting:
+            #       https://github.com/roedoejet/FastSpeech2_lightning/issues/26
+            logger.info(
+                """
+EveryVoice only accepts filelists in PSV format as in:
 
-    validate_languages_with_model(
-        data=data,
-        config=model.config,
-        model_languages=set(model.lang2id.keys()),
+    basename|text|language|speaker
+    LJ0001|Hello|eng|LJ
+
+Or in a format where each new line is an utterance:
+
+    This is a sentence.
+    Here is another sentence.
+
+Your filelist did not contain the correct keys so we will assume it is in the plain text format.
+                        """
+            )
+            with open(filelist, encoding="utf8") as f:
+                data = [
+                    {
+                        "basename": slugify(line.strip(), limit_to_n_characters=30),
+                        "text": line.strip(),
+                        "language": language or DEFAULT_LANGUAGE,
+                        "speaker": speaker or DEFAULT_SPEAKER,
+                    }
+                    for line in f.readlines()
+                ]
+    validate_data_keys_with_model_keys(
+        data_keys=set(d["language"] for d in data),
+        model_keys=set(model.lang2id.keys()),
+        key="language",
     )
-    validate_speakers_with_model(
-        data=data,
-        config=model.config,
-        model_speakers=set(model.speaker2id.keys()),
+    validate_data_keys_with_model_keys(
+        data_keys=set(d["speaker"] for d in data),
+        model_keys=set(model.speaker2id.keys()),
+        key="speaker",
     )
 
     dataset = SynthesizeTextDataSet(

@@ -34,10 +34,8 @@ class SynthesizeTextDataSet(Dataset):
         max_src_len = max(src_lens)
         if (language_id := self.lang2id.get(item["language"], None)) is None:
             language_id = 0
-            logger.error(f"{item['language']} not in {set(self.lang2id.keys())}")
         if (speaker_id := self.speaker2id.get(item["speaker"], None)) is None:
             speaker_id = 0
-            logger.error(f"{item['speaker']} not in {set(self.speaker2id.keys())}")
         batch = {
             "text": text_tensor,
             "src_lens": src_lens,

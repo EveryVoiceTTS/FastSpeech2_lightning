@@ -8,7 +8,7 @@ from unittest import TestCase, main
 
 from typer.testing import CliRunner
 
-from ..cli import app, validate_languages_with_model, validate_speakers_with_model
+from ..cli import app, validate_data_keys_with_model_keys
 from ..config import FastSpeech2Config
 
 DEFAULT_LANG2ID: set = set()
@@ -79,12 +79,12 @@ class SynthesizeTest(TestCase):
                     "--filelist",
                     str(test),
                     "--language",
-                    "BAD",
+                    "foo",
                     str(model),
                 ),
             )
             self.assertIn(
-                "Specifying a language is only valid when using --text.",
+                "Loading checkpoint",  # This means the command was not invalid
                 result.stdout,
             )
 
@@ -107,7 +107,29 @@ class SynthesizeTest(TestCase):
                 ),
             )
             self.assertIn(
-                "Specifying a speaker is only valid when using --text.",
+                "Loading checkpoint",  # This means the command was not invalid
+                result.stdout,
+            )
+
+    def test_plain_filelist(self):
+        with TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            test = tmpdir / "test.list"
+            with open(test, "w") as f:
+                f.write("\n".join(["this is a test sentence", "and another test"]))
+            model = tmpdir / "model"
+            model.touch()
+            result = self.runner.invoke(
+                app,
+                (
+                    "synthesize",
+                    "--filelist",
+                    str(test),
+                    str(model),
+                ),
+            )
+            self.assertIn(
+                "Loading checkpoint",  # This means the command was not invalid
                 result.stdout,
             )
 
@@ -117,45 +139,32 @@ class ValidateDataWithModelTest(TestCase):
     Validate different combination of user provided options against model configuration.
     """
 
-    def test_multilingual_no_language(self):
-        """
-        The model is multilingual but the user did not provide a language.
-        """
-        data = [{"language": None}]
-        config = FastSpeech2Config()
-        config.model.multilingual = True
-        model_languages = {"L1", "L2"}
-        f = io.StringIO()
-        with self.assertRaises(SystemExit), redirect_stderr(f):
-            validate_languages_with_model(
-                data,
-                config,
-                model_languages=model_languages,
-            )
-        self.assertIn(
-            "Your model is multilingual and you've failed to provide a language for all your sentences."
-            f" Available languages are {model_languages}",
-            f.getvalue(),
-        )
-
     def test_multilingual_invalid_language(self):
         """
         The model is multilingual and the user provided a language that is not supported by the model.
         """
         language = "UNSUPPORTED"
-        data = [{"language": language}]
         config = FastSpeech2Config()
         config.model.multilingual = True
         model_languages = {"L1", "L2"}
         f = io.StringIO()
         with self.assertRaises(SystemExit), redirect_stderr(f):
-            validate_languages_with_model(
-                data,
-                config,
-                model_languages=model_languages,
+            validate_data_keys_with_model_keys(
+                data_keys={language}, model_keys=model_languages, key="language"
             )
         self.assertIn(
-            f"You provided {set((language,))} which is/are not a language(s) supported by the model {model_languages}.",
+            f"You provided {set((language,))} which is not a language supported by the model {model_languages}.",
+            f.getvalue(),
+        )
+        language_two = "ALSO_UNSUPPORTED"
+        with self.assertRaises(SystemExit), redirect_stderr(f):
+            validate_data_keys_with_model_keys(
+                data_keys={language, language_two},
+                model_keys=model_languages,
+                key="language",
+            )
+        self.assertIn(
+            f"You provided {set((language,language_two))} which are not languages that are supported by the model {model_languages}.",
             f.getvalue(),
         )
 
@@ -164,59 +173,16 @@ class ValidateDataWithModelTest(TestCase):
         The model is not multilingual and the user provided a language.
         """
         language = "L3"
-        data = [{"language": language}]
         config = FastSpeech2Config()
         config.model.multilingual = False
         model_languages = DEFAULT_LANG2ID
         f = io.StringIO()
         with self.assertRaises(SystemExit), redirect_stderr(f):
-            validate_languages_with_model(
-                data,
-                config,
-                model_languages=model_languages,
+            validate_data_keys_with_model_keys(
+                data_keys={language}, model_keys=model_languages, key="language"
             )
         self.assertIn(
-            f"The current model is not multilingual but you've provide {set((language,))}.",
-            f.getvalue(),
-        )
-
-    def test_multilingual_single_language_no_language(self):
-        """
-        The model is multilingual but only has one language and the user did not provided a language.
-        We expect the data's language to be changed to the only language provided by the model.
-        """
-        language = None
-        data = [{"language": language}]
-        config = FastSpeech2Config()
-        config.model.multilingual = True
-        model_languages = {
-            "L1",
-        }
-        validate_languages_with_model(
-            data,
-            config,
-            model_languages=model_languages,
-        )
-        self.assertListEqual(data, [{"language": "L1"}])
-
-    def test_multispeaker_no_speaker(self):
-        """
-        The model is multispeaker but the user did not provide a speaker.
-        """
-        data = [{"speaker": None}]
-        config = FastSpeech2Config()
-        config.model.multispeaker = True
-        model_speakers = {"S1", "S2"}
-        f = io.StringIO()
-        with self.assertRaises(SystemExit), redirect_stderr(f):
-            validate_speakers_with_model(
-                data,
-                config,
-                model_speakers=model_speakers,
-            )
-        self.assertIn(
-            "Your model is multispeaker and you've failed to provide a speaker for all your sentences."
-            f" Available speakers are {model_speakers}",
+            "You provided {'L3'} which is not a language supported by the model",
             f.getvalue(),
         )
 
@@ -225,19 +191,16 @@ class ValidateDataWithModelTest(TestCase):
         The model is multispeaker and the user provided a speaker that is not supported by the model.
         """
         speaker = "UNSUPPORTED"
-        data = [{"speaker": speaker}]
         config = FastSpeech2Config()
         config.model.multispeaker = True
         model_speakers = {"S1", "S2"}
         f = io.StringIO()
         with self.assertRaises(SystemExit), redirect_stderr(f):
-            validate_speakers_with_model(
-                data,
-                config,
-                model_speakers=model_speakers,
+            validate_data_keys_with_model_keys(
+                data_keys={speaker}, model_keys=model_speakers, key="speaker"
             )
         self.assertIn(
-            f"You provided {set((speaker,))} which is/are not a speaker(s) supported by the model {model_speakers}.",
+            f"You provided {set((speaker,))} which is not a speaker supported by the model {model_speakers}.",
             f.getvalue(),
         )
 
@@ -246,40 +209,18 @@ class ValidateDataWithModelTest(TestCase):
         The model is not multispeaker and the user provided a speaker.
         """
         speaker = "s3"
-        data = [{"speaker": speaker}]
         config = FastSpeech2Config()
         config.model.multispeaker = False
         model_speakers = DEFAULT_SPEAKER2ID
         f = io.StringIO()
         with self.assertRaises(SystemExit), redirect_stderr(f):
-            validate_speakers_with_model(
-                data,
-                config,
-                model_speakers=model_speakers,
+            validate_data_keys_with_model_keys(
+                data_keys={speaker}, model_keys=model_speakers, key="speaker"
             )
         self.assertIn(
-            f"The current model doesn't support multi speakers but you've provide {set((speaker,))}.",
+            "You provided {'s3'} which is not a speaker supported by the model",
             f.getvalue(),
         )
-
-    def test_multispeaker_single_speaker_no_speaker(self):
-        """
-        The model is multispeaker but only has one speaker and the user did not provided a speaker.
-        We expect the data's speaker to default to the only speaker provided by the model.
-        """
-        speaker = None
-        data = [{"speaker": speaker}]
-        config = FastSpeech2Config()
-        config.model.multispeaker = True
-        model_speakers = {
-            "S1",
-        }
-        validate_speakers_with_model(
-            data,
-            config,
-            model_speakers=model_speakers,
-        )
-        self.assertListEqual(data, [{"speaker": "S1"}])
 
 
 if __name__ == "__main__":

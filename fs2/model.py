@@ -36,8 +36,8 @@ class FastSpeech2(pl.LightningModule):
     ):
         """ """
         super().__init__()
-        if not isinstance(config, FeaturePredictionConfig):
-            config = FeaturePredictionConfig(**config)
+        if not isinstance(config, FastSpeech2Config):
+            config = FastSpeech2Config(**config)
         if stats is not None and not isinstance(stats, Stats):
             stats = Stats(**stats)
         self.config = config
