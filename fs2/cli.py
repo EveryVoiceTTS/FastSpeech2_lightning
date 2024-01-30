@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import textwrap
 from enum import Enum
 from glob import glob
 from pathlib import Path
@@ -479,8 +480,8 @@ def synthesize(  # noqa: C901
             sys.exit(1)
 
     data: list[dict[str, Any]]
-    DEFAULT_LANGUAGE = next(iter(model.lang2id.keys()))
-    DEFAULT_SPEAKER = next(iter(model.speaker2id.keys()))
+    DEFAULT_LANGUAGE = next(iter(model.lang2id.keys()), None)
+    DEFAULT_SPEAKER = next(iter(model.speaker2id.keys()), None)
     if texts:
         print(f"Processing text {texts}", file=sys.stderr)
         data = [
@@ -510,19 +511,21 @@ def synthesize(  # noqa: C901
             # TODO: Errors should have better formatting:
             #       https://github.com/roedoejet/FastSpeech2_lightning/issues/26
             logger.info(
-                """
-EveryVoice only accepts filelists in PSV format as in:
+                textwrap.dedent(
+                    """
+                EveryVoice only accepts filelists in PSV format as in:
 
-    basename|text|language|speaker
-    LJ0001|Hello|eng|LJ
+                    basename|text|language|speaker
+                    LJ0001|Hello|eng|LJ
 
-Or in a format where each new line is an utterance:
+                Or in a format where each new line is an utterance:
 
-    This is a sentence.
-    Here is another sentence.
+                    This is a sentence.
+                    Here is another sentence.
 
-Your filelist did not contain the correct keys so we will assume it is in the plain text format.
+                Your filelist did not contain the correct keys so we will assume it is in the plain text format.
                         """
+                )
             )
             with open(filelist, encoding="utf8") as f:
                 data = [
