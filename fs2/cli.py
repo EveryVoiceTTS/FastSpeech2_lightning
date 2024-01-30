@@ -214,7 +214,7 @@ def train(**kwargs):
         model_config=FastSpeech2Config,
         model=FastSpeech2,
         data_module=FastSpeech2DataModule,
-        monitor="training/total_loss",
+        monitor="validation/total_loss",
         gradient_clip_val=1.0,
         model_kwargs=model_kwargs,
         **kwargs,
