@@ -1,5 +1,10 @@
 #!/usr/bin/env python
 
+"""
+If you've installed `everyvoice` and would like to run this unittest:
+python -m unittest everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.tests.test_cli
+"""
+
 import io
 from contextlib import redirect_stderr
 from pathlib import Path
@@ -8,8 +13,17 @@ from unittest import TestCase, main
 
 from typer.testing import CliRunner
 
-from ..cli import app, validate_data_keys_with_model_keys
-from ..config import FastSpeech2Config
+try:
+    from ..cli import app, validate_data_keys_with_model_keys
+    from ..config import FastSpeech2Config
+except ImportError:
+    from everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.cli import (
+        app,
+        validate_data_keys_with_model_keys,
+    )
+    from everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.config import (
+        FastSpeech2Config,
+    )
 
 DEFAULT_LANG2ID: set = set()
 DEFAULT_SPEAKER2ID: set = set()
@@ -72,7 +86,7 @@ class SynthesizeTest(TestCase):
             test.touch()
             model = tmpdir / "model"
             model.touch()
-            result = self.runner.invoke(
+            _ = self.runner.invoke(
                 app,
                 (
                     "synthesize",
@@ -96,7 +110,7 @@ class SynthesizeTest(TestCase):
             test.touch()
             model = tmpdir / "model"
             model.touch()
-            result = self.runner.invoke(
+            _ = self.runner.invoke(
                 app,
                 (
                     "synthesize",
@@ -121,7 +135,7 @@ class SynthesizeTest(TestCase):
                 f.write("\n".join(["this is a test sentence", "and another test"]))
             model = tmpdir / "model"
             model.touch()
-            result = self.runner.invoke(
+            _ = self.runner.invoke(
                 app,
                 (
                     "synthesize",
