@@ -3,6 +3,7 @@ black~=22.0
 flake8>=4.0.1
 gitlint-core==0.17.0
 isort>=5.10.1
+matplotlib-stubs==0.2.0
 mypy>=1.8.0
 pre-commit>=2.6.0
 types-pyyaml>=6.0.5
