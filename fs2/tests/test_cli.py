@@ -11,14 +11,17 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase, main
 
+from everyvoice.tests.stubs import mute_logger
+from everyvoice.utils import generic_dict_loader
 from typer.testing import CliRunner
 
 try:
-    from ..cli import app, validate_data_keys_with_model_keys
+    from ..cli import app, prepare_synthesize_data, validate_data_keys_with_model_keys
     from ..config import FastSpeech2Config
 except ImportError:
     from everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.cli import (
         app,
+        prepare_synthesize_data,
         validate_data_keys_with_model_keys,
     )
     from everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.config import (
@@ -79,77 +82,56 @@ class SynthesizeTest(TestCase):
             )
             self.assertIn("You must define either --text or --filelist", result.stdout)
 
+
+class PrepareSynthesizeDataTest(TestCase):
+    """"""
+
     def test_filelist_language(self):
-        with TemporaryDirectory() as tmpdir:
-            tmpdir = Path(tmpdir)
-            test = tmpdir / "test.psv"
-            test.touch()
-            model = tmpdir / "model"
-            model.touch()
-            _ = self.runner.invoke(
-                app,
-                (
-                    "synthesize",
-                    "--filelist",
-                    str(test),
-                    "--language",
-                    "foo",
-                    str(model),
-                ),
-            )
-            # TODO: we need to actually check that the language overwrites the languages provided in the filelist
-            # self.assertIn(
-            #     "Loading checkpoint",  # This means the command was not invalid
-            #     result.stdout,
-            # )
+        """
+        Use a different language than the one provided in the filelist.
+        """
+        data = prepare_synthesize_data(
+            texts=[],
+            language="foo",
+            speaker="bar",
+            model_lang2id={"foo": 1},
+            model_speaker2id={"bar": 2},
+            filelist=Path(__file__).parent / "data/filelist.psv",
+            filelist_loader=generic_dict_loader,
+        )
+        self.assertEqual(len(data), 9)
+        self.assertTrue(all((d["language"] == "foo" for d in data)))
 
     def test_filelist_speaker(self):
-        with TemporaryDirectory() as tmpdir:
-            tmpdir = Path(tmpdir)
-            test = tmpdir / "test.psv"
-            test.touch()
-            model = tmpdir / "model"
-            model.touch()
-            _ = self.runner.invoke(
-                app,
-                (
-                    "synthesize",
-                    "--filelist",
-                    str(test),
-                    "--speaker",
-                    "BAD",
-                    str(model),
-                ),
-            )
-            # TODO: we need to actually check that the speaker overwrites the speakers provided in the filelist
-            # self.assertIn(
-            #     "Loading checkpoint",  # This means the command was not invalid
-            #     result.stdout,
-            # )
+        """
+        Use a different speaker than the one provided in the filelist.
+        """
+        data = prepare_synthesize_data(
+            texts=[],
+            language="foo",
+            speaker="bar",
+            model_lang2id={"foo": 1},
+            model_speaker2id={"bar": 2},
+            filelist=Path(__file__).parent / "data/filelist.psv",
+            filelist_loader=generic_dict_loader,
+        )
+        self.assertEqual(len(data), 9)
+        self.assertTrue(all((d["speaker"] == "bar" for d in data)))
 
     def test_plain_filelist(self):
-        with TemporaryDirectory() as tmpdir:
-            tmpdir = Path(tmpdir)
-            test = tmpdir / "test.list"
-            with open(test, "w") as f:
-                f.write("\n".join(["this is a test sentence", "and another test"]))
-            model = tmpdir / "model"
-            model.touch()
-            _ = self.runner.invoke(
-                app,
-                (
-                    "synthesize",
-                    "--filelist",
-                    str(test),
-                    str(model),
-                ),
+        with mute_logger("fs2.cli"):
+            data = prepare_synthesize_data(
+                texts=[],
+                language=None,
+                speaker=None,
+                model_lang2id={"foo": 1},
+                model_speaker2id={"bar": 2},
+                filelist=Path(__file__).parent / "data/filelist.txt",
+                filelist_loader=generic_dict_loader,
             )
-            # TODO: we need to actually check that the default/first speaker and language was used
-            #       and this should be logged to the user
-            # self.assertIn(
-            #     "Loading checkpoint",  # This means the command was not invalid
-            #     result.stdout,
-            # )
+        self.assertEqual(len(data), 9)
+        self.assertTrue(all((d["language"] == "foo" for d in data)))
+        self.assertTrue(all((d["speaker"] == "bar" for d in data)))
 
 
 class ValidateDataWithModelTest(TestCase):

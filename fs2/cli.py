@@ -13,6 +13,7 @@ from everyvoice.base_cli.interfaces import (
     preprocess_base_command_interface,
     train_base_command_interface,
 )
+from everyvoice.text.lookups import LookupTable
 from loguru import logger
 from merge_args import merge_args
 from tqdm import tqdm
@@ -376,6 +377,91 @@ def validate_data_keys_with_model_keys(
         sys.exit(1)
 
 
+def prepare_synthesize_data(
+    texts: list[str],
+    language: str | None,
+    speaker: str | None,
+    model_lang2id: LookupTable,
+    model_speaker2id: LookupTable,
+    filelist: Path,
+    filelist_loader,
+) -> list[dict[str, Any]]:
+    """"""
+    from everyvoice.utils import slugify
+
+    data: list[dict[str, Any]]
+    DEFAULT_LANGUAGE = next(iter(model_lang2id.keys()), None)
+    DEFAULT_SPEAKER = next(iter(model_speaker2id.keys()), None)
+    if texts:
+        print(f"Processing text {texts}", file=sys.stderr)
+        data = [
+            {
+                "basename": slugify(text),
+                "text": text,
+                "language": language or DEFAULT_LANGUAGE,
+                "speaker": speaker or DEFAULT_SPEAKER,
+            }
+            for text in texts
+        ]
+    else:
+        data = filelist_loader(filelist)
+        try:
+            data = [
+                {
+                    "basename": slugify(
+                        d.get("basename", d["text"]), limit_to_n_characters=30
+                    ),  # if 'basename' doesn't exist, create a basename from the first 30 chars of the text slug
+                    "text": d["text"],
+                    "language": language or d.get("language", DEFAULT_LANGUAGE),
+                    "speaker": speaker or d.get("speaker", DEFAULT_SPEAKER),
+                }
+                for d in data
+            ]
+        except KeyError:
+            # TODO: Errors should have better formatting:
+            #       https://github.com/roedoejet/FastSpeech2_lightning/issues/26
+            logger.info(
+                textwrap.dedent(
+                    """
+                EveryVoice only accepts filelists in PSV format as in:
+
+                    basename|text|language|speaker
+                    LJ0001|Hello|eng|LJ
+
+                Or in a format where each new line is an utterance:
+
+                    This is a sentence.
+                    Here is another sentence.
+
+                Your filelist did not contain the correct keys so we will assume it is in the plain text format.
+                        """
+                )
+            )
+            with open(filelist, encoding="utf8") as f:
+                data = [
+                    {
+                        "basename": slugify(line.strip(), limit_to_n_characters=30),
+                        "text": line.strip(),
+                        "language": language or DEFAULT_LANGUAGE,
+                        "speaker": speaker or DEFAULT_SPEAKER,
+                    }
+                    for line in f
+                ]
+
+    validate_data_keys_with_model_keys(
+        data_keys=set(d["language"] for d in data),
+        model_keys=set(model_lang2id.keys()),
+        key="language",
+    )
+    validate_data_keys_with_model_keys(
+        data_keys=set(d["speaker"] for d in data),
+        model_keys=set(model_speaker2id.keys()),
+        key="speaker",
+    )
+
+    return data
+
+
 @app.command()
 def synthesize(  # noqa: C901
     model_path: Path = typer.Argument(
@@ -454,7 +540,6 @@ def synthesize(  # noqa: C901
     # TODO: allow for changing of language/speaker and variance control
     import torch
     from everyvoice.preprocessor import Preprocessor
-    from everyvoice.utils import slugify
 
     from .model import FastSpeech2
     from .synthesize_text_dataset import SynthesizeTextDataSet
@@ -491,73 +576,14 @@ def synthesize(  # noqa: C901
             )
             sys.exit(1)
 
-    data: list[dict[str, Any]]
-    DEFAULT_LANGUAGE = next(iter(model.lang2id.keys()), None)
-    DEFAULT_SPEAKER = next(iter(model.speaker2id.keys()), None)
-    if texts:
-        print(f"Processing text {texts}", file=sys.stderr)
-        data = [
-            {
-                "basename": slugify(text),
-                "text": text,
-                "language": language or DEFAULT_LANGUAGE,
-                "speaker": speaker or DEFAULT_SPEAKER,
-            }
-            for text in texts
-        ]
-    else:
-        data = model.config.training.filelist_loader(filelist)
-        try:
-            data = [
-                {
-                    "basename": slugify(
-                        d.get("basename", d["text"]), limit_to_n_characters=30
-                    ),  # if 'basename' doesn't exist, create a basename from the first 30 chars of the text slug
-                    "text": d["text"],
-                    "language": language or d.get("language", DEFAULT_LANGUAGE),
-                    "speaker": speaker or d.get("speaker", DEFAULT_SPEAKER),
-                }
-                for d in data
-            ]
-        except KeyError:
-            # TODO: Errors should have better formatting:
-            #       https://github.com/roedoejet/FastSpeech2_lightning/issues/26
-            logger.info(
-                textwrap.dedent(
-                    """
-                EveryVoice only accepts filelists in PSV format as in:
-
-                    basename|text|language|speaker
-                    LJ0001|Hello|eng|LJ
-
-                Or in a format where each new line is an utterance:
-
-                    This is a sentence.
-                    Here is another sentence.
-
-                Your filelist did not contain the correct keys so we will assume it is in the plain text format.
-                        """
-                )
-            )
-            with open(filelist, encoding="utf8") as f:
-                data = [
-                    {
-                        "basename": slugify(line.strip(), limit_to_n_characters=30),
-                        "text": line.strip(),
-                        "language": language or DEFAULT_LANGUAGE,
-                        "speaker": speaker or DEFAULT_SPEAKER,
-                    }
-                    for line in f.readlines()
-                ]
-    validate_data_keys_with_model_keys(
-        data_keys=set(d["language"] for d in data),
-        model_keys=set(model.lang2id.keys()),
-        key="language",
-    )
-    validate_data_keys_with_model_keys(
-        data_keys=set(d["speaker"] for d in data),
-        model_keys=set(model.speaker2id.keys()),
-        key="speaker",
+    data = prepare_synthesize_data(
+        texts=texts,
+        language=language,
+        speaker=speaker,
+        model_lang2id=model.lang2id,
+        model_speaker2id=model.speaker2id,
+        filelist=filelist,
+        filelist_loader=model.config.training.filelist_loader,
     )
 
     dataset = SynthesizeTextDataSet(
