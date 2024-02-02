@@ -221,23 +221,17 @@ class PredictionWritingWavCallback(Callback):
             self.vocoder,
         )
         sr = self.config.preprocessing.audio.output_sampling_rate
-
         return wavs, sr
 
     def _infer_everyvoice(self, outputs) -> Tuple[np.ndarray, int]:
         """
-        Generate wabs using Everyvoice model.
+        Generate wavs using Everyvoice model.
         """
         from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
             synthesize_data,
         )
 
         wavs, sr = synthesize_data(outputs[self.output_key], self.vocoder)
-        # synthesize 16 bit audio
-        if (wavs >= -1.0).all() & (wavs <= 1.0).all():
-            wavs = wavs * self.config.preprocessing.audio.max_wav_value
-            wavs = wavs.astype("int16")
-
         return wavs, sr
 
     def _get_filename(self, basename: str, speaker: str, language: str) -> Path:
@@ -258,6 +252,21 @@ class PredictionWritingWavCallback(Callback):
 
         wavs, sr = self.synthesize(outputs)
 
+        # wavs: [B (batch_size), T (samples)]
+        assert (
+            wavs.ndim == 2
+        ), f"The generated audio contained more than 2 dimensions. First dimension should be B(atch) and the second dimension should be T(ime) in samples. Got {wavs.shape} instead."
+        assert wavs.shape[0] == outputs["output"].size(
+            0
+        ), f"You provided {outputs['output'].size(0)} utterances, but {wavs.shape[0]} audio files were synthesized instead."
+
+        # synthesize 16 bit audio
+        # we don't do this higher up in the inference methods
+        # because tensorboard logs require audio data as floats
+        if (wavs >= -1.0).all() & (wavs <= 1.0).all():
+            wavs = wavs * self.config.preprocessing.audio.max_wav_value
+            wavs = wavs.astype("int16")
+
         for basename, speaker, language, wav, unmasked_len in zip(
             batch["basename"],
             batch["speaker"],
@@ -265,10 +274,6 @@ class PredictionWritingWavCallback(Callback):
             wavs,
             outputs["tgt_lens"],
         ):
-            if wav.ndim < 2:
-                # TODO: Here is a temporary fix for the next part which removes padding based on the batch. This should be removed in the fix for https://github.com/roedoejet/FastSpeech2_lightning/issues/25
-                wav = np.expand_dims(wav, 0)
-
             write(
                 self._get_filename(
                     basename=basename,
