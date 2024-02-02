@@ -500,8 +500,8 @@ def synthesize(  # noqa: C901
             {
                 "basename": slugify(text),
                 "text": text,
-                "language": language,
-                "speaker": speaker,
+                "language": language or DEFAULT_LANGUAGE,
+                "speaker": speaker or DEFAULT_SPEAKER,
             }
             for text in texts
         ]
