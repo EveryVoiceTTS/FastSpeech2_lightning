@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Sequence, Tuple
+from typing import Any, Sequence, Tuple
 
 import numpy as np
 import torch
@@ -70,12 +70,20 @@ class PredictionWritingNpyCallback(Callback):
         return self.save_dir / self.sep.join([basename, speaker, language, "pred.npy"])
 
     def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
-        self, _trainer, _pl_module, outputs, batch, _batch_idx, _dataloader_idx=0
+        self,
+        _trainer,
+        _pl_module,
+        outputs: dict[str, torch.Tensor | None],
+        batch: dict[str, Any],
+        _batch_idx: int,
+        _dataloader_idx: int = 0,
     ):
         import numpy as np
 
-        specs = outputs[self.output_key].transpose(1, 2).cpu().numpy()
+        assert self.output_key in outputs and outputs[self.output_key] is not None
+        specs = outputs[self.output_key].transpose(1, 2).cpu().numpy()  # type: ignore
 
+        assert "tgt_lens" in outputs and outputs["tgt_lens"] is not None
         for basename, speaker, language, spec, unmasked_len in zip(
             batch["basename"],
             batch["speaker"],
@@ -122,13 +130,21 @@ class PredictionWritingPtCallback(Callback):
         )
 
     def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
-        self, _trainer, _pl_module, outputs, batch, _batch_idx, _dataloader_idx=0
+        self,
+        _trainer,
+        _pl_module,
+        outputs: dict[str, torch.Tensor | None],
+        batch: dict[str, Any],
+        _batch_idx: int,
+        _dataloader_idx: int = 0,
     ):
+        assert self.output_key in outputs and outputs[self.output_key] is not None
+        assert "tgt_lens" in outputs and outputs["tgt_lens"] is not None
         for basename, speaker, language, data, unmasked_len in zip(
             batch["basename"],
             batch["speaker"],
             batch["language"],
-            outputs[self.output_key],
+            outputs[self.output_key],  # type: ignore
             outputs["tgt_lens"],
         ):
             torch.save(
@@ -241,21 +257,24 @@ class PredictionWritingWavCallback(Callback):
         self,
         _trainer,
         _pl_module,
-        outputs,
-        batch,
-        _batch_idx,
-        _dataloader_idx=0,
+        outputs: dict[str, torch.Tensor | None],
+        batch: dict[str, Any],
+        _batch_idx: int,
+        _dataloader_idx: int = 0,
     ):
         from scipy.io.wavfile import write
 
         logger.trace("Generating waveform...")
 
+        sr: int
+        wavs: np.ndarray
         wavs, sr = self.synthesize(outputs)
 
         # wavs: [B (batch_size), T (samples)]
         assert (
             wavs.ndim == 2
         ), f"The generated audio contained more than 2 dimensions. First dimension should be B(atch) and the second dimension should be T(ime) in samples. Got {wavs.shape} instead."
+        assert "output" in outputs and outputs["output"] is not None
         assert wavs.shape[0] == outputs["output"].size(
             0
         ), f"You provided {outputs['output'].size(0)} utterances, but {wavs.shape[0]} audio files were synthesized instead."
@@ -267,6 +286,7 @@ class PredictionWritingWavCallback(Callback):
             wavs = wavs * self.config.preprocessing.audio.max_wav_value
             wavs = wavs.astype("int16")
 
+        assert "tgt_lens" in outputs and outputs["tgt_lens"] is not None
         for basename, speaker, language, wav, unmasked_len in zip(
             batch["basename"],
             batch["speaker"],
