@@ -16,12 +16,18 @@ from everyvoice.utils import generic_dict_loader
 from typer.testing import CliRunner
 
 try:
-    from ..cli import app, prepare_synthesize_data, validate_data_keys_with_model_keys
+    from ..cli.cli import app
+    from ..cli.synthesize import prepare_data as prepare_synthesize_data
+    from ..cli.synthesize import validate_data_keys_with_model_keys
     from ..config import FastSpeech2Config
 except ImportError:
-    from everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.cli import (
+    from everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.cli.cli import (
         app,
-        prepare_synthesize_data,
+    )
+    from everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.cli.synthesize import (
+        prepare_data as prepare_synthesize_data,
+    )
+    from everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.cli.synthesize import (
         validate_data_keys_with_model_keys,
     )
     from everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.config import (
@@ -221,6 +227,43 @@ class ValidateDataWithModelTest(TestCase):
             "You provided {'s3'} which is not a speaker supported by the model",
             f.getvalue(),
         )
+
+
+class CLITest(TestCase):
+    """
+    Validate that all subcommands are accessible.
+    """
+
+    def setUp(self) -> None:
+        self.runner = CliRunner()
+        self.subcommands = (
+            "audit",
+            "benchmark",
+            "check_data",
+            "preprocess",
+            "synthesize",
+            "train",
+        )
+
+    def test_commands_present(self):
+        """
+        Each subcommand is present in the the command's help message.
+        """
+        result = self.runner.invoke(app, ["--help"])
+        for command in self.subcommands:
+            with self.subTest(msg=f"Looking for {command}"):
+                self.assertIn(command, result.stdout)
+
+    def test_command_help_messages(self):
+        """
+        Each subcommand has its help message.
+        """
+        for subcommand in self.subcommands:
+            with self.subTest(msg=f"Looking for {subcommand}'s help"):
+                result = self.runner.invoke(app, [subcommand, "--help"])
+                self.assertEqual(result.exit_code, 0)
+                result = self.runner.invoke(app, [subcommand, "-h"])
+                self.assertEqual(result.exit_code, 0)
 
 
 if __name__ == "__main__":
