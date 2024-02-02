@@ -2,9 +2,12 @@ from typing import Sequence
 
 import torch
 from everyvoice.preprocessor import Preprocessor
+from everyvoice.text import TextProcessor
 from everyvoice.text.lookups import LookupTable
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
+
+from .config import FastSpeech2Config
 
 
 def collator(data: list):
@@ -30,12 +33,13 @@ class SynthesizeTextDataSet(Dataset):
     def __init__(
         self,
         items: Sequence[dict[str, str]],
-        preprocessor: Preprocessor,
+        config: FastSpeech2Config,
         lang2id: LookupTable,
         speaker2id: LookupTable,
     ):
         self.items = items
-        self.preprocessor = preprocessor
+        self.config = config
+        self.text_processor = TextProcessor(config)
         self.lang2id = lang2id
         self.speaker2id = speaker2id
 
@@ -44,7 +48,11 @@ class SynthesizeTextDataSet(Dataset):
 
     def __getitem__(self, idx):
         item = self.items[idx]
-        text_tensor = self.preprocessor.extract_text_inputs(item["text"])
+        text_tensor = Preprocessor.extract_text_inputs(
+            item["text"],
+            self.text_processor,
+            use_pfs=self.config.model.use_phonological_feats,
+        )
         # Create Batch
         src_lens = text_tensor.size(0)
         max_src_len = src_lens

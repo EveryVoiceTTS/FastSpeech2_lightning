@@ -214,7 +214,6 @@ def synthesize(  # noqa: C901
     """Given some text and a trained model, generate some audio. i.e. perform typical speech synthesis"""
     # TODO: allow for changing of language/speaker and variance control
     import torch
-    from everyvoice.preprocessor import Preprocessor
 
     from ..model import FastSpeech2
     from ..synthesize_text_dataset import SynthesizeTextDataSet
@@ -261,7 +260,7 @@ def synthesize(  # noqa: C901
 
     dataset = SynthesizeTextDataSet(
         data,
-        preprocessor=Preprocessor(model.config),
+        config=model.config,
         lang2id=model.lang2id,
         speaker2id=model.speaker2id,
     )
