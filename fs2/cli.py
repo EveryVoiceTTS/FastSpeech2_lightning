@@ -13,12 +13,11 @@ from everyvoice.base_cli.interfaces import (
     preprocess_base_command_interface,
     train_base_command_interface,
 )
-from everyvoice.text.lookups import LookupTable
 from loguru import logger
 from merge_args import merge_args
 from tqdm import tqdm
 
-from .type_definitions import SynthesizeOutputFormats
+from .type_definitions import LookupTable, SynthesizeOutputFormats
 
 app = typer.Typer(
     pretty_exceptions_show_locals=False,

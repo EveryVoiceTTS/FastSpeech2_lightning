@@ -2,6 +2,9 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict
 
+# Redining LookupTable to minimize import cost.
+LookupTable = dict[str, int]
+
 
 class SynthesizeOutputFormats(str, Enum):
     """Valid output formats for synthesize"""
