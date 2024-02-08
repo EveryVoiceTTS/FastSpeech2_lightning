@@ -3,19 +3,12 @@ from pathlib import Path
 
 import typer
 
-app = typer.Typer(
-    pretty_exceptions_show_locals=False,
-    context_settings={"help_option_names": ["-h", "--help"]},
-    help="A PyTorch Lightning implementation of the FastSpeech2 Text-to-Speech Feature Prediction Model",
-)
-
 
 class BenchmarkType(str, Enum):
     training = "training"
     inference = "inference"
 
 
-@app.command()
 def benchmark(
     config_file: Path = typer.Argument(
         ...,
@@ -86,7 +79,3 @@ def benchmark(
     print(
         f"Average forward pass for {benchmark_type.value} duration after {repetitions} repetitions: {np.sum(timings) / repetitions} ms Standard Deviation: {np.std(timings)}"
     )
-
-
-if __name__ == "__main__":
-    app()

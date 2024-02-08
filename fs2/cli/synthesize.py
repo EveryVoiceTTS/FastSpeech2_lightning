@@ -8,12 +8,6 @@ from loguru import logger
 
 from ..type_definitions import LookupTable, SynthesizeOutputFormats
 
-app = typer.Typer(
-    pretty_exceptions_show_locals=False,
-    context_settings={"help_option_names": ["-h", "--help"]},
-    help="""Given some text and a trained model, generate some audio. i.e. perform typical speech synthesis""",
-)
-
 
 def validate_data_keys_with_model_keys(
     data_keys: set[str], model_keys: set[str], key: str
@@ -129,7 +123,6 @@ def prepare_data(
     return data
 
 
-@app.command()
 def synthesize(  # noqa: C901
     model_path: Path = typer.Argument(
         ...,
