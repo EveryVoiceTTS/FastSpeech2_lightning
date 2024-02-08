@@ -156,7 +156,10 @@ class ValidateDataWithModelTest(TestCase):
         f = io.StringIO()
         with self.assertRaises(SystemExit), redirect_stderr(f):
             validate_data_keys_with_model_keys(
-                data_keys={language}, model_keys=model_languages, key="language"
+                data_keys={language},
+                model_keys=model_languages,
+                key="language",
+                multi=bool(model_languages),
             )
         self.assertIn(
             f"You provided {set((language,))} which is not a language supported by the model {model_languages}.",
@@ -168,6 +171,7 @@ class ValidateDataWithModelTest(TestCase):
                 data_keys={language, language_two},
                 model_keys=model_languages,
                 key="language",
+                multi=bool(model_languages),
             )
         self.assertIn(
             f"You provided {set((language,language_two))} which are not languages that are supported by the model {model_languages}.",
@@ -185,10 +189,13 @@ class ValidateDataWithModelTest(TestCase):
         f = io.StringIO()
         with self.assertRaises(SystemExit), redirect_stderr(f):
             validate_data_keys_with_model_keys(
-                data_keys={language}, model_keys=model_languages, key="language"
+                data_keys={language},
+                model_keys=model_languages,
+                key="language",
+                multi=bool(model_languages),
             )
         self.assertIn(
-            "You provided {'L3'} which is not a language supported by the model",
+            "The current model doesn't support multiple languages",
             f.getvalue(),
         )
 
@@ -203,10 +210,13 @@ class ValidateDataWithModelTest(TestCase):
         f = io.StringIO()
         with self.assertRaises(SystemExit), redirect_stderr(f):
             validate_data_keys_with_model_keys(
-                data_keys={speaker}, model_keys=model_speakers, key="speaker"
+                data_keys={speaker},
+                model_keys=model_speakers,
+                key="speaker",
+                multi=bool(model_speakers),
             )
         self.assertIn(
-            f"You provided {set((speaker,))} which is not a speaker supported by the model {model_speakers}.",
+            "The current model doesn't support multiple speakers",
             f.getvalue(),
         )
 
@@ -221,7 +231,10 @@ class ValidateDataWithModelTest(TestCase):
         f = io.StringIO()
         with self.assertRaises(SystemExit), redirect_stderr(f):
             validate_data_keys_with_model_keys(
-                data_keys={speaker}, model_keys=model_speakers, key="speaker"
+                data_keys={speaker},
+                model_keys=model_speakers,
+                key="speaker",
+                multi=bool(model_speakers),
             )
         self.assertIn(
             "You provided {'s3'} which is not a speaker supported by the model",
