@@ -152,7 +152,6 @@ class PostNet(nn.Module):
         postnet_kernel_size=5,
         postnet_n_convolutions=5,
     ):
-
         super(PostNet, self).__init__()
         self.convolutions = nn.ModuleList()
 

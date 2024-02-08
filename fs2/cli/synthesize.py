@@ -10,32 +10,45 @@ from ..type_definitions import LookupTable, SynthesizeOutputFormats
 
 
 def validate_data_keys_with_model_keys(
-    data_keys: set[str], model_keys: set[str], key: str
+    data_keys: set[str], model_keys: set[str], key: str, multi: bool
 ) -> None:
     """
     Make sure the user-supplied language or speaker specification is compatible with the model.
     In current version of model, we can validate either key="language" or key="speaker"
+    Args:
+        data_keys: values for key found in the data
+        model_keys: values for key found in the model
+        key: "language" or "speaker"
+        multi: whether the model was trained in multilingual/speaker mode
     """
-    if key not in ["language", "speaker"]:
-        raise ValueError("We can currently only validate language and speaker.")
+    if multi:
+        if None in data_keys:
+            print(
+                f"You have not specified a {key} for all your sentences."
+                f" Available values are {model_keys}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
-    if None in data_keys:
-        print(
-            f"You have not specified a {key} for all your sentences."
-            f" Available values are {model_keys}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    extra = data_keys.difference(model_keys)
-    if len(extra) > 0:
-        print(
-            f"You provided {data_keys} which are not {key}s that are supported by the model {model_keys or {}}."
-            if len(data_keys) > 1
-            else f"You provided {data_keys} which is not a {key} supported by the model {model_keys or {}}.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        extras = data_keys.difference(model_keys)
+        if extras:
+            is_or_are_not = (
+                f"are not {key}s that are" if len(data_keys) > 1 else f"is not a {key}"
+            )
+            print(
+                f"You provided {data_keys} which {is_or_are_not} supported by the model {model_keys or {}}.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+    else:
+        extras = data_keys.difference({None})
+        if extras:
+            print(
+                f"The current model doesn't support multiple {key}s but your data has {key}s {extras}.\n"
+                f"Please retrain your model with multi{'lingual' if key == 'language' else key} set to True.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
 
 def prepare_data(
@@ -113,11 +126,13 @@ def prepare_data(
         data_keys=set(d["language"] for d in data),
         model_keys=set(model_lang2id.keys()),
         key="language",
+        multi=model.config.model.multilingual,
     )
     validate_data_keys_with_model_keys(
         data_keys=set(d["speaker"] for d in data),
         model_keys=set(model_speaker2id.keys()),
         key="speaker",
+        multi=model.config.model.multispeaker,
     )
 
     return data
