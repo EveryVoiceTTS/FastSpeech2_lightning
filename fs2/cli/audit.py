@@ -7,14 +7,7 @@ from pathlib import Path
 import typer
 from tqdm import tqdm
 
-app = typer.Typer(
-    pretty_exceptions_show_locals=False,
-    context_settings={"help_option_names": ["-h", "--help"]},
-    help="A PyTorch Lightning implementation of the FastSpeech2 Text-to-Speech Feature Prediction Model",
-)
 
-
-@app.command()
 def audit(
     config_file: Path = typer.Argument(
         ...,
@@ -138,7 +131,3 @@ def audit(
                 "Nothing to check. Please re-run with --should_check_stats or --dimensions",
                 file=sys.stderr,
             )
-
-
-if __name__ == "__main__":
-    app()

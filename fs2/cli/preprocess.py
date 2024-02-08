@@ -5,12 +5,6 @@ import typer
 from everyvoice.base_cli.interfaces import preprocess_base_command_interface
 from merge_args import merge_args
 
-app = typer.Typer(
-    pretty_exceptions_show_locals=False,
-    context_settings={"help_option_names": ["-h", "--help"]},
-    help="A PyTorch Lightning implementation of the FastSpeech2 Text-to-Speech Feature Prediction Model",
-)
-
 
 class PreprocessCategories(str, Enum):
     audio = "audio"
@@ -21,7 +15,6 @@ class PreprocessCategories(str, Enum):
     energy = "energy"
 
 
-@app.command()
 @merge_args(preprocess_base_command_interface)
 def preprocess(
     compute_stats: bool = typer.Option(
@@ -69,7 +62,3 @@ def preprocess(
             config.preprocessing.save_dir / "stats.json", "w", encoding="utf8"
         ) as f:
             json.dump(stats, f)
-
-
-if __name__ == "__main__":
-    app()

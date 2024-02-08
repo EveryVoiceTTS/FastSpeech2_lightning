@@ -1,32 +1,12 @@
 import typer
 from everyvoice.wizard import TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX
 
-try:
-    from fs2.cli.audit import audit as app_audit
-    from fs2.cli.benchmark import benchmark as app_benchmark
-    from fs2.cli.check_data import check_data as app_check_data
-    from fs2.cli.preprocess import preprocess as app_preprocess
-    from fs2.cli.synthesize import synthesize as app_synthesize
-    from fs2.cli.train import train as app_train
-except ImportError:
-    from everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.cli.audit import (
-        audit as app_audit,
-    )
-    from everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.cli.benchmark import (
-        benchmark as app_benchmark,
-    )
-    from everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.cli.check_data import (
-        check_data as app_check_data,
-    )
-    from everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.cli.preprocess import (
-        preprocess as app_preprocess,
-    )
-    from everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.cli.synthesize import (
-        synthesize as app_synthesize,
-    )
-    from everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.cli.train import (
-        train as app_train,
-    )
+from .audit import audit as app_audit
+from .benchmark import benchmark as app_benchmark
+from .check_data import check_data as app_check_data
+from .preprocess import preprocess as app_preprocess
+from .synthesize import synthesize as app_synthesize
+from .train import train as app_train
 
 app = typer.Typer(
     pretty_exceptions_show_locals=False,
@@ -80,7 +60,3 @@ app.command(
     **everyvoice train text-to-spec config/{TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX}.yaml**
     """,
 )(app_train)
-
-
-if __name__ == "__main__":
-    app()

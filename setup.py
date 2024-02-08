@@ -34,7 +34,7 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     install_requires=REQS,
-    entry_points={"console_scripts": ["fs2l = fs2.cli.cli:app"]},
+    entry_points={"console_scripts": ["fs2l = fs2.cli:app"]},
     zip_safe=False,
     classifiers=[
         "Programming Language :: Python :: 3",

@@ -1,17 +1,9 @@
 import json
 
-import typer
 from everyvoice.base_cli.interfaces import train_base_command_interface
 from merge_args import merge_args
 
-app = typer.Typer(
-    pretty_exceptions_show_locals=False,
-    context_settings={"help_option_names": ["-h", "--help"]},
-    help="A PyTorch Lightning implementation of the FastSpeech2 Text-to-Speech Feature Prediction Model",
-)
 
-
-@app.command()
 @merge_args(train_base_command_interface)
 def train(**kwargs):
     from everyvoice.base_cli.helpers import load_config_base_command, train_base_command
@@ -42,7 +34,3 @@ def train(**kwargs):
         model_kwargs=model_kwargs,
         **kwargs,
     )
-
-
-if __name__ == "__main__":
-    app()
