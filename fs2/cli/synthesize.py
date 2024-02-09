@@ -6,7 +6,7 @@ from typing import Any, Optional
 import typer
 from loguru import logger
 
-from ..type_definitions import LookupTable, SynthesizeOutputFormats
+from ..type_definitions import SynthesizeOutputFormats
 
 
 def validate_data_keys_with_model_keys(
@@ -55,17 +55,17 @@ def prepare_data(
     texts: list[str],
     language: str | None,
     speaker: str | None,
-    model_lang2id: LookupTable,
-    model_speaker2id: LookupTable,
     filelist: Path,
-    filelist_loader,
+    # model is of type ..model.FastSpeech2, but we make it Any to keep the CLI
+    # fast and enable mocking in unit testing.
+    model: Any,
 ) -> list[dict[str, Any]]:
     """"""
     from everyvoice.utils import slugify
 
     data: list[dict[str, Any]]
-    DEFAULT_LANGUAGE = next(iter(model_lang2id.keys()), None)
-    DEFAULT_SPEAKER = next(iter(model_speaker2id.keys()), None)
+    DEFAULT_LANGUAGE = next(iter(model.lang2id.keys()), None)
+    DEFAULT_SPEAKER = next(iter(model.speaker2id.keys()), None)
     if texts:
         print(f"Processing text {texts}", file=sys.stderr)
         data = [
@@ -78,7 +78,7 @@ def prepare_data(
             for text in texts
         ]
     else:
-        data = filelist_loader(filelist)
+        data = model.config.training.filelist_loader(filelist)
         try:
             data = [
                 {
@@ -124,13 +124,13 @@ def prepare_data(
 
     validate_data_keys_with_model_keys(
         data_keys=set(d["language"] for d in data),
-        model_keys=set(model_lang2id.keys()),
+        model_keys=set(model.lang2id.keys()),
         key="language",
         multi=model.config.model.multilingual,
     )
     validate_data_keys_with_model_keys(
         data_keys=set(d["speaker"] for d in data),
-        model_keys=set(model_speaker2id.keys()),
+        model_keys=set(model.speaker2id.keys()),
         key="speaker",
         multi=model.config.model.multispeaker,
     )
@@ -255,10 +255,8 @@ def synthesize(  # noqa: C901
         texts=texts,
         language=language,
         speaker=speaker,
-        model_lang2id=model.lang2id,
-        model_speaker2id=model.speaker2id,
         filelist=filelist,
-        filelist_loader=model.config.training.filelist_loader,
+        model=model,
     )
 
     dataset = SynthesizeTextDataSet(

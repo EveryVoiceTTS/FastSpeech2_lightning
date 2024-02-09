@@ -26,7 +26,7 @@ SUITES: dict[str, tuple[str, ...]] = {
     "cli": ("test_cli",),
     "others": ("test_lookuptable",),
 }
-dev_suites = ("cli",)
+dev_suites = ("cli", "others")
 SUITES["dev"] = sum((SUITES[suite] for suite in dev_suites), start=())
 
 
