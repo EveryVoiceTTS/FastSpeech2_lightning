@@ -14,7 +14,7 @@ from everyvoice.config.shared_types import (
 from everyvoice.config.text_config import TextConfig
 from everyvoice.config.utils import load_partials
 from everyvoice.utils import load_config_from_json_or_yaml_path
-from pydantic import Field, FilePath, ValidationInfo, model_validator
+from pydantic import Field, FilePath, ValidationInfo, field_validator, model_validator
 
 
 class ConformerConfig(ConfigModel):
@@ -190,6 +190,17 @@ class FastSpeech2TrainingConfig(BaseTrainingConfig):
         100,
         description="Scale the Attention Binarization loss by (current_epoch / attn_bin_loss_warmup_epochs) until the number of epochs defined by attn_bin_loss_warmup_epochs is reached.",
     )
+
+    # NOTE: We must use a different name for this function than the one in the
+    # base class or else it overrides the base class and we lose validation.
+    @field_validator("vocoder_path", mode="before")
+    @classmethod
+    def relative_to_absolute_vocoder_path(
+        cls, value: Any, info: ValidationInfo
+    ) -> Path:
+        if isinstance(value, (str, Path)):
+            return cls.path_relative_to_absolute(Path(value), info)
+        return value
 
 
 class FastSpeech2Config(PartialLoadConfig):
