@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 """
 If you've installed `everyvoice` and would like to run this unittest:
 python -m unittest everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.tests.test_cli
@@ -9,30 +7,16 @@ import io
 from contextlib import redirect_stderr
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest import TestCase, main
+from unittest import TestCase
 
 from everyvoice.tests.stubs import mute_logger
 from everyvoice.utils import generic_dict_loader
 from typer.testing import CliRunner
 
-try:
-    from ..cli.cli import app
-    from ..cli.synthesize import prepare_data as prepare_synthesize_data
-    from ..cli.synthesize import validate_data_keys_with_model_keys
-    from ..config import FastSpeech2Config
-except ImportError:
-    from everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.cli.cli import (
-        app,
-    )
-    from everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.cli.synthesize import (
-        prepare_data as prepare_synthesize_data,
-    )
-    from everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.cli.synthesize import (
-        validate_data_keys_with_model_keys,
-    )
-    from everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.config import (
-        FastSpeech2Config,
-    )
+from ..cli.cli import app
+from ..cli.synthesize import prepare_data as prepare_synthesize_data
+from ..cli.synthesize import validate_data_keys_with_model_keys
+from ..config import FastSpeech2Config
 
 DEFAULT_LANG2ID: set = set()
 DEFAULT_SPEAKER2ID: set = set()
@@ -306,7 +290,3 @@ class CLITest(TestCase):
                 self.assertEqual(result.exit_code, 0)
                 result = self.runner.invoke(app, [subcommand, "-h"])
                 self.assertEqual(result.exit_code, 0)
-
-
-if __name__ == "__main__":
-    main()
