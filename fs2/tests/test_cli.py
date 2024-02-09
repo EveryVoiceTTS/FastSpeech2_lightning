@@ -89,6 +89,23 @@ class SynthesizeTest(TestCase):
             self.assertIn("You must define either --text or --filelist", result.stdout)
 
 
+class MockModelForPrepare:
+    class Dummy:
+        pass
+
+    def __init__(
+        self, lang2id, speaker2id, filelist_loader, multilingual, multispeaker
+    ):
+        self.lang2id = lang2id
+        self.speaker2id = speaker2id
+        self.config = self.Dummy()
+        self.config.training = self.Dummy()
+        self.config.training.filelist_loader = filelist_loader
+        self.config.model = self.Dummy()
+        self.config.model.multilingual = multilingual
+        self.config.model.multispeaker = multispeaker
+
+
 class PrepareSynthesizeDataTest(TestCase):
     """"""
 
@@ -100,10 +117,14 @@ class PrepareSynthesizeDataTest(TestCase):
             texts=[],
             language="foo",
             speaker="bar",
-            model_lang2id={"foo": 1},
-            model_speaker2id={"bar": 2},
             filelist=Path(__file__).parent / "data/filelist.psv",
-            filelist_loader=generic_dict_loader,
+            model=MockModelForPrepare(
+                lang2id={"foo": 1},
+                speaker2id={"bar": 2},
+                filelist_loader=generic_dict_loader,
+                multilingual=True,
+                multispeaker=True,
+            ),
         )
         self.assertEqual(len(data), 9)
         self.assertTrue(all((d["language"] == "foo" for d in data)))
@@ -116,10 +137,14 @@ class PrepareSynthesizeDataTest(TestCase):
             texts=[],
             language="foo",
             speaker="bar",
-            model_lang2id={"foo": 1},
-            model_speaker2id={"bar": 2},
             filelist=Path(__file__).parent / "data/filelist.psv",
-            filelist_loader=generic_dict_loader,
+            model=MockModelForPrepare(
+                lang2id={"foo": 1},
+                speaker2id={"bar": 2},
+                filelist_loader=generic_dict_loader,
+                multilingual=True,
+                multispeaker=True,
+            ),
         )
         self.assertEqual(len(data), 9)
         self.assertTrue(all((d["speaker"] == "bar" for d in data)))
@@ -130,10 +155,14 @@ class PrepareSynthesizeDataTest(TestCase):
                 texts=[],
                 language=None,
                 speaker=None,
-                model_lang2id={"foo": 1},
-                model_speaker2id={"bar": 2},
                 filelist=Path(__file__).parent / "data/filelist.txt",
-                filelist_loader=generic_dict_loader,
+                model=MockModelForPrepare(
+                    lang2id={"foo": 1},
+                    speaker2id={"bar": 2},
+                    filelist_loader=generic_dict_loader,
+                    multilingual=True,
+                    multispeaker=True,
+                ),
             )
         self.assertEqual(len(data), 9)
         self.assertTrue(all((d["language"] == "foo" for d in data)))
@@ -216,7 +245,7 @@ class ValidateDataWithModelTest(TestCase):
                 multi=bool(model_speakers),
             )
         self.assertIn(
-            "The current model doesn't support multiple speakers",
+            f"You provided {set((speaker,))} which is not a speaker supported by the model {model_speakers}.",
             f.getvalue(),
         )
 
@@ -237,7 +266,7 @@ class ValidateDataWithModelTest(TestCase):
                 multi=bool(model_speakers),
             )
         self.assertIn(
-            "You provided {'s3'} which is not a speaker supported by the model",
+            "The current model doesn't support multiple speakers",
             f.getvalue(),
         )
 
