@@ -28,11 +28,18 @@ class SynthesizeTest(TestCase):
 
     def test_help(self):
         result = self.runner.invoke(app, ["synthesize", "--help"])
-        self.assertIn("synthesize [OPTIONS] MODEL_PATH", result.stdout)
+        self.assertIn("synthesize [OPTIONS] MODEL_PATH VOCODER_PATH", result.stdout)
 
     def test_no_model(self):
         result = self.runner.invoke(app, ["synthesize"])
         self.assertIn("Missing argument 'MODEL_PATH'.", result.stdout)
+
+    def test_no_vocoder(self):
+        with TemporaryDirectory() as tmpdir:
+            model = Path(tmpdir) / "foo"
+            model.touch()
+            result = self.runner.invoke(app, ["synthesize", str(model)])
+            self.assertIn("Missing argument 'VOCODER_PATH'.", result.stdout)
 
     def test_filelist_and_text(self):
         with TemporaryDirectory() as tmpdir:
@@ -49,7 +56,8 @@ class SynthesizeTest(TestCase):
                     str(test),
                     "--text",
                     "BAD",
-                    str(model),
+                    str(model),  # model
+                    str(model),  # vocoder
                 ),
             )
             self.assertIn(
@@ -67,6 +75,7 @@ class SynthesizeTest(TestCase):
                 app,
                 (
                     "synthesize",
+                    str(model),
                     str(model),
                 ),
             )

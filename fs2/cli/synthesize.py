@@ -146,6 +146,13 @@ def synthesize(  # noqa: C901
         dir_okay=False,
         help="The path to a trained text-to-spec or e2e EveryVoice model.",
     ),
+    vocoder_path: Path = typer.Argument(
+        ...,
+        file_okay=True,
+        exists=True,
+        dir_okay=False,
+        help="The path to a trained vocoder.",
+    ),
     output_dir: Path = typer.Option(
         "synthesis_output",
         "--output-dir",
@@ -191,12 +198,6 @@ def synthesize(  # noqa: C901
         "-O",
         "--output-type",
         help="Which format to synthesize to. **wav** is the default and will synthesize to a playable audio file. **npy** will generate spectrograms required to fine-tune [HiFiGAN](https://github.com/jik876/hifi-gan) (Mel-band oriented tensors, K, T). **pt** will generate predicted Mel spectrograms in the EveryVoice format (time-oriented Tensors, T, K)",
-    ),
-    vocoder_path: Path = typer.Option(
-        None,
-        "--vocoder-path",
-        "-v",
-        help="The path to a trained vocoder in case one was not specified in your model configuration.",
     ),
     batch_size: int = typer.Option(
         4,
