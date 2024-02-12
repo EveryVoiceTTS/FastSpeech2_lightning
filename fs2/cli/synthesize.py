@@ -218,11 +218,6 @@ def synthesize(  # noqa: C901
     from ..model import FastSpeech2
     from ..synthesize_text_dataset import SynthesizeTextDataSet
 
-    if model_path is None:
-        # TODO A CLI Shouldn't not using logging to communicate with the user.
-        print("Model path is required.", file=sys.stderr)
-        sys.exit(1)
-
     if texts and filelist:
         print(
             "Got arguments for both text and a filelist - this will only process the text."
@@ -233,22 +228,23 @@ def synthesize(  # noqa: C901
         print("You must define either --text or --filelist", file=sys.stderr)
         sys.exit(1)
 
+    # output to .wav will require a valid spec-to-wav model
+    if SynthesizeOutputFormats.wav in output_type and not vocoder_path:
+        print(
+            "Missing --vocoder-path option, which is required when the output type is 'wav'.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     output_dir.mkdir(exist_ok=True, parents=True)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     # Load checkpoints
     print(f"Loading checkpoint from {model_path}", file=sys.stderr)
     model: FastSpeech2 = FastSpeech2.load_from_checkpoint(model_path).to(device)
     model.eval()
-    # output to .wav will require a valid spec-to-wav model
+
     if SynthesizeOutputFormats.wav in output_type:
-        if vocoder_path:
-            model.config.training.vocoder_path = vocoder_path
-        if not model.config.training.vocoder_path:
-            print(
-                "Sorry, no vocoder was provided, please add it to model.config.training.vocoder_path or as --vocoder-path /path/to/vocoder in the command line",
-                file=sys.stderr,
-            )
-            sys.exit(1)
+        model.config.training.vocoder_path = vocoder_path
 
     data = prepare_data(
         texts=texts,
