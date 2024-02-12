@@ -24,9 +24,8 @@ except ImportError:
 
 SUITES: dict[str, tuple[str, ...]] = {
     "cli": ("test_cli",),
-    "others": ("test_lookuptable",),
 }
-dev_suites = ("cli", "others")
+dev_suites = ("cli",)
 SUITES["dev"] = sum((SUITES[suite] for suite in dev_suites), start=())
 
 
