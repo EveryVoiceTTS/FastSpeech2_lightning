@@ -182,8 +182,8 @@ class PredictionWritingWavCallback(Callback):
             import sys
 
             logger.error(
-                "Sorry, no vocoder was provided, please add it to model.config.training.vocoder_path"
-                " or as --vocoder-path /path/to/vocoder in the command line"
+                "No vocoder was provided, please specify "
+                "--vocoder-path /path/to/vocoder on the command line."
             )
             sys.exit(1)
         else:
