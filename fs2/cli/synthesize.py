@@ -41,7 +41,12 @@ def validate_data_keys_with_model_keys(
             )
             sys.exit(1)
     else:
-        extras = data_keys.difference({None})
+        # NOTE: Even in non multiX, the model has a default value.
+        # Looking at a filelist.psv
+        # basename|text|language|speaker
+        # LJ002-0234|In the yard behind the prison|und|default
+        # TODO: Instead, should we check that `data_keys == model_keys`?
+        extras = data_keys.difference(model_keys | {None})
         if extras:
             print(
                 f"The current model doesn't support multiple {key}s but your data has {key}s {extras}.\n"
@@ -64,6 +69,9 @@ def prepare_data(
     from everyvoice.utils import slugify
 
     data: list[dict[str, Any]]
+    # NOTE: The wizard adds a default speaker=`default` to the data.
+    # It also asks for a language that the user choses from a list which then becomes the default lanaguage, like `und`.
+    # Knowing this, model.*2id should always have a default value thus DEFAULT_* should never be `None`.
     DEFAULT_LANGUAGE = next(iter(model.lang2id.keys()), None)
     DEFAULT_SPEAKER = next(iter(model.speaker2id.keys()), None)
     if texts:
