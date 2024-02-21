@@ -9,6 +9,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
 
+from everyvoice.config.shared_types import ContactInformation
 from everyvoice.tests.stubs import mute_logger
 from everyvoice.utils import generic_dict_loader
 from typer.testing import CliRunner
@@ -20,6 +21,9 @@ from ..config import FastSpeech2Config
 
 DEFAULT_LANG2ID: set = set()
 DEFAULT_SPEAKER2ID: set = set()
+CONTACT = ContactInformation(
+    contact_name="Test Runner", contact_email="info@everyvoice.ca"
+)
 
 
 class SynthesizeTest(TestCase):
@@ -163,7 +167,7 @@ class ValidateDataWithModelTest(TestCase):
         The model is multilingual and the user provided a language that is not supported by the model.
         """
         language = "UNSUPPORTED"
-        config = FastSpeech2Config()
+        config = FastSpeech2Config(contact=CONTACT)
         config.model.multilingual = True
         model_languages = {"L1", "L2"}
         f = io.StringIO()
@@ -196,7 +200,7 @@ class ValidateDataWithModelTest(TestCase):
         The model is not multilingual and the user provided a language.
         """
         language = "L3"
-        config = FastSpeech2Config()
+        config = FastSpeech2Config(contact=CONTACT)
         config.model.multilingual = False
         model_languages = DEFAULT_LANG2ID
         f = io.StringIO()
@@ -217,7 +221,7 @@ class ValidateDataWithModelTest(TestCase):
         The model is multispeaker and the user provided a speaker that is not supported by the model.
         """
         speaker = "UNSUPPORTED"
-        config = FastSpeech2Config()
+        config = FastSpeech2Config(contact=CONTACT)
         config.model.multispeaker = True
         model_speakers = {"S1", "S2"}
         f = io.StringIO()
@@ -238,7 +242,7 @@ class ValidateDataWithModelTest(TestCase):
         The model is not multispeaker and the user provided a speaker.
         """
         speaker = "s3"
-        config = FastSpeech2Config()
+        config = FastSpeech2Config(contact=CONTACT)
         config.model.multispeaker = False
         model_speakers = DEFAULT_SPEAKER2ID
         f = io.StringIO()

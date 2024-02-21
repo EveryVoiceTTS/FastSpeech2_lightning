@@ -5,10 +5,10 @@ from typing import Annotated, Any, Dict, Optional, Union
 from annotated_types import Ge
 from everyvoice.config.preprocessing_config import PreprocessingConfig
 from everyvoice.config.shared_types import (
+    BaseModelWithContact,
     BaseTrainingConfig,
     ConfigModel,
     NoamOptimizer,
-    PartialLoadConfig,
     init_context,
 )
 from everyvoice.config.text_config import TextConfig
@@ -203,7 +203,7 @@ class FastSpeech2TrainingConfig(BaseTrainingConfig):
         return value
 
 
-class FastSpeech2Config(PartialLoadConfig):
+class FastSpeech2Config(BaseModelWithContact):
     model: FastSpeech2ModelConfig = Field(
         default_factory=FastSpeech2ModelConfig,
         description="The model configuration settings.",
