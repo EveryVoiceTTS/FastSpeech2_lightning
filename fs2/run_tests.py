@@ -24,8 +24,12 @@ except ImportError:
 
 SUITES: dict[str, tuple[str, ...]] = {
     "cli": ("test_cli",),
+    "callbacks": ("test_writing_callbacks",),
 }
-dev_suites = ("cli",)
+dev_suites = (
+    "cli",
+    "callbacks",
+)
 SUITES["dev"] = sum((SUITES[suite] for suite in dev_suites), start=())
 
 

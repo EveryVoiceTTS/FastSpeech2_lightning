@@ -1,13 +1,32 @@
+import hashlib
 from pathlib import Path
 from typing import Any, Sequence, Tuple
 
 import numpy as np
 import torch
+from everyvoice.utils import slugify
 from loguru import logger
 from pytorch_lightning.callbacks import Callback
 
 from .config import FastSpeech2Config
 from .type_definitions import SynthesizeOutputFormats
+
+BASENAME_MAX_LENGTH = 20
+
+
+def truncate_basename(basename: str) -> str:
+    """
+    Shortens basename to BASENAME_MAX_LENGTH and uses the rest of basename to generate a sha1.
+    This is done to make sure the file name stays short but that two utterances
+    starting with the same prefix doesn't get ovverridden.
+    """
+    basename_cleaned = slugify(basename)
+    if len(basename_cleaned) <= BASENAME_MAX_LENGTH:
+        return basename_cleaned
+
+    m = hashlib.sha1()
+    m.update(bytes(basename, encoding="UTF-8"))
+    return basename_cleaned[:BASENAME_MAX_LENGTH] + "-" + m.hexdigest()[:8]
 
 
 def get_synthesis_output_callbacks(
@@ -16,6 +35,7 @@ def get_synthesis_output_callbacks(
     config: FastSpeech2Config,
     output_key: str,
     device: torch.device,
+    global_step: int,
 ):
     """
     Given a list of desired output file formats, return the proper callbacks
@@ -25,6 +45,7 @@ def get_synthesis_output_callbacks(
     if SynthesizeOutputFormats.npy in output_type:
         callbacks.append(
             PredictionWritingNpyCallback(
+                global_step=global_step,
                 output_dir=output_dir,
                 output_key=output_key,
             )
@@ -32,42 +53,72 @@ def get_synthesis_output_callbacks(
     if SynthesizeOutputFormats.pt in output_type:
         callbacks.append(
             PredictionWritingPtCallback(
-                output_dir=output_dir,
                 config=config,
+                global_step=global_step,
+                output_dir=output_dir,
                 output_key=output_key,
             )
         )
     if SynthesizeOutputFormats.wav in output_type:
         callbacks.append(
             PredictionWritingWavCallback(
-                output_dir=output_dir,
                 config=config,
-                output_key=output_key,
                 device=device,
+                global_step=global_step,
+                output_dir=output_dir,
+                output_key=output_key,
             )
         )
 
     return callbacks
 
 
-class PredictionWritingNpyCallback(Callback):
+class PredictionWritingCallbackBase(Callback):
+    def __init__(
+        self,
+        file_extension: str,
+        global_step: int,
+        save_dir: Path,
+    ) -> None:
+        super().__init__()
+        self.file_extension = file_extension
+        self.global_step = f"ckpt={global_step}"
+        self.save_dir = save_dir
+        self.sep = "--"
+
+        self.save_dir.mkdir(parents=True, exist_ok=True)
+
+    def _get_filename(self, basename: str, speaker: str, language: str) -> Path:
+        return self.save_dir / self.sep.join(
+            [
+                truncate_basename(basename),
+                speaker,
+                language,
+                self.global_step,
+                self.file_extension,
+            ]
+        )
+
+
+class PredictionWritingNpyCallback(PredictionWritingCallbackBase):
     """
     This callback runs inference on a provided text-to-spec model and writes the output to numpy files in the format required (B, K, T) for fine-tuning a hifi-gan model using the author's repository (i.e. not EveryVoice): https://github.com/jik876/hifi-gan
     """
 
     def __init__(
         self,
+        global_step: int,
         output_dir: Path,
         output_key: str,
     ):
-        self.output_key = output_key
-        self.save_dir = output_dir / "original_hifigan_spec"
-        self.sep = "--"
-        logger.info(f"Saving numpy output to {self.save_dir}")
-        self.save_dir.mkdir(parents=True, exist_ok=True)
+        super().__init__(
+            file_extension="pred.npy",
+            global_step=global_step,
+            save_dir=output_dir / "original_hifigan_spec",
+        )
 
-    def _get_filename(self, basename: str, speaker: str, language: str) -> Path:
-        return self.save_dir / self.sep.join([basename, speaker, language, "pred.npy"])
+        self.output_key = output_key
+        logger.info(f"Saving numpy output to {self.save_dir}")
 
     def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
         self,
@@ -101,33 +152,27 @@ class PredictionWritingNpyCallback(Callback):
             )
 
 
-class PredictionWritingPtCallback(Callback):
+class PredictionWritingPtCallback(PredictionWritingCallbackBase):
     """
     This callback runs inference on a provided text-to-spec model and saves the resulting Mel spectrograms to disk as pytorch files. These can be used to fine-tune an EveryVoice spec-to-wav model.
     """
 
     def __init__(
         self,
-        output_dir: Path,
         config: FastSpeech2Config,
+        global_step: int,
+        output_dir: Path,
         output_key: str,
     ):
-        self.output_key = output_key
-        self.save_dir = output_dir / "synthesized_spec"
-        self.config = config
-        self.sep = "--"
-        logger.info(f"Saving pytorch output to {self.save_dir}")
-        self.save_dir.mkdir(parents=True, exist_ok=True)
-
-    def _get_filename(self, basename: str, speaker: str, language: str) -> Path:
-        return self.save_dir / self.sep.join(
-            [
-                basename,
-                speaker,
-                language,
-                f"spec-pred-{self.config.preprocessing.audio.input_sampling_rate}-{self.config.preprocessing.audio.spec_type}.pt",
-            ]
+        super().__init__(
+            global_step=global_step,
+            file_extension=f"spec-pred-{config.preprocessing.audio.input_sampling_rate}-{config.preprocessing.audio.spec_type}.pt",
+            save_dir=output_dir / "synthesized_spec",
         )
+
+        self.output_key = output_key
+        self.config = config
+        logger.info(f"Saving pytorch output to {self.save_dir}")
 
     def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
         self,
@@ -157,7 +202,7 @@ class PredictionWritingPtCallback(Callback):
             )
 
 
-class PredictionWritingWavCallback(Callback):
+class PredictionWritingWavCallback(PredictionWritingCallbackBase):
     """
     Given text-to-spec, this callback does spec-to-wav and writes wav files.
     """
@@ -168,14 +213,18 @@ class PredictionWritingWavCallback(Callback):
         config: FastSpeech2Config,
         output_key: str,
         device: torch.device,
+        global_step: int,
     ):
+        super().__init__(
+            file_extension="pred.wav",
+            global_step=global_step,
+            save_dir=output_dir / "wav",
+        )
+
         self.output_key = output_key
         self.device = device
-        self.save_dir = output_dir / "wav"
         self.config = config
-        self.sep = "--"
         logger.info(f"Saving wav output to {self.save_dir}")
-        self.save_dir.mkdir(parents=True, exist_ok=True)
 
         logger.info(f"Loading Vocoder from {self.config.training.vocoder_path}")
         if self.config.training.vocoder_path is None:
@@ -205,12 +254,18 @@ class PredictionWritingWavCallback(Callback):
                     sampling_rate_change * self.config.preprocessing.audio.fft_hop_size
                 )
                 self.synthesize = self._infer_generator_universal
+                self.file_extension = self.sep.join(
+                    ("v=universal", self.file_extension)
+                )
             else:
                 from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import (
                     HiFiGANConfig,
                 )
 
-                self.vocoder = torch.load(self.config.training.vocoder_path)
+                # TODO: Shouldn't we load the vocoder on a GPU preferably?
+                self.vocoder = torch.load(
+                    self.config.training.vocoder_path, map_location=torch.device("cpu")
+                )
                 vocoder_config: dict | HiFiGANConfig = self.vocoder["hyper_parameters"][
                     "config"
                 ]
@@ -225,6 +280,10 @@ class PredictionWritingWavCallback(Callback):
                     * vocoder_config.preprocessing.audio.fft_hop_size
                 )
                 self.synthesize = self._infer_everyvoice
+                vocoder_global_step = self.vocoder.get("global_step", 0)
+                self.file_extension = self.sep.join(
+                    (f"v_ckpt={vocoder_global_step}", self.file_extension)
+                )
 
     def _infer_generator_universal(self, outputs) -> Tuple[np.ndarray, int]:
         """
@@ -249,9 +308,6 @@ class PredictionWritingWavCallback(Callback):
 
         wavs, sr = synthesize_data(outputs[self.output_key], self.vocoder)
         return wavs, sr
-
-    def _get_filename(self, basename: str, speaker: str, language: str) -> Path:
-        return self.save_dir / self.sep.join([basename, speaker, language, "pred.wav"])
 
     def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
         self,
