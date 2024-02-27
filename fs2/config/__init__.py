@@ -159,7 +159,9 @@ class FastSpeech2TrainingConfig(BaseTrainingConfig):
         description="Whether to use a sampler which oversamples from the minority language or speaker class for balanced training.",
     )
     optimizer: NoamOptimizer = Field(
-        default_factory=NoamOptimizer,
+        NoamOptimizer(
+            betas=(0.9, 0.999), learning_rate=1e-3, warmup_steps=1000, weight_decay=1e-6
+        ),
         description="The optimizer to use during training.",
     )
     # TODO: Implement early stopping
@@ -172,19 +174,19 @@ class FastSpeech2TrainingConfig(BaseTrainingConfig):
         1.0, description="Multiply the postnet loss by this weight"
     )
     pitch_loss_weight: float = Field(
-        1.0, description="Multiply the pitch loss by this weight"
+        0.1, description="Multiply the pitch loss by this weight"
     )
     energy_loss_weight: float = Field(
-        1.0, description="Multiply the energy loss by this weight"
+        0.1, description="Multiply the energy loss by this weight"
     )
     duration_loss_weight: float = Field(
-        1.0, description="Multiply the duration loss by this weight"
+        0.1, description="Multiply the duration loss by this weight"
     )
     attn_ctc_loss_weight: float = Field(
-        1.0, description="Multiply the Attention CTC loss by this weight"
+        0.1, description="Multiply the Attention CTC loss by this weight"
     )
     attn_bin_loss_weight: float = Field(
-        1.0, description="Multiply the Attention Binarization loss by this weight"
+        0.1, description="Multiply the Attention Binarization loss by this weight"
     )
     attn_bin_loss_warmup_epochs: Annotated[int, Ge(1)] = Field(
         100,
