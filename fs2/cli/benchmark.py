@@ -2,6 +2,7 @@ from enum import Enum
 from pathlib import Path
 
 import typer
+from everyvoice.base_cli.interfaces import complete_path
 
 
 class BenchmarkType(str, Enum):
@@ -16,6 +17,7 @@ def benchmark(
         dir_okay=False,
         file_okay=True,
         help="The path to your model configuration file.",
+        autocompletion=complete_path,
     ),
     benchmark_type: BenchmarkType = BenchmarkType.training,
     gpu: bool = True,

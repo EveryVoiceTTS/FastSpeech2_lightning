@@ -5,6 +5,7 @@ from glob import glob
 from pathlib import Path
 
 import typer
+from everyvoice.base_cli.interfaces import complete_path
 from tqdm import tqdm
 
 
@@ -15,6 +16,7 @@ def audit(
         dir_okay=False,
         file_okay=True,
         help="The path to your model configuration file.",
+        autocompletion=complete_path,
     ),
     should_check_stats: bool = True,
     dimensions: bool = True,
