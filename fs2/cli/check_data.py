@@ -2,14 +2,23 @@ import json
 from pathlib import Path
 
 import typer
-from everyvoice.base_cli.interfaces import load_config_base_command_interface
+from everyvoice.base_cli.interfaces import (
+    complete_path,
+    load_config_base_command_interface,
+)
 from merge_args import merge_args
 
 
 @merge_args(load_config_base_command_interface)
 def check_data(
     filelist: Path = typer.Option(
-        None, "--filelist", "-f", exists=True, dir_okay=False, file_okay=True
+        None,
+        "--filelist",
+        "-f",
+        exists=True,
+        dir_okay=False,
+        file_okay=True,
+        autocompletion=complete_path,
     ),
     **kwargs,
 ):

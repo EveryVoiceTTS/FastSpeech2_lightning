@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import typer
+from everyvoice.base_cli.interfaces import complete_path
 from loguru import logger
 
 from ..type_definitions import SynthesizeOutputFormats
@@ -153,6 +154,7 @@ def synthesize(  # noqa: C901
         exists=True,
         dir_okay=False,
         help="The path to a trained text-to-spec or e2e EveryVoice model.",
+        autocompletion=complete_path,
     ),
     output_dir: Path = typer.Option(
         "synthesis_output",
@@ -161,6 +163,7 @@ def synthesize(  # noqa: C901
         file_okay=False,
         dir_okay=True,
         help="The directory where your synthesized audio should be written",
+        autocompletion=complete_path,
     ),
     texts: list[str] = typer.Option(
         [],
@@ -193,6 +196,7 @@ def synthesize(  # noqa: C901
         file_okay=True,
         dir_okay=False,
         help="Synthesize all audio in a given filelist. Use --text if you want to just synthesize one sample.",
+        autocompletion=complete_path,
     ),
     output_type: list[SynthesizeOutputFormats] = typer.Option(
         [SynthesizeOutputFormats.wav.value],
@@ -205,6 +209,9 @@ def synthesize(  # noqa: C901
         "--vocoder-path",
         "-v",
         help="The path to a trained vocoder in case one was not specified in your model configuration.",
+        dir_okay=False,
+        file_okay=True,
+        autocompletion=complete_path,
     ),
     batch_size: int = typer.Option(
         4,
