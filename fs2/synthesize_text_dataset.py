@@ -39,7 +39,7 @@ class SynthesizeTextDataSet(Dataset):
     ):
         self.items = items
         self.config = config
-        self.text_processor = TextProcessor(config)
+        self.text_processor = TextProcessor(config.text)
         self.lang2id = lang2id
         self.speaker2id = speaker2id
 

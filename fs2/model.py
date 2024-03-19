@@ -42,7 +42,7 @@ class FastSpeech2(pl.LightningModule):
             stats = Stats(**stats)
         self.config = config
         self.batch_size = config.training.batch_size
-        self.text_processor = TextProcessor(config)
+        self.text_processor = TextProcessor(config.text)
         # TODO Should we fallback to a default lang2id/speaker2id if we are loading an old model?
         self.lang2id = lang2id
         self.speaker2id = speaker2id
