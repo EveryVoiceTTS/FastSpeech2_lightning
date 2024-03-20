@@ -7,8 +7,8 @@ import pytorch_lightning as pl
 import torch
 from everyvoice.model.feature_prediction.config import FeaturePredictionConfig
 from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import synthesize_data
-from everyvoice.text import TextProcessor
 from everyvoice.text.lookups import LookupTable
+from everyvoice.text.text_processor import TextProcessor
 from everyvoice.utils.heavy import expand
 from loguru import logger
 from torch import nn
@@ -60,7 +60,7 @@ class FastSpeech2(pl.LightningModule):
             self.text_input_layer = nn.Embedding(
                 len(self.text_processor.symbols),
                 self.config.model.encoder.input_dim,
-                padding_idx=self.text_processor.text_to_sequence(
+                padding_idx=self.text_processor.encode_text(
                     self.text_processor._pad_symbol
                 )[0],
             )

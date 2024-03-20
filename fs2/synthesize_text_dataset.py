@@ -2,8 +2,8 @@ from typing import Sequence
 
 import torch
 from everyvoice.preprocessor import Preprocessor
-from everyvoice.text import TextProcessor
 from everyvoice.text.lookups import LookupTable
+from everyvoice.text.text_processor import TextProcessor
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 

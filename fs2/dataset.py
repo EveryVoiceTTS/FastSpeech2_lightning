@@ -3,8 +3,8 @@ from pathlib import Path
 import numpy as np
 import torch
 from everyvoice.dataloader import BaseDataModule
-from everyvoice.text import TextProcessor
 from everyvoice.text.lookups import lookuptables_from_config
+from everyvoice.text.text_processor import TextProcessor
 from everyvoice.utils import _flatten, check_dataset_size
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset

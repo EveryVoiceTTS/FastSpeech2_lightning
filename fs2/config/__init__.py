@@ -255,3 +255,5 @@ class FastSpeech2Config(BaseModelWithContact):
         with init_context({"config_path": path}):
             config = FastSpeech2Config(**config)
         return config
+
+    # INPUT_TODO: initialize text with union of symbols from dataset
