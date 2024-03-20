@@ -173,9 +173,9 @@ class VarianceAdaptor(nn.Module):
                 hard_attn = mas_width1(
                     log_attn_cpu[ind, 0, : out_lens_cpu[ind], : in_lens_cpu[ind]]
                 )
-                attn_out_cpu[
-                    ind, 0, : out_lens_cpu[ind], : in_lens_cpu[ind]
-                ] = hard_attn
+                attn_out_cpu[ind, 0, : out_lens_cpu[ind], : in_lens_cpu[ind]] = (
+                    hard_attn
+                )
             attn_out = torch.tensor(attn_out_cpu, device=attn.device, dtype=attn.dtype)
         return attn_out
 
