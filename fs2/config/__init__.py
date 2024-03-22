@@ -9,6 +9,7 @@ from everyvoice.config.shared_types import (
     BaseTrainingConfig,
     ConfigModel,
     NoamOptimizer,
+    TargetTrainingTextRepresentationLevel,
     init_context,
 )
 from everyvoice.config.text_config import TextConfig
@@ -112,6 +113,9 @@ class FastSpeech2ModelConfig(ConfigModel):
         default_factory=VariancePredictors,
         description="Configuration for energy, duration, and pitch variance predictors.",
     )
+    target_text_representation_level: TargetTrainingTextRepresentationLevel = (
+        TargetTrainingTextRepresentationLevel.characters
+    )
     learn_alignment: bool = Field(
         True,
         description="Whether to jointly learn alignments using monotonic alignment search module (See Badlani et. al. 2021: https://arxiv.org/abs/2108.10447). If set to False, you will have to provide text/audio alignments separately before training a text-to-spec (feature prediction) model.",
@@ -123,8 +127,9 @@ class FastSpeech2ModelConfig(ConfigModel):
         VarianceLossEnum.mse,
         description="The loss function to use when calculating Mel spectrogram loss.",
     )
+
     phonological_feats_size: int = Field(
-        38,
+        39,
         description="Advanced. The number of dimension used in the phonological feature vector representation. The default is 38, but this can be changed by modifying the everyvoice/text/features.py module.",
     )
     use_phonological_feats: bool = Field(

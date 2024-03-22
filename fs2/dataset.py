@@ -2,6 +2,8 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from everyvoice.config.preprocessing_config import DatasetTextRepresentation
+from everyvoice.config.shared_types import TargetTrainingTextRepresentationLevel
 from everyvoice.dataloader import BaseDataModule
 from everyvoice.text.lookups import lookuptables_from_config
 from everyvoice.text.text_processor import TextProcessor
@@ -65,15 +67,50 @@ class FastSpeechDataset(Dataset):
             0, 1
         )  # [mel_bins, frames] -> [frames, mel_bins]
         if self.config.model.learn_alignment:
-            duration = self._load_file(
-                basename, speaker, language, "attn", "attn-prior.pt"
-            )
+            if (
+                self.config.model.target_text_representation_level
+                == TargetTrainingTextRepresentationLevel.characters
+            ):
+                duration = self._load_file(
+                    basename,
+                    speaker,
+                    language,
+                    "attn",
+                    f"{DatasetTextRepresentation.characters.value}-attn-prior.pt",
+                )
+            elif self.config.model.target_text_representation_level in [
+                TargetTrainingTextRepresentationLevel.ipa_phones,
+                TargetTrainingTextRepresentationLevel.phonological_features,
+            ]:
+                duration = self._load_file(
+                    basename,
+                    speaker,
+                    language,
+                    "attn",
+                    f"{DatasetTextRepresentation.ipa_phones.value}-attn-prior.pt",
+                )
         else:
             duration = self._load_file(
                 basename, speaker, language, "duration", "duration.pt"
             )
-        text = self._load_file(basename, speaker, language, "text", "text.pt")
-        raw_text = item.get("raw_text", "text")
+        if (
+            self.config.model.target_text_representation_level
+            == TargetTrainingTextRepresentationLevel.characters
+        ):
+            text = torch.Tensor(
+                self.text_processor.encode_escaped_string_sequence(
+                    item["character_tokens"]
+                )
+            ).long()
+        elif self.config.model.target_text_representation_level in [
+            TargetTrainingTextRepresentationLevel.ipa_phones,
+            TargetTrainingTextRepresentationLevel.phonological_features,
+        ]:
+            text = torch.Tensor(
+                self.text_processor.encode_escaped_string_sequence(item["phone_tokens"])
+            ).long()
+
+        raw_text = item.get("raw_text", "clean_text", "text")
         pfs = None
         if self.config.model.use_phonological_feats:
             pfs = self._load_file(basename, speaker, language, "text", "pfs.pt")
