@@ -9,9 +9,12 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
 
-from everyvoice.config.shared_types import ContactInformation
+from everyvoice.config.shared_types import (
+    ContactInformation,
+    TargetTrainingTextRepresentationLevel,
+)
 from everyvoice.tests.stubs import mute_logger
-from everyvoice.utils import generic_dict_loader
+from everyvoice.utils import generic_psv_filelist_reader
 from typer.testing import CliRunner
 
 from ..cli.cli import app
@@ -82,7 +85,13 @@ class MockModelForPrepare:
         pass
 
     def __init__(
-        self, lang2id, speaker2id, filelist_loader, multilingual, multispeaker
+        self,
+        lang2id,
+        speaker2id,
+        filelist_loader,
+        multilingual,
+        multispeaker,
+        target_text_representation_level,
     ):
         self.lang2id = lang2id
         self.speaker2id = speaker2id
@@ -92,6 +101,9 @@ class MockModelForPrepare:
         self.config.model = self.Dummy()
         self.config.model.multilingual = multilingual
         self.config.model.multispeaker = multispeaker
+        self.config.model.target_text_representation_level = (
+            target_text_representation_level
+        )
 
 
 class PrepareSynthesizeDataTest(TestCase):
@@ -109,9 +121,10 @@ class PrepareSynthesizeDataTest(TestCase):
             model=MockModelForPrepare(
                 lang2id={"foo": 1},
                 speaker2id={"bar": 2},
-                filelist_loader=generic_dict_loader,
+                filelist_loader=generic_psv_filelist_reader,
                 multilingual=True,
                 multispeaker=True,
+                target_text_representation_level=TargetTrainingTextRepresentationLevel.characters,
             ),
         )
         self.assertEqual(len(data), 9)
@@ -129,9 +142,10 @@ class PrepareSynthesizeDataTest(TestCase):
             model=MockModelForPrepare(
                 lang2id={"foo": 1},
                 speaker2id={"bar": 2},
-                filelist_loader=generic_dict_loader,
+                filelist_loader=generic_psv_filelist_reader,
                 multilingual=True,
                 multispeaker=True,
+                target_text_representation_level=TargetTrainingTextRepresentationLevel.characters,
             ),
         )
         self.assertEqual(len(data), 9)
@@ -147,9 +161,10 @@ class PrepareSynthesizeDataTest(TestCase):
                 model=MockModelForPrepare(
                     lang2id={"foo": 1},
                     speaker2id={"bar": 2},
-                    filelist_loader=generic_dict_loader,
+                    filelist_loader=generic_psv_filelist_reader,
                     multilingual=True,
                     multispeaker=True,
+                    target_text_representation_level=TargetTrainingTextRepresentationLevel.characters,
                 ),
             )
         self.assertEqual(len(data), 9)

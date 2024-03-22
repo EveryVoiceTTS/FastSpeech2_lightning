@@ -5,6 +5,7 @@ from typing import Any, Optional
 
 import typer
 from everyvoice.base_cli.interfaces import complete_path
+from everyvoice.config.shared_types import TargetTrainingTextRepresentationLevel
 from loguru import logger
 
 from ..type_definitions import SynthesizeOutputFormats
@@ -44,7 +45,7 @@ def validate_data_keys_with_model_keys(
     else:
         # NOTE: Even in non multiX, the model has a default value.
         # Looking at a filelist.psv
-        # basename|text|language|speaker
+        # basename|characters|language|speaker
         # LJ002-0234|In the yard behind the prison|und|default
         # TODO: Instead, should we check that `data_keys == model_keys`?
         extras = data_keys.difference(model_keys | {None})
@@ -75,12 +76,19 @@ def prepare_data(
     # Knowing this, model.*2id should always have a default value thus DEFAULT_* should never be `None`.
     DEFAULT_LANGUAGE = next(iter(model.lang2id.keys()), None)
     DEFAULT_SPEAKER = next(iter(model.speaker2id.keys()), None)
+    if (
+        model.config.model.target_text_representation_level
+        == TargetTrainingTextRepresentationLevel.characters
+    ):
+        text_key = "characters"
+    else:
+        text_key = "phones"  # whether it's phones or pfs we still read in the phones
     if texts:
         print(f"Processing text {texts}", file=sys.stderr)
         data = [
             {
                 "basename": slugify(text),
-                "text": text,
+                text_key: text,
                 "language": language or DEFAULT_LANGUAGE,
                 "speaker": speaker or DEFAULT_SPEAKER,
             }
@@ -92,9 +100,9 @@ def prepare_data(
             data = [
                 {
                     "basename": slugify(
-                        d.get("basename", d["text"]), limit_to_n_characters=30
+                        d.get("basename", d[text_key]), limit_to_n_characters=30
                     ),  # if 'basename' doesn't exist, create a basename from the first 30 chars of the text slug
-                    "text": d["text"],
+                    text_key: d[text_key],
                     "language": language or d.get("language", DEFAULT_LANGUAGE),
                     "speaker": speaker or d.get("speaker", DEFAULT_SPEAKER),
                 }
@@ -108,7 +116,7 @@ def prepare_data(
                     """
                 EveryVoice only accepts filelists in PSV format as in:
 
-                    basename|text|language|speaker
+                    basename|characters|language|speaker
                     LJ0001|Hello|eng|LJ
 
                 Or in a format where each new line is an utterance:
@@ -117,6 +125,7 @@ def prepare_data(
                     Here is another sentence.
 
                 Your filelist did not contain the correct keys so we will assume it is in the plain text format.
+                Text can either be defined as 'characters' or 'phones'.
                         """
                 )
             )
@@ -124,7 +133,7 @@ def prepare_data(
                 data = [
                     {
                         "basename": slugify(line.strip(), limit_to_n_characters=30),
-                        "text": line.strip(),
+                        text_key: line.strip(),
                         "language": language or DEFAULT_LANGUAGE,
                         "speaker": speaker or DEFAULT_SPEAKER,
                     }
@@ -285,6 +294,7 @@ def synthesize(  # noqa: C901
         config=model.config,
         lang2id=model.lang2id,
         speaker2id=model.speaker2id,
+        target_text_representation_level=model.config.model.target_text_representation_level,
     )
 
     from pytorch_lightning import Trainer

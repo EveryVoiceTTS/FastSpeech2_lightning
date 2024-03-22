@@ -1,6 +1,7 @@
 from typing import Sequence
 
 import torch
+from everyvoice.config.shared_types import TargetTrainingTextRepresentationLevel
 from everyvoice.preprocessor import Preprocessor
 from everyvoice.text.lookups import LookupTable
 from everyvoice.text.text_processor import TextProcessor
@@ -36,23 +37,46 @@ class SynthesizeTextDataSet(Dataset):
         config: FastSpeech2Config,
         lang2id: LookupTable,
         speaker2id: LookupTable,
+        target_text_representation_level: TargetTrainingTextRepresentationLevel,
     ):
         self.items = items
         self.config = config
         self.text_processor = TextProcessor(config.text)
+        self.preprocessor = Preprocessor(config)
         self.lang2id = lang2id
         self.speaker2id = speaker2id
+        self.target_text_representation_level = target_text_representation_level
 
     def __len__(self):
         return len(self.items)
 
     def __getitem__(self, idx):
         item = self.items[idx]
-        text_tensor = Preprocessor.extract_text_inputs(
-            item["text"],
-            self.text_processor,
+        pf_tensor = None
+        text_tensor = None
+        characters, phones, pfs = self.preprocessor.process_text(
+            item,
             use_pfs=self.config.model.use_phonological_feats,
         )
+        if (
+            self.target_text_representation_level
+            == TargetTrainingTextRepresentationLevel.characters
+        ):
+            text_tensor = torch.Tensor(characters).long()
+        elif (
+            self.target_text_representation_level
+            == TargetTrainingTextRepresentationLevel.ipa_phones
+        ):
+            text_tensor = torch.Tensor(phones).long()
+        elif (
+            self.target_text_representation_level
+            == TargetTrainingTextRepresentationLevel.phonological_features
+        ):
+            pf_tensor = torch.Tensor(pfs).long()
+        else:
+            raise NotImplementedError(
+                f"Sorry we can only synthesize from either characters, ipa phones, or phonological features and you selected {self.target_text_representation_level}"
+            )
         # Create Batch
         src_lens = text_tensor.size(0)
         max_src_len = src_lens
@@ -62,6 +86,7 @@ class SynthesizeTextDataSet(Dataset):
             speaker_id = 0
         batch = {
             "text": text_tensor,
+            "pfs": pf_tensor,
             "src_lens": torch.LongTensor([src_lens]),
             "language_id": torch.LongTensor([language_id]),
             "speaker_id": torch.LongTensor([speaker_id]),
@@ -75,7 +100,6 @@ class SynthesizeTextDataSet(Dataset):
             # "energy": energy,   # loaded, skipped in inference mode
             # "label": item.get("label", "default"), # TODO: determine proper label
             # "mel": mel,  # loaded
-            # "pfs": pfs,   # loaded
             # "pitch": pitch,   # loaded, skipped in inference mode
             # "raw_text": raw_text,
         }

@@ -24,7 +24,7 @@ def check_data(
 ):
     from everyvoice.base_cli.helpers import load_config_base_command
     from everyvoice.preprocessor import Preprocessor
-    from everyvoice.utils import generic_dict_loader
+    from everyvoice.utils import generic_psv_filelist_reader
 
     from ..config import FastSpeech2Config
 
@@ -32,7 +32,7 @@ def check_data(
         model_config=FastSpeech2Config,
         **kwargs,
     )
-    filelist = generic_dict_loader(filelist)
+    filelist = generic_psv_filelist_reader(filelist)
     preprocessor = Preprocessor(config)
     checked_data = preprocessor.check_data(filelist=filelist)
     with open("datapoints_sil_removed.json", "w", encoding="utf8") as f:
