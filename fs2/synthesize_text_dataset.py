@@ -57,6 +57,7 @@ class SynthesizeTextDataSet(Dataset):
         characters, phones, pfs = self.preprocessor.process_text(
             item,
             use_pfs=self.config.model.use_phonological_feats,
+            specific_text_representation=self.target_text_representation_level,
         )
         if (
             self.target_text_representation_level
