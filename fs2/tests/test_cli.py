@@ -9,6 +9,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
 
+from everyvoice.config.preprocessing_config import DatasetTextRepresentation
 from everyvoice.config.shared_types import (
     ContactInformation,
     TargetTrainingTextRepresentationLevel,
@@ -126,6 +127,7 @@ class PrepareSynthesizeDataTest(TestCase):
                 multispeaker=True,
                 target_text_representation_level=TargetTrainingTextRepresentationLevel.characters,
             ),
+            text_type=DatasetTextRepresentation.characters,
         )
         self.assertEqual(len(data), 9)
         self.assertTrue(all((d["language"] == "foo" for d in data)))
@@ -147,6 +149,7 @@ class PrepareSynthesizeDataTest(TestCase):
                 multispeaker=True,
                 target_text_representation_level=TargetTrainingTextRepresentationLevel.characters,
             ),
+            text_type=DatasetTextRepresentation.characters,
         )
         self.assertEqual(len(data), 9)
         self.assertTrue(all((d["speaker"] == "bar" for d in data)))
@@ -166,6 +169,7 @@ class PrepareSynthesizeDataTest(TestCase):
                     multispeaker=True,
                     target_text_representation_level=TargetTrainingTextRepresentationLevel.characters,
                 ),
+                text_type=DatasetTextRepresentation.characters,
             )
         self.assertEqual(len(data), 9)
         self.assertTrue(all((d["language"] == "foo" for d in data)))

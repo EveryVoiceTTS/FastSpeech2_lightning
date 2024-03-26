@@ -5,6 +5,7 @@ from typing import Any, Optional
 
 import typer
 from everyvoice.base_cli.interfaces import complete_path
+from everyvoice.config.preprocessing_config import DatasetTextRepresentation
 from everyvoice.config.shared_types import TargetTrainingTextRepresentationLevel
 from loguru import logger
 
@@ -66,6 +67,7 @@ def prepare_data(
     # model is of type ..model.FastSpeech2, but we make it Any to keep the CLI
     # fast and enable mocking in unit testing.
     model: Any,
+    text_type: DatasetTextRepresentation,
 ) -> list[dict[str, Any]]:
     """"""
     from everyvoice.utils import slugify
@@ -76,19 +78,12 @@ def prepare_data(
     # Knowing this, model.*2id should always have a default value thus DEFAULT_* should never be `None`.
     DEFAULT_LANGUAGE = next(iter(model.lang2id.keys()), None)
     DEFAULT_SPEAKER = next(iter(model.speaker2id.keys()), None)
-    if (
-        model.config.model.target_text_representation_level
-        == TargetTrainingTextRepresentationLevel.characters
-    ):
-        text_key = "characters"
-    else:
-        text_key = "phones"  # whether it's phones or pfs we still read in the phones
     if texts:
         print(f"Processing text {texts}", file=sys.stderr)
         data = [
             {
                 "basename": slugify(text),
-                text_key: text,
+                text_type.value: text,
                 "language": language or DEFAULT_LANGUAGE,
                 "speaker": speaker or DEFAULT_SPEAKER,
             }
@@ -98,14 +93,17 @@ def prepare_data(
         data = model.config.training.filelist_loader(filelist)
         try:
             data = [
-                {
-                    "basename": slugify(
-                        d.get("basename", d[text_key]), limit_to_n_characters=30
-                    ),  # if 'basename' doesn't exist, create a basename from the first 30 chars of the text slug
-                    text_key: d[text_key],
-                    "language": language or d.get("language", DEFAULT_LANGUAGE),
-                    "speaker": speaker or d.get("speaker", DEFAULT_SPEAKER),
-                }
+                dict(
+                    d,
+                    **{
+                        "basename": slugify(
+                            d.get("basename", d[text_type.value]),
+                            limit_to_n_characters=30,
+                        ),  # if 'basename' doesn't exist, create a basename from the first 30 chars of the text slug
+                        "language": language or d.get("language", DEFAULT_LANGUAGE),
+                        "speaker": speaker or d.get("speaker", DEFAULT_SPEAKER),
+                    },
+                )
                 for d in data
             ]
         except KeyError:
@@ -133,7 +131,7 @@ def prepare_data(
                 data = [
                     {
                         "basename": slugify(line.strip(), limit_to_n_characters=30),
-                        text_key: line.strip(),
+                        text_type.value: line.strip(),
                         "language": language or DEFAULT_LANGUAGE,
                         "speaker": speaker or DEFAULT_SPEAKER,
                     }
@@ -218,6 +216,10 @@ def synthesize(  # noqa: C901
         help="Synthesize all audio in a given filelist. Use --text if you want to just synthesize one sample.",
         autocompletion=complete_path,
     ),
+    text_representation: DatasetTextRepresentation = typer.Option(
+        DatasetTextRepresentation.characters,
+        help="The representation of the text you are synthesizing. Can be either 'characters', 'phones', or 'arpabet'. The input type must be compatible with your model.",
+    ),
     output_type: list[SynthesizeOutputFormats] = typer.Option(
         [SynthesizeOutputFormats.wav.value],
         "-O",
@@ -249,6 +251,7 @@ def synthesize(  # noqa: C901
     """Given some text and a trained model, generate some audio. i.e. perform typical speech synthesis"""
     # TODO: allow for changing of language/speaker and variance control
     import torch
+    from everyvoice.text.phonemizer import AVAILABLE_G2P_ENGINES
 
     from ..model import FastSpeech2
     from ..synthesize_text_dataset import SynthesizeTextDataSet
@@ -281,12 +284,31 @@ def synthesize(  # noqa: C901
     if SynthesizeOutputFormats.wav in output_type:
         model.config.training.vocoder_path = vocoder_path
 
+    if (
+        model.config.model.target_text_representation_level
+        == TargetTrainingTextRepresentationLevel.characters
+        and text_representation != DatasetTextRepresentation.characters
+    ):
+        raise ValueError(
+            f"Your model was trained on {model.config.model.target_text_representation_level} but you provided {text_representation.value} which is incompatible."
+        )
+    if (
+        model.config.model.target_text_representation_level
+        != TargetTrainingTextRepresentationLevel.characters
+        and text_representation == DatasetTextRepresentation.characters
+        and language not in AVAILABLE_G2P_ENGINES
+    ):
+        raise ValueError(
+            f"Your model was trained on {model.config.model.target_text_representation_level} but you provided {text_representation.value} and there is no available grapheme-to-phoneme engine available for {language}. Please see <TODO: Docs!> for more information on how to add one."
+        )
+
     data = prepare_data(
         texts=texts,
         language=language,
         speaker=speaker,
         filelist=filelist,
         model=model,
+        text_type=text_representation,
     )
 
     dataset = SynthesizeTextDataSet(

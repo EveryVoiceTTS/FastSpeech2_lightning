@@ -54,21 +54,23 @@ class SynthesizeTextDataSet(Dataset):
         item = self.items[idx]
         pf_tensor = None
         text_tensor = None
-        characters, phones, pfs = self.preprocessor.process_text(
+        # TODO: we shouldn't calculate all possible representations at synthesis time,
+        #       despite that's what we do at preprocessing time.
+        character_tokens, phone_tokens, pfs = self.preprocessor.process_text(
             item,
             use_pfs=self.config.model.use_phonological_feats,
-            specific_text_representation=self.target_text_representation_level,
+            encode_as_string=False,
         )
         if (
             self.target_text_representation_level
             == TargetTrainingTextRepresentationLevel.characters
         ):
-            text_tensor = torch.Tensor(characters).long()
+            text_tensor = torch.Tensor(character_tokens).long()
         elif (
             self.target_text_representation_level
             == TargetTrainingTextRepresentationLevel.ipa_phones
         ):
-            text_tensor = torch.Tensor(phones).long()
+            text_tensor = torch.Tensor(phone_tokens).long()
         elif (
             self.target_text_representation_level
             == TargetTrainingTextRepresentationLevel.phonological_features

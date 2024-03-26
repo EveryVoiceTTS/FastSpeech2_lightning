@@ -110,7 +110,10 @@ class FastSpeechDataset(Dataset):
                 self.text_processor.encode_escaped_string_sequence(item["phone_tokens"])
             ).long()
 
-        raw_text = item.get("raw_text", "clean_text", "text")
+        if "characters" in item:
+            raw_text = item["characters"]
+        else:
+            raw_text = item.get("phones", "text")
         pfs = None
         if self.config.model.use_phonological_feats:
             pfs = self._load_file(basename, speaker, language, "text", "pfs.pt")
