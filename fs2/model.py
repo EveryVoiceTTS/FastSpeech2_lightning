@@ -1,4 +1,3 @@
-import os
 import sys
 from typing import Optional
 
@@ -256,28 +255,11 @@ class FastSpeech2(pl.LightningModule):
             self.config.preprocessing.audio.output_sampling_rate,
         )
         if self.config.training.vocoder_path:
-            device = batch["mel"].device
-            if (
-                os.path.basename(self.config.training.vocoder_path)
-                == "generator_universal.pth.tar"
-            ):
-                from everyvoice.model.vocoder.original_hifigan_helper import (
-                    get_vocoder,
-                    vocoder_infer,
-                )
-
-                checkpoint = get_vocoder(self.config.training.vocoder_path, device)
-                wav = vocoder_infer(
-                    batch["mel"],
-                    checkpoint,
-                )[0]
-                sr = self.config.preprocessing.audio.input_sampling_rate
-            else:
-                checkpoint = torch.load(
-                    self.config.training.vocoder_path,
-                    map_location=device,
-                )
-                wav, sr = synthesize_data(batch["mel"], checkpoint)
+            wav, sr = self._synthesize(
+                vocoder_path=self.config.training.vocoder_path,
+                input=batch["mel"],
+                device=batch["mel"].device,
+            )
 
             self.logger.experiment.add_audio(
                 f"copy-synthesis/wav_{batch['basename'][0]}",
@@ -346,32 +328,37 @@ class FastSpeech2(pl.LightningModule):
         )
 
         if self.config.training.vocoder_path:
-            device = batch["mel"].device
-            if (
-                os.path.basename(self.config.training.vocoder_path)
-                == "generator_universal.pth.tar"
-            ):
-                from everyvoice.model.vocoder.original_hifigan_helper import (
-                    get_vocoder,
-                    vocoder_infer,
-                )
-
-                checkpoint = get_vocoder(self.config.training.vocoder_path, device)
-                wav = vocoder_infer(
-                    output[self.output_key],
-                    checkpoint,
-                )[0]
-                sr = self.config.preprocessing.audio.input_sampling_rate
-            else:
-                checkpoint = torch.load(
-                    self.config.training.vocoder_path,
-                    map_location=device,
-                )
-                wav, sr = synthesize_data(output[self.output_key], checkpoint)
-
+            wav, sr = self._synthesize(
+                vocoder_path=self.config.training.vocoder_path,
+                input=output[self.output_key],
+                device=batch["mel"].device,
+            )
             self.logger.experiment.add_audio(
                 f"pred/wav_{batch['basename'][0]}", wav, self.global_step, sr
             )
+
+    def _synthesize(self, vocoder_path, input, device):
+        """ """
+        vocoder = torch.load(
+            vocoder_path,
+            map_location=device,
+        )
+        if "generator" in vocoder.keys():
+            from everyvoice.model.vocoder.original_hifigan_helper import (
+                get_vocoder,
+                vocoder_infer,
+            )
+
+            vocoder = get_vocoder(vocoder_path, device)
+            wav = vocoder_infer(
+                input,
+                vocoder,
+            )[0]
+            sr = self.config.preprocessing.audio.input_sampling_rate
+        else:
+            wav, sr = synthesize_data(input, vocoder)
+
+        return wav, sr
 
     def validation_step(self, batch, batch_idx):
         if self.global_step == 0:
