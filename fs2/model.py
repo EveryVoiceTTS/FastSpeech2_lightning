@@ -17,7 +17,7 @@ from .config import FastSpeech2Config
 from .layers import PositionalEmbedding, PostNet
 from .loss import FastSpeech2Loss
 from .noam import NoamLR
-from .synthesizer import Synthesizer
+from .synthesizer import get_synthesizer
 from .type_definitions import InferenceControl, Stats
 from .utils import mask_from_lens, plot_attn_maps, plot_mel
 from .variance_adaptor import VarianceAdaptor
@@ -126,7 +126,7 @@ class FastSpeech2(pl.LightningModule):
                 len(self.lang2id), self.config.model.encoder.input_dim
             )
 
-        self.synthesizer = Synthesizer(self.config, self.device)
+        self.synthesizer = get_synthesizer(self.config, self.device)
 
     def forward(self, batch, control=InferenceControl(), inference=False):
         # For model diagram see https://github.com/ming024/FastSpeech2/blob/master/img/model.png

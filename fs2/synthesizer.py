@@ -7,39 +7,26 @@ from loguru import logger
 from .config import FastSpeech2Config
 
 
-class Synthesizer:
-    def __init__(
-        self,
-        config: FastSpeech2Config,
-        device: torch.device,
-    ):
-        self.device = device
+class SynthesizerBase:
+    def __init__(self, vocoder) -> None:
+        self.vocoder = vocoder
+
+    def __call__(self, inputs) -> Tuple[np.ndarray, int]:
+        raise NotImplementedError
+
+
+class SynthesizerUniversal(SynthesizerBase):
+    """
+    A synthesizer that uses the generator_universal.
+    """
+
+    def __init__(self, vocoder, config) -> None:
+        super().__init__(vocoder)
+        # TODO: if we don't need all of config but simply output_sampling_rate,
+        # may be we should only store that.
         self.config = config
 
-        if self.config.training.vocoder_path is None:
-            import sys
-
-            logger.error(
-                "No vocoder was provided, please specify "
-                "--vocoder-path /path/to/vocoder on the command line."
-            )
-            sys.exit(1)
-        else:
-            self.vocoder = torch.load(
-                self.config.training.vocoder_path, map_location=self.device
-            )
-            if "generator" in self.vocoder.keys():
-                # Necessary when passing --filelist
-                from everyvoice.model.vocoder.original_hifigan_helper import get_vocoder
-
-                self.vocoder = get_vocoder(
-                    self.config.training.vocoder_path, device=self.device
-                )
-                self.synthesize = self._infer_generator_universal
-            else:
-                self.synthesize = self._infer_everyvoice
-
-    def _infer_generator_universal(self, inputs) -> Tuple[np.ndarray, int]:
+    def __call__(self, inputs) -> Tuple[np.ndarray, int]:
         """
         Generate wavs using the generator_universal model.
         """
@@ -47,9 +34,19 @@ class Synthesizer:
 
         wavs = vocoder_infer(inputs, self.vocoder)
         sr = self.config.preprocessing.audio.output_sampling_rate
+
         return wavs, sr
 
-    def _infer_everyvoice(self, inputs) -> Tuple[np.ndarray, int]:
+
+class Synthesizer(SynthesizerBase):
+    """
+    A synthesizer that uses EveryVoice models.
+    """
+
+    def __init__(self, vocoder) -> None:
+        super().__init__(vocoder)
+
+    def __call__(self, inputs) -> Tuple[np.ndarray, int]:
         """
         Generate wavs using Everyvoice model.
         """
@@ -58,7 +55,29 @@ class Synthesizer:
         )
 
         wavs, sr = synthesize_data(inputs, self.vocoder)
+
         return wavs, sr
 
-    def __call__(self, inputs) -> Tuple[np.ndarray, int]:
-        return self.synthesize(inputs)
+
+def get_synthesizer(
+    config: FastSpeech2Config,
+    device: torch.device,
+) -> SynthesizerBase:
+    if config.training.vocoder_path is None:
+        import sys
+
+        logger.error(
+            "No vocoder was provided, please specify "
+            "--vocoder-path /path/to/vocoder on the command line."
+        )
+        sys.exit(1)
+    else:
+        vocoder = torch.load(config.training.vocoder_path, map_location=device)
+        if "generator" in vocoder.keys():
+            # Necessary when passing --filelist
+            from everyvoice.model.vocoder.original_hifigan_helper import get_vocoder
+
+            vocoder = get_vocoder(config.training.vocoder_path, device=device)
+            return SynthesizerUniversal(vocoder, config)
+
+        return Synthesizer(vocoder)
