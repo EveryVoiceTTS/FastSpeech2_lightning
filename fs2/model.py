@@ -5,7 +5,7 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 from everyvoice.model.feature_prediction.config import FeaturePredictionConfig
-from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import synthesize_data
+from everyvoice.text import TextProcessor
 from everyvoice.text.lookups import LookupTable
 from everyvoice.text.text_processor import TextProcessor
 from everyvoice.utils.heavy import expand
@@ -17,6 +17,7 @@ from .config import FastSpeech2Config
 from .layers import PositionalEmbedding, PostNet
 from .loss import FastSpeech2Loss
 from .noam import NoamLR
+from .synthesizer import Synthesizer
 from .type_definitions import InferenceControl, Stats
 from .utils import mask_from_lens, plot_attn_maps, plot_mel
 from .variance_adaptor import VarianceAdaptor
@@ -124,6 +125,8 @@ class FastSpeech2(pl.LightningModule):
             self.language_embedding = nn.Embedding(
                 len(self.lang2id), self.config.model.encoder.input_dim
             )
+
+        self.synthesizer = Synthesizer(self.config, self.device)
 
     def forward(self, batch, control=InferenceControl(), inference=False):
         # For model diagram see https://github.com/ming024/FastSpeech2/blob/master/img/model.png
@@ -235,6 +238,8 @@ class FastSpeech2(pl.LightningModule):
         if self.global_step != 0:
             return
 
+        assert self.logger is not None
+
         audio = torch.load(
             self.config.preprocessing.save_dir
             / "audio"
@@ -255,11 +260,7 @@ class FastSpeech2(pl.LightningModule):
             self.config.preprocessing.audio.output_sampling_rate,
         )
         if self.config.training.vocoder_path:
-            wav, sr = self._synthesize(
-                vocoder_path=self.config.training.vocoder_path,
-                input=batch["mel"],
-                device=batch["mel"].device,
-            )
+            wav, sr = self.synthesizer(inputs=batch["mel"])
 
             self.logger.experiment.add_audio(
                 f"copy-synthesis/wav_{batch['basename'][0]}",
@@ -271,6 +272,8 @@ class FastSpeech2(pl.LightningModule):
     def _validation_batch_idx_0(self, batch, batch_idx, output) -> None:
         if batch_idx != 0:
             return
+
+        assert self.logger is not None
 
         # Currently only plots the first one, but the function is writte to support plotting multiple
         if self.config.model.learn_alignment:
@@ -328,37 +331,10 @@ class FastSpeech2(pl.LightningModule):
         )
 
         if self.config.training.vocoder_path:
-            wav, sr = self._synthesize(
-                vocoder_path=self.config.training.vocoder_path,
-                input=output[self.output_key],
-                device=batch["mel"].device,
-            )
+            wav, sr = self.synthesizer(inputs=output[self.output_key])
             self.logger.experiment.add_audio(
                 f"pred/wav_{batch['basename'][0]}", wav, self.global_step, sr
             )
-
-    def _synthesize(self, vocoder_path, input, device):
-        """ """
-        vocoder = torch.load(
-            vocoder_path,
-            map_location=device,
-        )
-        if "generator" in vocoder.keys():
-            from everyvoice.model.vocoder.original_hifigan_helper import (
-                get_vocoder,
-                vocoder_infer,
-            )
-
-            vocoder = get_vocoder(vocoder_path, device)
-            wav = vocoder_infer(
-                input,
-                vocoder,
-            )[0]
-            sr = self.config.preprocessing.audio.input_sampling_rate
-        else:
-            wav, sr = synthesize_data(input, vocoder)
-
-        return wav, sr
 
     def validation_step(self, batch, batch_idx):
         if self.global_step == 0:

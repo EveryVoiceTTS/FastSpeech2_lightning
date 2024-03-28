@@ -1,6 +1,6 @@
 import hashlib
 from pathlib import Path
-from typing import Any, Sequence, Tuple
+from typing import Any, Sequence
 
 import numpy as np
 import torch
@@ -9,6 +9,7 @@ from loguru import logger
 from pytorch_lightning.callbacks import Callback
 
 from .config import FastSpeech2Config
+from .synthesizer import Synthesizer
 from .type_definitions import SynthesizeOutputFormats
 
 BASENAME_MAX_LENGTH = 20
@@ -236,26 +237,9 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
             )
             sys.exit(1)
         else:
-            self.vocoder = torch.load(
-                self.config.training.vocoder_path,
-                map_location=self.device,
-            )
-            if "generator" in self.vocoder.keys():
-                # Necessary when passing --filelist
-                from everyvoice.model.vocoder.original_hifigan_helper import get_vocoder
-
-                self.vocoder = get_vocoder(
-                    self.config.training.vocoder_path, device=self.device
-                )
-                sampling_rate_change = (
-                    self.config.preprocessing.audio.output_sampling_rate
-                    // self.config.preprocessing.audio.input_sampling_rate
-                )
-                self.output_hop_size = (
-                    sampling_rate_change * self.config.preprocessing.audio.fft_hop_size
-                )
-                self.synthesize = self._infer_generator_universal
-
+            self.synthesizer = Synthesizer(self.config, self.device)
+            vocoder_config = self.config
+            if "generator" in self.synthesizer.vocoder.keys():
                 self.file_extension = self.sep.join(
                     ("v=universal", self.file_extension)
                 )
@@ -264,49 +248,23 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
                     HiFiGANConfig,
                 )
 
-                vocoder_config: dict | HiFiGANConfig = self.vocoder["hyper_parameters"][
-                    "config"
-                ]
-                if isinstance(vocoder_config, dict):
-                    vocoder_config = HiFiGANConfig(**vocoder_config)
-                sampling_rate_change = (
-                    vocoder_config.preprocessing.audio.output_sampling_rate
-                    // vocoder_config.preprocessing.audio.input_sampling_rate
-                )
-                self.output_hop_size = (
-                    sampling_rate_change
-                    * vocoder_config.preprocessing.audio.fft_hop_size
-                )
-                self.synthesize = self._infer_everyvoice
-
-                vocoder_global_step = self.vocoder.get("global_step", 0)
+                vocoder_config_tmp: dict | HiFiGANConfig = self.synthesizer.vocoder[
+                    "hyper_parameters"
+                ]["config"]
+                if isinstance(vocoder_config_tmp, dict):
+                    vocoder_config = HiFiGANConfig(**vocoder_config_tmp)
+                vocoder_global_step = self.synthesizer.vocoder.get("global_step", 0)
                 self.file_extension = self.sep.join(
                     (f"v_ckpt={vocoder_global_step}", self.file_extension)
                 )
 
-    def _infer_generator_universal(self, outputs) -> Tuple[np.ndarray, int]:
-        """
-        Generate wavs using the generator_universal model.
-        """
-        from everyvoice.model.vocoder.original_hifigan_helper import vocoder_infer
-
-        wavs = vocoder_infer(
-            outputs,
-            self.vocoder,
-        )
-        sr = self.config.preprocessing.audio.output_sampling_rate
-        return wavs, sr
-
-    def _infer_everyvoice(self, outputs) -> Tuple[np.ndarray, int]:
-        """
-        Generate wavs using Everyvoice model.
-        """
-        from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
-            synthesize_data,
-        )
-
-        wavs, sr = synthesize_data(outputs, self.vocoder)
-        return wavs, sr
+            sampling_rate_change = (
+                vocoder_config.preprocessing.audio.output_sampling_rate
+                // vocoder_config.preprocessing.audio.input_sampling_rate
+            )
+            self.output_hop_size = (
+                sampling_rate_change * vocoder_config.preprocessing.audio.fft_hop_size
+            )
 
     def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
         self,
@@ -323,7 +281,7 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
 
         sr: int
         wavs: np.ndarray
-        wavs, sr = self.synthesize(outputs[self.output_key])
+        wavs, sr = self.synthesizer(outputs[self.output_key])
 
         # wavs: [B (batch_size), T (samples)]
         assert (
