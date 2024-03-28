@@ -9,7 +9,7 @@ from loguru import logger
 from pytorch_lightning.callbacks import Callback
 
 from .config import FastSpeech2Config
-from .synthesizer import Synthesizer
+from .synthesizer import get_synthesizer
 from .type_definitions import SynthesizeOutputFormats
 
 BASENAME_MAX_LENGTH = 20
@@ -237,7 +237,7 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
             )
             sys.exit(1)
         else:
-            self.synthesizer = Synthesizer(self.config, self.device)
+            self.synthesizer = get_synthesizer(self.config, self.device)
             vocoder_config = self.config
             if "generator" in self.synthesizer.vocoder.keys():
                 self.file_extension = self.sep.join(
