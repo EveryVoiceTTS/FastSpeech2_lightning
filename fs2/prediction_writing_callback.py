@@ -236,10 +236,11 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
             )
             sys.exit(1)
         else:
-            vocoder = torch.load(
-                self.config.training.vocoder_path, map_location=torch.device("cpu")
+            self.vocoder = torch.load(
+                self.config.training.vocoder_path,
+                map_location=self.device,
             )
-            if "generator" in vocoder.keys():
+            if "generator" in self.vocoder.keys():
                 # Necessary when passing --filelist
                 from everyvoice.model.vocoder.original_hifigan_helper import get_vocoder
 
@@ -254,6 +255,7 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
                     sampling_rate_change * self.config.preprocessing.audio.fft_hop_size
                 )
                 self.synthesize = self._infer_generator_universal
+
                 self.file_extension = self.sep.join(
                     ("v=universal", self.file_extension)
                 )
@@ -262,10 +264,6 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
                     HiFiGANConfig,
                 )
 
-                # TODO: Shouldn't we load the vocoder on a GPU preferably?
-                self.vocoder = torch.load(
-                    self.config.training.vocoder_path, map_location=torch.device("cpu")
-                )
                 vocoder_config: dict | HiFiGANConfig = self.vocoder["hyper_parameters"][
                     "config"
                 ]
@@ -280,6 +278,7 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
                     * vocoder_config.preprocessing.audio.fft_hop_size
                 )
                 self.synthesize = self._infer_everyvoice
+
                 vocoder_global_step = self.vocoder.get("global_step", 0)
                 self.file_extension = self.sep.join(
                     (f"v_ckpt={vocoder_global_step}", self.file_extension)
@@ -292,7 +291,7 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
         from everyvoice.model.vocoder.original_hifigan_helper import vocoder_infer
 
         wavs = vocoder_infer(
-            outputs[self.output_key],
+            outputs,
             self.vocoder,
         )
         sr = self.config.preprocessing.audio.output_sampling_rate
@@ -306,7 +305,7 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
             synthesize_data,
         )
 
-        wavs, sr = synthesize_data(outputs[self.output_key], self.vocoder)
+        wavs, sr = synthesize_data(outputs, self.vocoder)
         return wavs, sr
 
     def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
@@ -324,7 +323,7 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
 
         sr: int
         wavs: np.ndarray
-        wavs, sr = self.synthesize(outputs)
+        wavs, sr = self.synthesize(outputs[self.output_key])
 
         # wavs: [B (batch_size), T (samples)]
         assert (
