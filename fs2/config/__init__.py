@@ -9,10 +9,10 @@ from everyvoice.config.shared_types import (
     BaseTrainingConfig,
     ConfigModel,
     NoamOptimizer,
-    TargetTrainingTextRepresentationLevel,
     init_context,
 )
 from everyvoice.config.text_config import TextConfig
+from everyvoice.config.type_definitions import TargetTrainingTextRepresentationLevel
 from everyvoice.config.utils import load_partials
 from everyvoice.utils import load_config_from_json_or_yaml_path
 from pydantic import Field, FilePath, ValidationInfo, field_validator, model_validator

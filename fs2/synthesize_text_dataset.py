@@ -1,7 +1,7 @@
 from typing import Sequence
 
 import torch
-from everyvoice.config.shared_types import TargetTrainingTextRepresentationLevel
+from everyvoice.config.type_definitions import TargetTrainingTextRepresentationLevel
 from everyvoice.preprocessor import Preprocessor
 from everyvoice.text.lookups import LookupTable
 from everyvoice.text.text_processor import TextProcessor

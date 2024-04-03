@@ -2,8 +2,10 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from everyvoice.config.preprocessing_config import DatasetTextRepresentation
-from everyvoice.config.shared_types import TargetTrainingTextRepresentationLevel
+from everyvoice.config.type_definitions import (
+    DatasetTextRepresentation,
+    TargetTrainingTextRepresentationLevel,
+)
 from everyvoice.dataloader import BaseDataModule
 from everyvoice.text.lookups import lookuptables_from_config
 from everyvoice.text.text_processor import TextProcessor

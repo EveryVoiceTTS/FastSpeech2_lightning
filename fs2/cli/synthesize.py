@@ -5,8 +5,10 @@ from typing import Any, Optional
 
 import typer
 from everyvoice.base_cli.interfaces import complete_path
-from everyvoice.config.preprocessing_config import DatasetTextRepresentation
-from everyvoice.config.shared_types import TargetTrainingTextRepresentationLevel
+from everyvoice.config.type_definitions import (
+    DatasetTextRepresentation,
+    TargetTrainingTextRepresentationLevel,
+)
 from loguru import logger
 
 from ..type_definitions import SynthesizeOutputFormats

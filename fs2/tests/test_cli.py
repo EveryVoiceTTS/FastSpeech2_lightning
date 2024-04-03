@@ -9,9 +9,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
 
-from everyvoice.config.preprocessing_config import DatasetTextRepresentation
-from everyvoice.config.shared_types import (
-    ContactInformation,
+from everyvoice.config.shared_types import ContactInformation
+from everyvoice.config.type_definitions import (
+    DatasetTextRepresentation,
     TargetTrainingTextRepresentationLevel,
 )
 from everyvoice.tests.stubs import mute_logger
