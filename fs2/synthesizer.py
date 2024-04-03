@@ -8,6 +8,10 @@ from .config import FastSpeech2Config
 
 
 class SynthesizerBase:
+    """
+    A common interface between the generator_universal and Everyvoice's vocoder.
+    """
+
     def __init__(self, vocoder) -> None:
         self.vocoder = vocoder
 
