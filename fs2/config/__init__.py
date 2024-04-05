@@ -130,7 +130,7 @@ class FastSpeech2ModelConfig(ConfigModel):
 
     phonological_feats_size: int = Field(
         39,
-        description="Advanced. The number of dimension used in the phonological feature vector representation. The default is 38, but this can be changed by modifying the everyvoice/text/features.py module.",
+        description="Advanced. The number of dimension used in the phonological feature vector representation. The default is 39, but this can be changed by modifying the everyvoice/text/features.py module.",
     )
     use_phonological_feats: bool = Field(
         False,

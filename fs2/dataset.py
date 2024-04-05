@@ -91,6 +91,10 @@ class FastSpeechDataset(Dataset):
                     "attn",
                     f"{DatasetTextRepresentation.ipa_phones.value}-attn-prior.pt",
                 )
+            else:
+                raise NotImplementedError(
+                    f"{self.config.model.target_text_representation_level} have not yet been implemented."
+                )
         else:
             duration = self._load_file(
                 basename, speaker, language, "duration", "duration.pt"
@@ -111,11 +115,17 @@ class FastSpeechDataset(Dataset):
             text = torch.Tensor(
                 self.text_processor.encode_escaped_string_sequence(item["phone_tokens"])
             ).long()
-
-        if "characters" in item:
-            raw_text = item["characters"]
         else:
-            raw_text = item.get("phones", "text")
+            raise NotImplementedError(
+                f"{self.config.model.target_text_representation_level} have not yet been implemented."
+            )
+
+        if TargetTrainingTextRepresentationLevel.characters.value in item:
+            raw_text = item[TargetTrainingTextRepresentationLevel.characters.value]
+        else:
+            raw_text = item.get(
+                TargetTrainingTextRepresentationLevel.ipa_phones.value, "text"
+            )
         pfs = None
         if self.config.model.use_phonological_feats:
             pfs = self._load_file(basename, speaker, language, "text", "pfs.pt")

@@ -127,7 +127,7 @@ class PrepareSynthesizeDataTest(TestCase):
                 multispeaker=True,
                 target_text_representation_level=TargetTrainingTextRepresentationLevel.characters,
             ),
-            text_type=DatasetTextRepresentation.characters,
+            text_representation=DatasetTextRepresentation.characters,
         )
         self.assertEqual(len(data), 9)
         self.assertTrue(all((d["language"] == "foo" for d in data)))
@@ -149,7 +149,7 @@ class PrepareSynthesizeDataTest(TestCase):
                 multispeaker=True,
                 target_text_representation_level=TargetTrainingTextRepresentationLevel.characters,
             ),
-            text_type=DatasetTextRepresentation.characters,
+            text_representation=DatasetTextRepresentation.characters,
         )
         self.assertEqual(len(data), 9)
         self.assertTrue(all((d["speaker"] == "bar" for d in data)))
@@ -169,7 +169,7 @@ class PrepareSynthesizeDataTest(TestCase):
                     multispeaker=True,
                     target_text_representation_level=TargetTrainingTextRepresentationLevel.characters,
                 ),
-                text_type=DatasetTextRepresentation.characters,
+                text_representation=DatasetTextRepresentation.characters,
             )
         self.assertEqual(len(data), 9)
         self.assertTrue(all((d["language"] == "foo" for d in data)))

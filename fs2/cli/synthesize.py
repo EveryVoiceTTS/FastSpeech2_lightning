@@ -69,7 +69,7 @@ def prepare_data(
     # model is of type ..model.FastSpeech2, but we make it Any to keep the CLI
     # fast and enable mocking in unit testing.
     model: Any,
-    text_type: DatasetTextRepresentation,
+    text_representation: DatasetTextRepresentation,
 ) -> list[dict[str, Any]]:
     """"""
     from everyvoice.utils import slugify
@@ -85,7 +85,7 @@ def prepare_data(
         data = [
             {
                 "basename": slugify(text),
-                text_type.value: text,
+                text_representation.value: text,
                 "language": language or DEFAULT_LANGUAGE,
                 "speaker": speaker or DEFAULT_SPEAKER,
             }
@@ -95,17 +95,15 @@ def prepare_data(
         data = model.config.training.filelist_loader(filelist)
         try:
             data = [
-                dict(
-                    d,
-                    **{
-                        "basename": slugify(
-                            d.get("basename", d[text_type.value]),
-                            limit_to_n_characters=30,
-                        ),  # if 'basename' doesn't exist, create a basename from the first 30 chars of the text slug
-                        "language": language or d.get("language", DEFAULT_LANGUAGE),
-                        "speaker": speaker or d.get("speaker", DEFAULT_SPEAKER),
-                    },
-                )
+                d
+                | {
+                    "basename": slugify(
+                        d.get("basename", d[text_representation.value]),
+                        limit_to_n_characters=30,
+                    ),  # if 'basename' doesn't exist, create a basename from the first 30 chars of the text slug
+                    "language": language or d.get("language", DEFAULT_LANGUAGE),
+                    "speaker": speaker or d.get("speaker", DEFAULT_SPEAKER),
+                }
                 for d in data
             ]
         except KeyError:
@@ -133,7 +131,7 @@ def prepare_data(
                 data = [
                     {
                         "basename": slugify(line.strip(), limit_to_n_characters=30),
-                        text_type.value: line.strip(),
+                        text_representation.value: line.strip(),
                         "language": language or DEFAULT_LANGUAGE,
                         "speaker": speaker or DEFAULT_SPEAKER,
                     }
@@ -310,7 +308,7 @@ def synthesize(  # noqa: C901
         speaker=speaker,
         filelist=filelist,
         model=model,
-        text_type=text_representation,
+        text_representation=text_representation,
     )
 
     dataset = SynthesizeTextDataSet(
