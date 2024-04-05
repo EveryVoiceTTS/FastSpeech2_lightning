@@ -69,56 +69,48 @@ class FastSpeechDataset(Dataset):
             0, 1
         )  # [mel_bins, frames] -> [frames, mel_bins]
         if self.config.model.learn_alignment:
-            if (
-                self.config.model.target_text_representation_level
-                == TargetTrainingTextRepresentationLevel.characters
-            ):
-                duration = self._load_file(
-                    basename,
-                    speaker,
-                    language,
-                    "attn",
-                    f"{DatasetTextRepresentation.characters.value}-attn-prior.pt",
-                )
-            elif self.config.model.target_text_representation_level in [
-                TargetTrainingTextRepresentationLevel.ipa_phones,
-                TargetTrainingTextRepresentationLevel.phonological_features,
-            ]:
-                duration = self._load_file(
-                    basename,
-                    speaker,
-                    language,
-                    "attn",
-                    f"{DatasetTextRepresentation.ipa_phones.value}-attn-prior.pt",
-                )
-            else:
-                raise NotImplementedError(
-                    f"{self.config.model.target_text_representation_level} have not yet been implemented."
-                )
+            match self.config.model.target_text_representation_level:
+                case TargetTrainingTextRepresentationLevel.characters:
+                    duration = self._load_file(
+                        basename,
+                        speaker,
+                        language,
+                        "attn",
+                        f"{DatasetTextRepresentation.characters.value}-attn-prior.pt",
+                    )
+                case TargetTrainingTextRepresentationLevel.ipa_phones | TargetTrainingTextRepresentationLevel.phonological_features:
+                    duration = self._load_file(
+                        basename,
+                        speaker,
+                        language,
+                        "attn",
+                        f"{DatasetTextRepresentation.ipa_phones.value}-attn-prior.pt",
+                    )
+                case _:
+                    raise NotImplementedError(
+                        f"{self.config.model.target_text_representation_level} have not yet been implemented."
+                    )
         else:
             duration = self._load_file(
                 basename, speaker, language, "duration", "duration.pt"
             )
-        if (
-            self.config.model.target_text_representation_level
-            == TargetTrainingTextRepresentationLevel.characters
-        ):
-            text = torch.Tensor(
-                self.text_processor.encode_escaped_string_sequence(
-                    item["character_tokens"]
+        match self.config.model.target_text_representation_level:
+            case TargetTrainingTextRepresentationLevel.characters:
+                text = torch.Tensor(
+                    self.text_processor.encode_escaped_string_sequence(
+                        item["character_tokens"]
+                    )
+                ).long()
+            case TargetTrainingTextRepresentationLevel.ipa_phones | TargetTrainingTextRepresentationLevel.phonological_features:
+                text = torch.Tensor(
+                    self.text_processor.encode_escaped_string_sequence(
+                        item["phone_tokens"]
+                    )
+                ).long()
+            case _:
+                raise NotImplementedError(
+                    f"{self.config.model.target_text_representation_level} have not yet been implemented."
                 )
-            ).long()
-        elif self.config.model.target_text_representation_level in [
-            TargetTrainingTextRepresentationLevel.ipa_phones,
-            TargetTrainingTextRepresentationLevel.phonological_features,
-        ]:
-            text = torch.Tensor(
-                self.text_processor.encode_escaped_string_sequence(item["phone_tokens"])
-            ).long()
-        else:
-            raise NotImplementedError(
-                f"{self.config.model.target_text_representation_level} have not yet been implemented."
-            )
 
         if TargetTrainingTextRepresentationLevel.characters.value in item:
             raw_text = item[TargetTrainingTextRepresentationLevel.characters.value]

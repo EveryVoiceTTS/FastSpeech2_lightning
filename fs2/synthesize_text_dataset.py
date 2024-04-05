@@ -61,25 +61,17 @@ class SynthesizeTextDataSet(Dataset):
             use_pfs=self.config.model.use_phonological_feats,
             encode_as_string=False,
         )
-        if (
-            self.target_text_representation_level
-            == TargetTrainingTextRepresentationLevel.characters
-        ):
-            text_tensor = torch.Tensor(character_tokens).long()
-        elif (
-            self.target_text_representation_level
-            == TargetTrainingTextRepresentationLevel.ipa_phones
-        ):
-            text_tensor = torch.Tensor(phone_tokens).long()
-        elif (
-            self.target_text_representation_level
-            == TargetTrainingTextRepresentationLevel.phonological_features
-        ):
-            pf_tensor = torch.Tensor(pfs).long()
-        else:
-            raise NotImplementedError(
-                f"Sorry we can only synthesize from either characters, ipa phones, or phonological features and you selected {self.target_text_representation_level}"
-            )
+        match self.target_text_representation_level:
+            case TargetTrainingTextRepresentationLevel.characters:
+                text_tensor = torch.Tensor(character_tokens).long()
+            case TargetTrainingTextRepresentationLevel.ipa_phones:
+                text_tensor = torch.Tensor(phone_tokens).long()
+            case TargetTrainingTextRepresentationLevel.phonological_features:
+                pf_tensor = torch.Tensor(pfs).long()
+            case _:
+                raise NotImplementedError(
+                    f"Sorry we can only synthesize from either characters, ipa phones, or phonological features and you selected {self.target_text_representation_level}"
+                )
         # Create Batch
         src_lens = text_tensor.size(0)
         max_src_len = src_lens
