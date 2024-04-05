@@ -5,7 +5,6 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 from everyvoice.model.feature_prediction.config import FeaturePredictionConfig
-from everyvoice.text import TextProcessor
 from everyvoice.text.lookups import LookupTable
 from everyvoice.text.text_processor import TextProcessor
 from everyvoice.utils.heavy import expand
