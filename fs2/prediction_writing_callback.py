@@ -9,7 +9,7 @@ from loguru import logger
 from pytorch_lightning.callbacks import Callback
 
 from .config import FastSpeech2Config
-from .synthesizer import get_synthesizer
+from .synthesizer import Synthesizer, SynthesizerUniversal, get_synthesizer
 from .type_definitions import SynthesizeOutputFormats
 
 BASENAME_MAX_LENGTH = 20
@@ -239,24 +239,30 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
         else:
             self.synthesizer = get_synthesizer(self.config, self.device)
             vocoder_config = self.config
-            if "generator" in self.synthesizer.vocoder.keys():
-                self.file_extension = self.sep.join(
-                    ("v=universal", self.file_extension)
-                )
-            else:
-                from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import (
-                    HiFiGANConfig,
-                )
+            # [Example converted to pattern matching](https://stackoverflow.com/a/67524642)
+            # [Class Patterns](https://peps.python.org/pep-0634/#class-patterns)
+            # [PEP 636 – Structural Pattern Matching: Tutorial](https://peps.python.org/pep-0636)
+            match self.synthesizer:
+                case SynthesizerUniversal():
+                    self.file_extension = self.sep.join(
+                        ("v=universal", self.file_extension)
+                    )
+                case Synthesizer():
+                    from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import (
+                        HiFiGANConfig,
+                    )
 
-                vocoder_config_tmp: dict | HiFiGANConfig = self.synthesizer.vocoder[
-                    "hyper_parameters"
-                ]["config"]
-                if isinstance(vocoder_config_tmp, dict):
-                    vocoder_config = HiFiGANConfig(**vocoder_config_tmp)
-                vocoder_global_step = self.synthesizer.vocoder.get("global_step", 0)
-                self.file_extension = self.sep.join(
-                    (f"v_ckpt={vocoder_global_step}", self.file_extension)
-                )
+                    vocoder_config_tmp: dict | HiFiGANConfig = self.synthesizer.vocoder[
+                        "hyper_parameters"
+                    ]["config"]
+                    if isinstance(vocoder_config_tmp, dict):
+                        vocoder_config = HiFiGANConfig(**vocoder_config_tmp)
+                    vocoder_global_step = self.synthesizer.vocoder.get("global_step", 0)
+                    self.file_extension = self.sep.join(
+                        (f"v_ckpt={vocoder_global_step}", self.file_extension)
+                    )
+                case _:
+                    raise TypeError(f"We don't yet handle {type(self.synthesizer)}.")
 
             sampling_rate_change = (
                 vocoder_config.preprocessing.audio.output_sampling_rate
