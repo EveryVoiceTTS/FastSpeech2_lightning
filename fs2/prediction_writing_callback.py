@@ -4,12 +4,16 @@ from typing import Any, Sequence
 
 import numpy as np
 import torch
+from everyvoice.model.vocoder.synthesizer import (
+    Synthesizer,
+    SynthesizerUniversal,
+    get_synthesizer,
+)
 from everyvoice.utils import slugify
 from loguru import logger
 from pytorch_lightning.callbacks import Callback
 
 from .config import FastSpeech2Config
-from .synthesizer import Synthesizer, SynthesizerUniversal, get_synthesizer
 from .type_definitions import SynthesizeOutputFormats
 
 BASENAME_MAX_LENGTH = 20

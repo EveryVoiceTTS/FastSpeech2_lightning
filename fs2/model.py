@@ -5,6 +5,7 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 from everyvoice.model.feature_prediction.config import FeaturePredictionConfig
+from everyvoice.model.vocoder.synthesizer import get_synthesizer
 from everyvoice.text.lookups import LookupTable
 from everyvoice.text.text_processor import TextProcessor
 from everyvoice.utils.heavy import expand
@@ -16,7 +17,6 @@ from .config import FastSpeech2Config
 from .layers import PositionalEmbedding, PostNet
 from .loss import FastSpeech2Loss
 from .noam import NoamLR
-from .synthesizer import get_synthesizer
 from .type_definitions import InferenceControl, Stats
 from .utils import mask_from_lens, plot_attn_maps, plot_mel
 from .variance_adaptor import VarianceAdaptor
