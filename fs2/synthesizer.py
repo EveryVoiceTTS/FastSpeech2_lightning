@@ -18,12 +18,10 @@ class SynthesizerBase:
     def __init__(self, vocoder) -> None:
         self.vocoder = vocoder
 
-    def __call__(self, inputs: torch.Tensor) -> Tuple[np.ndarray, int]:
+    def __call__(self, input_: torch.Tensor) -> Tuple[np.ndarray, int]:
         raise NotImplementedError
 
 
-# TODO: This should be implemented/moved under
-#       everyvoice/model/vocoder/original_hifigan_helper/
 class SynthesizerUniversal(SynthesizerBase):
     """
     A synthesizer that uses the generator_universal.
@@ -35,22 +33,19 @@ class SynthesizerUniversal(SynthesizerBase):
         # may be we should only store that.
         self.config = config
 
-    def __call__(self, inputs: torch.Tensor) -> Tuple[np.ndarray, int]:
+    def __call__(self, input_: torch.Tensor) -> Tuple[np.ndarray, int]:
         """
         Generate wavs using the generator_universal model.
         """
         from everyvoice.model.vocoder.original_hifigan_helper import vocoder_infer
 
-        wavs = vocoder_infer(inputs, self.vocoder)
+        wavs = vocoder_infer(input_, self.vocoder)
         sr = self.config.preprocessing.audio.output_sampling_rate
 
         return wavs, sr
 
 
 # TODO: We should have a less generic name for the EveryVoice synthesizer.
-# TODO: This should be implemented under
-#       everyvoice/model/vocoder/HiFiGAN_iSTFT_lightning/hfgl/ as it is
-#       specific to hfgl.
 class Synthesizer(SynthesizerBase):
     """
     A synthesizer that uses EveryVoice models.
@@ -59,7 +54,7 @@ class Synthesizer(SynthesizerBase):
     def __init__(self, vocoder) -> None:
         super().__init__(vocoder)
 
-    def __call__(self, inputs: torch.Tensor) -> Tuple[np.ndarray, int]:
+    def __call__(self, input_: torch.Tensor) -> Tuple[np.ndarray, int]:
         """
         Generate wavs using Everyvoice model.
         """
@@ -67,7 +62,7 @@ class Synthesizer(SynthesizerBase):
             synthesize_data,
         )
 
-        wavs, sr = synthesize_data(inputs, self.vocoder)
+        wavs, sr = synthesize_data(input_, self.vocoder)
 
         return wavs, sr
 

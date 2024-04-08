@@ -125,8 +125,6 @@ class FastSpeech2(pl.LightningModule):
                 len(self.lang2id), self.config.model.encoder.input_dim
             )
 
-        self.synthesizer = get_synthesizer(self.config, self.device)
-
     def forward(self, batch, control=InferenceControl(), inference=False):
         # For model diagram see https://github.com/ming024/FastSpeech2/blob/master/img/model.png
         src_lens = batch["src_lens"]
@@ -259,7 +257,9 @@ class FastSpeech2(pl.LightningModule):
             self.config.preprocessing.audio.output_sampling_rate,
         )
         if self.config.training.vocoder_path:
-            wav, sr = self.synthesizer(inputs=batch["mel"])
+            input_ = batch["mel"]
+            synthesizer = get_synthesizer(self.config.training, input_.device)
+            wav, sr = synthesizer(input_=input_)
 
             self.logger.experiment.add_audio(
                 f"copy-synthesis/wav_{batch['basename'][0]}",
@@ -330,7 +330,9 @@ class FastSpeech2(pl.LightningModule):
         )
 
         if self.config.training.vocoder_path:
-            wav, sr = self.synthesizer(inputs=output[self.output_key])
+            input_ = output[self.output_key]
+            synthesizer = get_synthesizer(self.config, input_.device)
+            wav, sr = synthesizer(input_=input_)
             self.logger.experiment.add_audio(
                 f"pred/wav_{batch['basename'][0]}", wav, self.global_step, sr
             )
