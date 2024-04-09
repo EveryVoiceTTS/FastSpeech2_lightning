@@ -1,9 +1,11 @@
 import sys
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
 import pytorch_lightning as pl
 import torch
+import torchaudio
 from everyvoice.config.type_definitions import TargetTrainingTextRepresentationLevel
 from everyvoice.model.feature_prediction.config import FeaturePredictionConfig
 from everyvoice.text.features import N_PHONOLOGICAL_FEATURES
@@ -242,120 +244,138 @@ class FastSpeech2(pl.LightningModule):
         )
         return losses["total"]
 
-    def _validation_global_step_0(self, batch, batch_idx) -> None:
-        if self.global_step != 0:
-            return
-
-        assert self.logger is not None
-
-        audio = torch.load(
-            self.config.preprocessing.save_dir
-            / "audio"
-            / "--".join(
-                [
-                    batch["basename"][0],
-                    batch["speaker"][0],
-                    batch["language"][0],
-                    f"audio-{self.config.preprocessing.audio.input_sampling_rate}.pt",
-                ]
-            )
-        )
-        # Log ground truth audio
-        self.logger.experiment.add_audio(
-            f"gt/wav_{batch['basename'][0]}",
-            audio,
-            self.global_step,
-            self.config.preprocessing.audio.output_sampling_rate,
-        )
-        if self.config.training.vocoder_path:
-            input_ = batch["mel"]
-            synthesizer = get_synthesizer(self.config, input_.device)
-            wav, sr = synthesizer(input_=input_)
-
-            self.logger.experiment.add_audio(
-                f"copy-synthesis/wav_{batch['basename'][0]}",
-                wav,
-                self.global_step,
-                sr,
-            )
-
-    def _validation_batch_idx_0(self, batch, batch_idx, output) -> None:
-        if batch_idx != 0:
-            return
-
-        assert self.logger is not None
-
-        # Currently only plots the first one, but the function is writte to support plotting multiple
-        if self.config.model.learn_alignment:
-            figs = plot_attn_maps(
-                output["attn_soft"],
-                output["attn_hard"],
-                output["tgt_lens"],
-                output["src_lens"],
-                n=1,
-            )
-            for i, fig in enumerate(figs):
-                self.logger.experiment.add_figure(
-                    f"attention/{batch['basename'][i]}", fig, self.global_step
-                )
-
-        duration_np = output["duration_target"][0].cpu().numpy()
-        gt_pitch_for_plotting = batch["pitch"][0].cpu().numpy()
-        gt_energy_for_plotting = batch["energy"][0].cpu().numpy()
-        pred_pitch_for_plotting = output["pitch_prediction"][0].cpu().numpy()
-        pred_energy_for_plotting = output["energy_prediction"][0].cpu().numpy()
-
-        if self.config.model.variance_predictors.pitch.level == "phone":
-            pred_pitch_for_plotting = expand(pred_pitch_for_plotting, duration_np)
-            if not self.config.model.learn_alignment:
-                # pitch targets are frame-wise if alignment is learned
-                gt_pitch_for_plotting = expand(gt_pitch_for_plotting, duration_np)
-
-        if self.config.model.variance_predictors.energy.level == "phone":
-            pred_energy_for_plotting = expand(pred_energy_for_plotting, duration_np)
-            if not self.config.model.learn_alignment:
-                # energy targets are frame-wise if alignment is learned
-                gt_energy_for_plotting = expand(gt_energy_for_plotting, duration_np)
-
-        self.logger.experiment.add_figure(
-            f"pred/spec_{batch['basename'][0]}",
-            plot_mel(
-                [
-                    {
-                        "mel": np.swapaxes(batch["mel"][0].cpu().numpy(), 0, 1),
-                        "pitch": gt_pitch_for_plotting,
-                        "energy": gt_energy_for_plotting,
-                    },
-                    {
-                        "mel": np.swapaxes(
-                            output[self.output_key][0].cpu().numpy(), 0, 1
-                        ),
-                        "pitch": pred_pitch_for_plotting,
-                        "energy": pred_energy_for_plotting,
-                    },
-                ],
-                self.stats,
-                ["Ground-Truth Spectrogram", "Synthesized Spectrogram"],
-            ),
-            self.global_step,
-        )
-
-        if self.config.training.vocoder_path:
-            input_ = output[self.output_key]
-            synthesizer = get_synthesizer(self.config, input_.device)
-            wav, sr = synthesizer(input_=input_)
-            self.logger.experiment.add_audio(
-                f"pred/wav_{batch['basename'][0]}", wav, self.global_step, sr
-            )
-
     def validation_step(self, batch, batch_idx):
         if self.global_step == 0:
-            self._validation_global_step_0(batch, batch_idx)
+            audio, _ = torchaudio.load(
+                self.config.preprocessing.save_dir
+                / "audio"
+                / "--".join(
+                    [
+                        batch["basename"][0],
+                        batch["speaker"][0],
+                        batch["language"][0],
+                        f"audio-{self.config.preprocessing.audio.input_sampling_rate}.wav",
+                    ]
+                )
+            )
 
+            audio = audio.squeeze()
+            # Log ground truth audio
+            self.logger.experiment.add_audio(
+                f"gt/wav_{batch['basename'][0]}",
+                audio,
+                self.global_step,
+                self.config.preprocessing.audio.output_sampling_rate,
+            )
+            if self.config.training.vocoder_path:
+                if (
+                    os.path.basename(self.config.training.vocoder_path)
+                    == "generator_universal.pth.tar"
+                ):
+                    from everyvoice.model.vocoder.original_hifigan_helper import (
+                        get_vocoder,
+                        vocoder_infer,
+                    )
+
+                    checkpoint = get_vocoder(
+                        self.config.training.vocoder_path, batch["mel"].device
+                    )
+                    gt_wav = vocoder_infer(
+                        batch["mel"],
+                        checkpoint,
+                    )[0]
+                    gt_sr = self.config.preprocessing.audio.input_sampling_rate
+                else:
+                    checkpoint = torch.load(
+                        self.config.training.vocoder_path,
+                        map_location=batch["mel"].device,
+                    )
+                    gt_wav, gt_sr = synthesize_data(batch["mel"], checkpoint)
+                self.logger.experiment.add_audio(
+                    f"copy-synthesis/wav_{batch['basename'][0]}",
+                    gt_wav,
+                    self.global_step,
+                    gt_sr,
+                )
         output = self(batch)
         if batch_idx == 0:
-            self._validation_batch_idx_0(batch, batch_idx, output)
+            # Currently only plots the first one, but the function is writte to support plotting multiple
+            if self.config.model.learn_alignment:
+                figs = plot_attn_maps(
+                    output["attn_soft"],
+                    output["attn_hard"],
+                    output["tgt_lens"],
+                    output["src_lens"],
+                    n=1,
+                )
+                for i, fig in enumerate(figs):
+                    self.logger.experiment.add_figure(
+                        f"attention/{batch['basename'][i]}", fig, self.global_step
+                    )
+            duration_np = output["duration_target"][0].cpu().numpy()
+            gt_pitch_for_plotting = batch["pitch"][0].cpu().numpy()
+            gt_energy_for_plotting = batch["energy"][0].cpu().numpy()
+            pred_pitch_for_plotting = output["pitch_prediction"][0].cpu().numpy()
+            pred_energy_for_plotting = output["energy_prediction"][0].cpu().numpy()
+            if self.config.model.variance_predictors.pitch.level == "phone":
+                pred_pitch_for_plotting = expand(pred_pitch_for_plotting, duration_np)
+                if not self.config.model.learn_alignment:
+                    # pitch targets are frame-wise if alignment is learned
+                    gt_pitch_for_plotting = expand(gt_pitch_for_plotting, duration_np)
+            if self.config.model.variance_predictors.energy.level == "phone":
+                pred_energy_for_plotting = expand(pred_energy_for_plotting, duration_np)
+                if not self.config.model.learn_alignment:
+                    # energy targets are frame-wise if alignment is learned
+                    gt_energy_for_plotting = expand(gt_energy_for_plotting, duration_np)
+            self.logger.experiment.add_figure(
+                f"pred/spec_{batch['basename'][0]}",
+                plot_mel(
+                    [
+                        {
+                            "mel": np.swapaxes(batch["mel"][0].cpu().numpy(), 0, 1),
+                            "pitch": gt_pitch_for_plotting,
+                            "energy": gt_energy_for_plotting,
+                        },
+                        {
+                            "mel": np.swapaxes(
+                                output[self.output_key][0].cpu().numpy(), 0, 1
+                            ),
+                            "pitch": pred_pitch_for_plotting,
+                            "energy": pred_energy_for_plotting,
+                        },
+                    ],
+                    self.stats,
+                    ["Ground-Truth Spectrogram", "Synthesized Spectrogram"],
+                ),
+                self.global_step,
+            )
+            if self.config.training.vocoder_path:
+                if (
+                    os.path.basename(self.config.training.vocoder_path)
+                    == "generator_universal.pth.tar"
+                ):
+                    from everyvoice.model.vocoder.original_hifigan_helper import (
+                        get_vocoder,
+                        vocoder_infer,
+                    )
 
+                    checkpoint = get_vocoder(
+                        self.config.training.vocoder_path, batch["mel"].device
+                    )
+                    wav = vocoder_infer(
+                        output[self.output_key],
+                        checkpoint,
+                    )[0]
+                    sr = self.config.preprocessing.audio.input_sampling_rate
+                else:
+                    checkpoint = torch.load(
+                        self.config.training.vocoder_path,
+                        map_location=batch["mel"].device,
+                    )
+                    wav, sr = synthesize_data(output[self.output_key], checkpoint)
+                self.logger.experiment.add_audio(
+                    f"pred/wav_{batch['basename'][0]}", wav, self.global_step, sr
+                )
         losses = self.loss(output, batch, self.current_epoch)
         self.log_dict(
             {f"validation/{k}_loss": v.item() for k, v in losses.items()},
