@@ -4,6 +4,7 @@ from typing import Optional
 import numpy as np
 import pytorch_lightning as pl
 import torch
+from everyvoice.config.type_definitions import TargetTrainingTextRepresentationLevel
 from everyvoice.model.feature_prediction.config import FeaturePredictionConfig
 from everyvoice.text.lookups import LookupTable
 from everyvoice.text.text_processor import TextProcessor
@@ -131,7 +132,13 @@ class FastSpeech2(pl.LightningModule):
         max_src_len = batch["max_src_len"]
         mel_lens = batch["mel_lens"]
         max_mel_len = batch["max_mel_len"]
-        text_inputs = batch["text"]
+        if (
+            self.config.model.target_text_representation_level
+            == TargetTrainingTextRepresentationLevel.phonological_features
+        ):
+            text_inputs = batch["pfs"]
+        else:
+            text_inputs = batch["text"]
         src_mask = mask_from_lens(src_lens, max_src_len)
         speaker_ids = batch["speaker_id"]
         language_ids = batch["language_id"]
