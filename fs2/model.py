@@ -1,5 +1,4 @@
 import sys
-from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -247,14 +246,18 @@ class FastSpeech2(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         if self.global_step == 0:
             audio, _ = torchaudio.load(
-                self.config.preprocessing.save_dir
-                / "audio"
-                / "--".join(
+                "/".join(
                     [
-                        batch["basename"][0],
-                        batch["speaker"][0],
-                        batch["language"][0],
-                        f"audio-{self.config.preprocessing.audio.input_sampling_rate}.wav",
+                        str(self.config.preprocessing.save_dir),
+                        "audio",
+                        "--".join(
+                            [
+                                batch["basename"][0],
+                                batch["speaker"][0],
+                                batch["language"][0],
+                                f"audio-{self.config.preprocessing.audio.input_sampling_rate}.wav",
+                            ]
+                        ),
                     ]
                 )
             )
