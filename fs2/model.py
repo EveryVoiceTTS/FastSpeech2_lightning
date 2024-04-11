@@ -6,6 +6,7 @@ import pytorch_lightning as pl
 import torch
 from everyvoice.config.type_definitions import TargetTrainingTextRepresentationLevel
 from everyvoice.model.feature_prediction.config import FeaturePredictionConfig
+from everyvoice.text.features import N_PHONOLOGICAL_FEATURES
 from everyvoice.text.lookups import LookupTable
 from everyvoice.text.text_processor import TextProcessor
 from everyvoice.utils.heavy import expand
@@ -50,9 +51,12 @@ class FastSpeech2(pl.LightningModule):
         self.save_hyperparameters(ignore=[])
         self.loss = FastSpeech2Loss(config=config)
         self.text_input_layer: nn.Linear | nn.Embedding
-        if self.config.model.use_phonological_feats:
+        if (
+            self.config.model.target_text_representation_level
+            == TargetTrainingTextRepresentationLevel.phonological_features
+        ):
             self.text_input_layer = nn.Linear(
-                self.config.model.phonological_feats_size,
+                N_PHONOLOGICAL_FEATURES,
                 self.config.model.encoder.input_dim,
                 bias=False,
             )

@@ -123,7 +123,10 @@ class FastSpeechDataset(Dataset):
                 TargetTrainingTextRepresentationLevel.ipa_phones.value, "text"
             )
         pfs = None
-        if self.config.model.use_phonological_feats:
+        if (
+            self.config.model.target_text_representation_level
+            == TargetTrainingTextRepresentationLevel.phonological_features
+        ):
             pfs = self._load_file(basename, speaker, language, "pfs", "pfs.pt")
 
         energy = self._load_file(basename, speaker, language, "energy", "energy.pt")

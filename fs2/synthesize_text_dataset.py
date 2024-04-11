@@ -58,7 +58,8 @@ class SynthesizeTextDataSet(Dataset):
         #       despite that's what we do at preprocessing time.
         character_tokens, phone_tokens, pfs = self.preprocessor.process_text(
             item,
-            use_pfs=self.config.model.use_phonological_feats,
+            use_pfs=self.config.model.target_text_representation_level
+            == TargetTrainingTextRepresentationLevel.phonological_features,
             encode_as_string=False,
         )
         match self.target_text_representation_level:

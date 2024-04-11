@@ -127,15 +127,6 @@ class FastSpeech2ModelConfig(ConfigModel):
         VarianceLossEnum.mse,
         description="The loss function to use when calculating Mel spectrogram loss.",
     )
-
-    phonological_feats_size: int = Field(
-        39,
-        description="Advanced. The number of dimension used in the phonological feature vector representation. The default is 39, but this can be changed by modifying the everyvoice/text/features.py module.",
-    )
-    use_phonological_feats: bool = Field(
-        False,
-        description="Whether to train using phonological feature vectors as inputs instead of one-hot encoded text inputs.",
-    )
     use_postnet: bool = Field(True, description="Whether to use a postnet module.")
     multilingual: bool = Field(
         False,
