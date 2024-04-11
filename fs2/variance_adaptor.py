@@ -3,6 +3,7 @@ import sys
 import numpy as np
 import torch
 import torch.nn.functional as F
+from everyvoice.exceptions import BadDataError
 from loguru import logger
 from torch import nn
 from torch.nn.utils.rnn import pad_sequence
@@ -273,9 +274,23 @@ class VarianceAdaptor(nn.Module):
                 energy_target = self.average_variance(energy_target, duration_target)
             if self.config.model.variance_predictors.pitch.level == "phone":
                 pitch_target = self.average_variance(pitch_target, duration_target)
+            try:
+                equal_dur_targets = torch.eq(
+                    duration_target.sum(dim=1), batch["mel_lens"]
+                )
+                assert torch.all(equal_dur_targets)
+            except AssertionError as e:
+                from itertools import compress
 
-            assert torch.all(torch.eq(duration_target.sum(dim=1), batch["mel_lens"]))
-
+                mismatches = list(
+                    compress(
+                        batch["basename"], [not x for x in equal_dur_targets.tolist()]
+                    )
+                )
+                raise BadDataError(
+                    f"Something failed with the following items, please check them for errors: {mismatches}"
+                ) from e
+                sys.exit(1)
         # If phone-level variance, use src_mask before duration predictor and upsampling of x
         # using length regulator
         # otherwise use tgt_mask after upsampling
