@@ -120,7 +120,7 @@ class FastSpeechDataset(Dataset):
             )
         pfs = None
         if self.config.model.use_phonological_feats:
-            pfs = self._load_file(basename, speaker, language, "text", "pfs.pt")
+            pfs = self._load_file(basename, speaker, language, "pfs", "pfs.pt")
 
         energy = self._load_file(basename, speaker, language, "energy", "energy.pt")
         pitch = self._load_file(basename, speaker, language, "pitch", "pitch.pt")
