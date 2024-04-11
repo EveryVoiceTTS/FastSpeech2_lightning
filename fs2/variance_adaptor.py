@@ -67,7 +67,7 @@ class LengthRegulator(nn.Module):
             torch.repeat_interleave(x[i], durations[i], dim=0)
             for i in range(x.shape[0])
         ]
-        lengths = torch.tensor([t.shape[0] for t in repeated_list]).long()
+        lengths = torch.IntTensor([t.shape[0] for t in repeated_list])
         # FIXME: int(max_length) when max_length is None is invalid
         max_length = min(lengths.max(), int(max_length))
         mask = (
@@ -173,9 +173,9 @@ class VarianceAdaptor(nn.Module):
                 hard_attn = mas_width1(
                     log_attn_cpu[ind, 0, : out_lens_cpu[ind], : in_lens_cpu[ind]]
                 )
-                attn_out_cpu[ind, 0, : out_lens_cpu[ind], : in_lens_cpu[ind]] = (
-                    hard_attn
-                )
+                attn_out_cpu[
+                    ind, 0, : out_lens_cpu[ind], : in_lens_cpu[ind]
+                ] = hard_attn
             attn_out = torch.tensor(attn_out_cpu, device=attn.device, dtype=attn.dtype)
         return attn_out
 
@@ -261,7 +261,7 @@ class VarianceAdaptor(nn.Module):
 
             # Viterbi --> durations
             attn_hard_dur = attn_hard.sum(2)[:, 0, :]
-            duration_target = attn_hard_dur.long()
+            duration_target = attn_hard_dur.int()
             if (pitch_target.size(1) == text_emb.size(1)) or (
                 energy_target.size(1) == text_emb.size(1)
             ):
@@ -336,7 +336,7 @@ class VarianceAdaptor(nn.Module):
                     * control.duration
                 ),
                 min=0,
-            ).long()
+            ).int()
             x, tgt_mask = self.length_regulator(
                 x, duration_rounded, max_length=max_target_len
             )

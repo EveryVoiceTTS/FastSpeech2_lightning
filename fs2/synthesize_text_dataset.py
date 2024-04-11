@@ -63,11 +63,11 @@ class SynthesizeTextDataSet(Dataset):
         )
         match self.target_text_representation_level:
             case TargetTrainingTextRepresentationLevel.characters:
-                text_tensor = torch.Tensor(character_tokens).long()
+                text_tensor = torch.IntTensor(character_tokens)
             case TargetTrainingTextRepresentationLevel.ipa_phones:
-                text_tensor = torch.Tensor(phone_tokens).long()
+                text_tensor = torch.IntTensor(phone_tokens)
             case TargetTrainingTextRepresentationLevel.phonological_features:
-                pf_tensor = torch.Tensor(pfs).long()
+                pf_tensor = torch.FloatTensor(pfs)
             case _:
                 raise NotImplementedError(
                     f"Sorry we can only synthesize from either characters, ipa phones, or phonological features and you selected {self.target_text_representation_level}"
@@ -82,9 +82,9 @@ class SynthesizeTextDataSet(Dataset):
         batch = {
             "text": text_tensor,
             "pfs": pf_tensor,
-            "src_lens": torch.LongTensor([src_lens]),
-            "language_id": torch.LongTensor([language_id]),
-            "speaker_id": torch.LongTensor([speaker_id]),
+            "src_lens": torch.IntTensor([src_lens]),
+            "language_id": torch.IntTensor([language_id]),
+            "speaker_id": torch.IntTensor([speaker_id]),
             "basename": item["basename"],
             "language": item["language"],
             "speaker": item["speaker"],

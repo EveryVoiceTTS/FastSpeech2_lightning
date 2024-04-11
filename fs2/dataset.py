@@ -14,7 +14,6 @@ from everyvoice.utils import (
     check_dataset_size,
     filter_dataset_based_on_target_text_representation_level,
 )
-from loguru import logger
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 
@@ -101,17 +100,17 @@ class FastSpeechDataset(Dataset):
             )
         match self.config.model.target_text_representation_level:
             case TargetTrainingTextRepresentationLevel.characters:
-                text = torch.Tensor(
+                text = torch.IntTensor(
                     self.text_processor.encode_escaped_string_sequence(
                         item["character_tokens"]
                     )
-                ).long()
+                )
             case TargetTrainingTextRepresentationLevel.ipa_phones | TargetTrainingTextRepresentationLevel.phonological_features:
-                text = torch.Tensor(
+                text = torch.IntTensor(
                     self.text_processor.encode_escaped_string_sequence(
                         item["phone_tokens"]
                     )
-                ).long()
+                )
             case _:
                 raise NotImplementedError(
                     f"{self.config.model.target_text_representation_level} have not yet been implemented."
@@ -165,8 +164,8 @@ class FastSpeech2DataModule(BaseDataModule):
     def collate_method(self, data):
         data = [_flatten(x) for x in data]
         data = {k: [dic[k] for dic in data] for k in data[0]}
-        text_lens = torch.LongTensor([text.size(0) for text in data["text"]])
-        mel_lens = torch.LongTensor([mel.size(0) for mel in data["mel"]])
+        text_lens = torch.IntTensor([text.size(0) for text in data["text"]])
+        mel_lens = torch.IntTensor([mel.size(0) for mel in data["mel"]])
         max_mel = max(mel_lens)
         max_text = max(text_lens)
         for key in data:
@@ -186,7 +185,7 @@ class FastSpeech2DataModule(BaseDataModule):
                         data[key], batch_first=True, padding_value=0
                     )
             if isinstance(data[key][0], int):
-                data[key] = torch.tensor(data[key]).long()
+                data[key] = torch.IntTensor(data[key])
         data["src_lens"] = text_lens
         data["mel_lens"] = mel_lens
         data["max_src_len"] = max_text

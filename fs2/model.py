@@ -163,7 +163,7 @@ class FastSpeech2(pl.LightningModule):
         )
         # Create inference Mel lens
         if inference:
-            mel_lens = torch.LongTensor(
+            mel_lens = torch.IntTensor(
                 [x.nonzero().size(0) for x in variance_adaptor_out["target_mask"]]
             ).to(text_inputs.device)
             max_mel_len = max(mel_lens)
