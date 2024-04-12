@@ -71,6 +71,13 @@ def get_synthesizer(
     config: FastSpeech2Config,
     device: torch.device,
 ) -> SynthesizerBase:
+    """Given a config with a vocoder_path, this factory function loads the
+    proper checkpoint for either a Universal Generator or an EveryVoice
+    vocoder.
+
+    Return:
+        either SynthesizerUniversal or Synthesizer
+    """
     if config.training.vocoder_path is None:
         import sys
 
