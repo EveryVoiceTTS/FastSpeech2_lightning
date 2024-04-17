@@ -258,7 +258,7 @@ class FastSpeech2(pl.LightningModule):
         )
         if self.config.training.vocoder_path:
             input_ = batch["mel"]
-            synthesizer = get_synthesizer(self.config.training, input_.device)
+            synthesizer = get_synthesizer(self.config, input_.device)
             wav, sr = synthesizer(input_=input_)
 
             self.logger.experiment.add_audio(
