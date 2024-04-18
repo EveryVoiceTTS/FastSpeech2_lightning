@@ -224,7 +224,11 @@ def synthesize(  # noqa: C901
         [SynthesizeOutputFormats.wav.value],
         "-O",
         "--output-type",
-        help="Which format to synthesize to. **wav** is the default and will synthesize to a playable audio file. **npy** will generate spectrograms required to fine-tune [HiFiGAN](https://github.com/jik876/hifi-gan) (Mel-band oriented tensors, K, T). **pt** will generate predicted Mel spectrograms in the EveryVoice format (time-oriented Tensors, T, K)",
+        help="""Which format(s) to synthesize to.
+        Multiple formats can be provided by repeating `--output-type`.
+        **wav** is the default and will synthesize to a playable audio file;
+        **npy** will generate spectrograms required to fine-tune [HiFiGAN](https://github.com/jik876/hifi-gan) (Mel-band oriented tensors, K, T);
+        **pt** will generate predicted Mel spectrograms in the EveryVoice format (time-oriented Tensors, T, K).""",
     ),
     vocoder_path: Path = typer.Option(
         None,
