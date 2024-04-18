@@ -27,7 +27,10 @@ class SynthesizerUniversal(SynthesizerBase):
     A synthesizer that uses the generator_universal.
     """
 
-    def __init__(self, vocoder, config) -> None:
+    def __init__(self, vocoder, config: FastSpeech2Config) -> None:
+        """
+        vocoder is a HiFiGAN Generator
+        """
         super().__init__(vocoder)
         # TODO: If we don't need all of config but simply output_sampling_rate,
         # may be we should only store that.
