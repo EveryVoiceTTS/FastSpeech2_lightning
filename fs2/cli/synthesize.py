@@ -254,8 +254,8 @@ def synthesize(  # noqa: C901
 ):
     """Given some text and a trained model, generate some audio. i.e. perform typical speech synthesis"""
     # TODO: allow for changing of language/speaker and variance control
-    import torch
     from everyvoice.text.phonemizer import AVAILABLE_G2P_ENGINES
+    from everyvoice.utils.heavy import get_device_from_accelerator
 
     from ..model import FastSpeech2
     from ..synthesize_text_dataset import SynthesizeTextDataSet
@@ -279,7 +279,13 @@ def synthesize(  # noqa: C901
         sys.exit(1)
 
     output_dir.mkdir(exist_ok=True, parents=True)
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    # NOTE: We want to be able to put the vocoder on the proper accelerator for
+    # it to be compatible with the vocoder's input device.
+    # We could misuse the trainer's API and use the private variable
+    # trainer._accelerator_connector._accelerator_flag but that value is
+    # computed when instantiating a trainer and that is exactly when we need
+    # the information to create the callbacks.
+    device = get_device_from_accelerator(accelerator)
     # Load checkpoints
     print(f"Loading checkpoint from {model_path}", file=sys.stderr)
     model: FastSpeech2 = FastSpeech2.load_from_checkpoint(model_path).to(device)
