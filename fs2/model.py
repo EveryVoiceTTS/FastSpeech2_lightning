@@ -1,9 +1,11 @@
 import sys
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
 import pytorch_lightning as pl
 import torch
+import torchaudio
 from everyvoice.config.type_definitions import TargetTrainingTextRepresentationLevel
 from everyvoice.model.feature_prediction.config import FeaturePredictionConfig
 from everyvoice.text.features import N_PHONOLOGICAL_FEATURES
@@ -247,19 +249,22 @@ class FastSpeech2(pl.LightningModule):
             return
 
         assert self.logger is not None
-
-        audio = torch.load(
-            self.config.preprocessing.save_dir
-            / "audio"
-            / "--".join(
-                [
-                    batch["basename"][0],
-                    batch["speaker"][0],
-                    batch["language"][0],
-                    f"audio-{self.config.preprocessing.audio.input_sampling_rate}.pt",
-                ]
-            )
+        audio, _ = torchaudio.load(
+            (
+                Path(self.config.preprocessing.save_dir)
+                / "audio"
+                / "--".join(
+                    [
+                        batch["basename"][0],
+                        batch["speaker"][0],
+                        batch["language"][0],
+                        f"audio-{self.config.preprocessing.audio.input_sampling_rate}.wav",
+                    ]
+                )
+            ).__str__()
         )
+
+        audio = audio.squeeze()
         # Log ground truth audio
         self.logger.experiment.add_audio(
             f"gt/wav_{batch['basename'][0]}",
