@@ -1,3 +1,4 @@
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -158,13 +159,16 @@ class FastSpeechDataset(Dataset):
 class FastSpeech2DataModule(BaseDataModule):
     def __init__(self, config: FastSpeech2Config):
         super().__init__(config=config)
-        self.collate_fn = self.collate_method
+        self.collate_fn = partial(
+            self.collate_method, learn_alignment=config.model.learn_alignment
+        )
         self.use_weighted_sampler = config.training.use_weighted_sampler
         self.batch_size = config.training.batch_size
         self.load_dataset()
         self.dataset_length = len(self.train_dataset) + len(self.val_dataset)
 
-    def collate_method(self, data):
+    @staticmethod
+    def collate_method(data, learn_alignment=True):
         data = [_flatten(x) for x in data]
         data = {k: [dic[k] for dic in data] for k in data[0]}
         text_lens = torch.IntTensor([text.size(0) for text in data["text"]])
@@ -175,7 +179,7 @@ class FastSpeech2DataModule(BaseDataModule):
             if isinstance(data[key][0], np.ndarray):
                 data[key] = [torch.tensor(x) for x in data[key]]
             if torch.is_tensor(data[key][0]):
-                if key == "duration" and self.config.model.learn_alignment:
+                if key == "duration" and learn_alignment:
                     # in this case we need to pad both the src and target dimensions
                     dur_padded = torch.zeros(len(text_lens), max_mel, max_text)
                     dur_padded.zero_()
