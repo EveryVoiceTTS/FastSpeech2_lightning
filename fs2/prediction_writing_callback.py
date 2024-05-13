@@ -1,33 +1,14 @@
-import hashlib
 from pathlib import Path
 from typing import Any, Sequence
 
 import numpy as np
 import torch
-from everyvoice.utils import slugify
 from loguru import logger
 from pytorch_lightning.callbacks import Callback
 
 from .config import FastSpeech2Config
 from .synthesizer import Synthesizer, get_synthesizer
 from .type_definitions import SynthesizeOutputFormats
-
-BASENAME_MAX_LENGTH = 20
-
-
-def truncate_basename(basename: str) -> str:
-    """
-    Shortens basename to BASENAME_MAX_LENGTH and uses the rest of basename to generate a sha1.
-    This is done to make sure the file name stays short but that two utterances
-    starting with the same prefix doesn't get ovverridden.
-    """
-    basename_cleaned = slugify(basename)
-    if len(basename_cleaned) <= BASENAME_MAX_LENGTH:
-        return basename_cleaned
-
-    m = hashlib.sha1()
-    m.update(bytes(basename, encoding="UTF-8"))
-    return basename_cleaned[:BASENAME_MAX_LENGTH] + "-" + m.hexdigest()[:8]
 
 
 def get_synthesis_output_callbacks(
@@ -84,7 +65,7 @@ class PredictionWritingCallbackBase(Callback):
     def _get_filename(self, basename: str, speaker: str, language: str) -> Path:
         return self.save_dir / self.sep.join(
             [
-                truncate_basename(basename),
+                basename,
                 speaker,
                 language,
                 self.global_step,
@@ -114,6 +95,22 @@ class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
         self.output_key = output_key
         self.config = config
         logger.info(f"Saving pytorch output to {self.save_dir}")
+
+    def _get_filename(self, basename: str, speaker: str, language: str) -> Path:
+        # the spec should not have the global step printed because it is used to fine-tune
+        # and the dataloader does not expect a global step in the filename
+        path = self.save_dir / self.sep.join(
+            [
+                basename,
+                speaker,
+                language,
+                self.file_extension,
+            ]
+        )
+        path.parent.mkdir(
+            parents=True, exist_ok=True
+        )  # synthesizing spec allows nested outputs
+        return path
 
     def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
         self,
@@ -223,7 +220,13 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
 
         sr: int
         wavs: np.ndarray
-        wavs, sr = self.synthesizer(outputs[self.output_key])
+        output_value = outputs[self.output_key]
+        if output_value is not None:
+            wavs, sr = self.synthesizer(output_value)
+        else:
+            raise ValueError(
+                f"{self.output_key} does not exist in the output of your model"
+            )
 
         # wavs: [B (batch_size), T (samples)]
         assert (

@@ -10,11 +10,10 @@ from pytorch_lightning import Trainer
 
 from ..config import FastSpeech2Config, FastSpeech2TrainingConfig
 from ..prediction_writing_callback import (
-    BASENAME_MAX_LENGTH,
     PredictionWritingSpecCallback,
     PredictionWritingWavCallback,
-    truncate_basename,
 )
+from ..utils import BASENAME_MAX_LENGTH, truncate_basename
 
 
 class TestTruncateBasename(TestCase):

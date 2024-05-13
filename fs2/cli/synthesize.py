@@ -12,6 +12,7 @@ from everyvoice.config.type_definitions import (
 from loguru import logger
 
 from ..type_definitions import SynthesizeOutputFormats
+from ..utils import truncate_basename
 
 
 def validate_data_keys_with_model_keys(
@@ -84,7 +85,7 @@ def prepare_data(
         print(f"Processing text {texts}", file=sys.stderr)
         data = [
             {
-                "basename": slugify(text),
+                "basename": truncate_basename(slugify(text)),
                 text_representation.value: text,
                 "language": language or DEFAULT_LANGUAGE,
                 "speaker": speaker or DEFAULT_SPEAKER,
@@ -97,10 +98,10 @@ def prepare_data(
             data = [
                 d
                 | {
-                    "basename": slugify(
-                        d.get("basename", d[text_representation.value]),
-                        limit_to_n_characters=30,
-                    ),  # if 'basename' doesn't exist, create a basename from the first 30 chars of the text slug
+                    "basename": d.get(
+                        "basename",
+                        truncate_basename(slugify(d[text_representation.value])),
+                    ),  # Only truncate the basename if the basename doesn't already exist in the filelist.
                     "language": language or d.get("language", DEFAULT_LANGUAGE),
                     "speaker": speaker or d.get("speaker", DEFAULT_SPEAKER),
                 }
@@ -130,7 +131,7 @@ def prepare_data(
             with open(filelist, encoding="utf8") as f:
                 data = [
                     {
-                        "basename": slugify(line.strip(), limit_to_n_characters=30),
+                        "basename": truncate_basename(slugify(line.strip())),
                         text_representation.value: line.strip(),
                         "language": language or DEFAULT_LANGUAGE,
                         "speaker": speaker or DEFAULT_SPEAKER,
@@ -319,7 +320,6 @@ def synthesize(  # noqa: C901
         model=model,
         text_representation=text_representation,
     )
-
     dataset = SynthesizeTextDataSet(
         data,
         config=model.config,
