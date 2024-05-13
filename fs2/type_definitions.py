@@ -7,8 +7,7 @@ class SynthesizeOutputFormats(str, Enum):
     """Valid output formats for synthesize"""
 
     wav = "wav"
-    npy = "npy"
-    pt = "pt"
+    spec = "spec"
 
 
 class InferenceControl(BaseModel):

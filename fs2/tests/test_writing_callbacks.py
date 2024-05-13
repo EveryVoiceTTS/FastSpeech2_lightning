@@ -11,8 +11,7 @@ from pytorch_lightning import Trainer
 from ..config import FastSpeech2Config, FastSpeech2TrainingConfig
 from ..prediction_writing_callback import (
     BASENAME_MAX_LENGTH,
-    PredictionWritingNpyCallback,
-    PredictionWritingPtCallback,
+    PredictionWritingSpecCallback,
     PredictionWritingWavCallback,
     truncate_basename,
 )
@@ -100,44 +99,7 @@ class WritingTestBase(TestCase):
         }
 
 
-class TestWritingNpy(WritingTestBase):
-    """
-    Testing the callback that writes npy files.
-    """
-
-    def test_truncated_filenames(self):
-        """
-        We limit the file name's length to at most BASENAME_MAX_LENGTH.
-        """
-        with TemporaryDirectory() as tmp_dir:
-            tmp_dir = Path(tmp_dir)
-            writer = PredictionWritingNpyCallback(
-                global_step=77,
-                output_dir=tmp_dir,
-                output_key=self.output_key,
-            )
-            writer.on_predict_batch_end(
-                _trainer=None,
-                _pl_module=None,
-                outputs=self.outputs,
-                batch=self.batch,
-                _batch_idx=0,
-                _dataloader_idx=0,
-            )
-            output_dir = writer.save_dir
-            self.assertTrue(output_dir.exists())
-            self.assertTrue(
-                (output_dir / "short--spk1--lngA--ckpt=77--pred.npy").exists()
-            )
-            self.assertTrue(
-                (
-                    output_dir
-                    / "This-utterance-is-wa-3663fb86--spk2--lngB--ckpt=77--pred.npy"
-                ).exists()
-            )
-
-
-class TestWritingPt(WritingTestBase):
+class TestWritingSpec(WritingTestBase):
     """
     Testing the callback that writes pt files.
     """
@@ -148,7 +110,7 @@ class TestWritingPt(WritingTestBase):
         """
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
-            writer = PredictionWritingPtCallback(
+            writer = PredictionWritingSpecCallback(
                 config=FastSpeech2Config(contact=self.contact),
                 global_step=77,
                 output_dir=tmp_dir,

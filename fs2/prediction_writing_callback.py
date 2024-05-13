@@ -9,7 +9,7 @@ from loguru import logger
 from pytorch_lightning.callbacks import Callback
 
 from .config import FastSpeech2Config
-from .synthesizer import Synthesizer, SynthesizerUniversal, get_synthesizer
+from .synthesizer import Synthesizer, get_synthesizer
 from .type_definitions import SynthesizeOutputFormats
 
 BASENAME_MAX_LENGTH = 20
@@ -43,17 +43,9 @@ def get_synthesis_output_callbacks(
     that will generate those files.
     """
     callbacks: list[Callback] = []
-    if SynthesizeOutputFormats.npy in output_type:
+    if SynthesizeOutputFormats.spec in output_type:
         callbacks.append(
-            PredictionWritingNpyCallback(
-                global_step=global_step,
-                output_dir=output_dir,
-                output_key=output_key,
-            )
-        )
-    if SynthesizeOutputFormats.pt in output_type:
-        callbacks.append(
-            PredictionWritingPtCallback(
+            PredictionWritingSpecCallback(
                 config=config,
                 global_step=global_step,
                 output_dir=output_dir,
@@ -101,59 +93,7 @@ class PredictionWritingCallbackBase(Callback):
         )
 
 
-class PredictionWritingNpyCallback(PredictionWritingCallbackBase):
-    """
-    This callback runs inference on a provided text-to-spec model and writes the output to numpy files in the format required (B, K, T) for fine-tuning a hifi-gan model using the author's repository (i.e. not EveryVoice): https://github.com/jik876/hifi-gan
-    """
-
-    def __init__(
-        self,
-        global_step: int,
-        output_dir: Path,
-        output_key: str,
-    ):
-        super().__init__(
-            file_extension="pred.npy",
-            global_step=global_step,
-            save_dir=output_dir / "original_hifigan_spec",
-        )
-
-        self.output_key = output_key
-        logger.info(f"Saving numpy output to {self.save_dir}")
-
-    def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
-        self,
-        _trainer,
-        _pl_module,
-        outputs: dict[str, torch.Tensor | None],
-        batch: dict[str, Any],
-        _batch_idx: int,
-        _dataloader_idx: int = 0,
-    ):
-        import numpy as np
-
-        assert self.output_key in outputs and outputs[self.output_key] is not None
-        specs = outputs[self.output_key].transpose(1, 2).cpu().numpy()  # type: ignore
-
-        assert "tgt_lens" in outputs and outputs["tgt_lens"] is not None
-        for basename, speaker, language, spec, unmasked_len in zip(
-            batch["basename"],
-            batch["speaker"],
-            batch["language"],
-            specs,
-            outputs["tgt_lens"],
-        ):
-            np.save(
-                self._get_filename(
-                    basename=basename,
-                    speaker=speaker,
-                    language=language,
-                ),
-                spec[:, :unmasked_len].squeeze(),
-            )
-
-
-class PredictionWritingPtCallback(PredictionWritingCallbackBase):
+class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
     """
     This callback runs inference on a provided text-to-spec model and saves the resulting Mel spectrograms to disk as pytorch files. These can be used to fine-tune an EveryVoice spec-to-wav model.
     """
@@ -243,10 +183,6 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
             # [Class Patterns](https://peps.python.org/pep-0634/#class-patterns)
             # [PEP 636 – Structural Pattern Matching: Tutorial](https://peps.python.org/pep-0636)
             match self.synthesizer:
-                case SynthesizerUniversal():
-                    self.file_extension = self.sep.join(
-                        ("v=universal", self.file_extension)
-                    )
                 case Synthesizer():
                     from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import (
                         HiFiGANConfig,
