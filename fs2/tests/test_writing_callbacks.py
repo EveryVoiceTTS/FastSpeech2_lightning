@@ -103,9 +103,10 @@ class TestWritingSpec(WritingTestBase):
     Testing the callback that writes pt files.
     """
 
-    def test_truncated_filenames(self):
+    def test_filenames_not_truncated(self):
         """
-        We limit the file name's length to at most BASENAME_MAX_LENGTH.
+        We limit the file name's length to at most BASENAME_MAX_LENGTH in the CLI,
+        but the callback does not truncate the basenames passed to it
         """
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
@@ -128,14 +129,13 @@ class TestWritingSpec(WritingTestBase):
             self.assertTrue(output_dir.exists())
             self.assertTrue(
                 (
-                    output_dir
-                    / "short--spk1--lngA--ckpt=77--spec-pred-22050-mel-librosa.pt"
+                    output_dir / "short--spk1--lngA--spec-pred-22050-mel-librosa.pt"
                 ).exists()
             )
             self.assertTrue(
                 (
                     output_dir
-                    / "This-utterance-is-wa-3663fb86--spk2--lngB--ckpt=77--spec-pred-22050-mel-librosa.pt"
+                    / "This utterance is way too long--spk2--lngB--spec-pred-22050-mel-librosa.pt"
                 ).exists()
             )
 
@@ -146,9 +146,10 @@ class TestWritingWav(WritingTestBase):
     Note that this test may be expansive.
     """
 
-    def test_truncated_filenames(self):
+    def test_filenames_not_truncated(self):
         """
-        We limit the file name's length to at most BASENAME_MAX_LENGTH.
+        We limit the file name's length to at most BASENAME_MAX_LENGTH in the CLI,
+        but the callback does not truncate the basenames passed to it
         """
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
@@ -188,6 +189,6 @@ class TestWritingWav(WritingTestBase):
             self.assertTrue(
                 (
                     output_dir
-                    / "This-utterance-is-wa-3663fb86--spk2--lngB--ckpt=77--v_ckpt=0--pred.wav"
+                    / "This utterance is way too long--spk2--lngB--ckpt=77--v_ckpt=0--pred.wav"
                 ).exists()
             )

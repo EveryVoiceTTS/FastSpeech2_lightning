@@ -8,3 +8,4 @@ LJ001-0037|and the next year Gunther Zeiner at Augsburg followed suit;|git|0
 LJ002-0054|those who were the oldest offenders, sentenced to transportation, and who had narrowly escaped the penalty of death.|str|3
 LJ002-0093|There were nine wards in all on the female side, one of them in the attic,|crk|1
 LJ002-0158|Other cases are recorded elsewhere, as at the Giltspur Street Compter, where in eighteen oh five Mr. Neild found a man named William Grant|str|2
+LJ002 this is a really long basename|just an example to show that filelists that provide basenames don't get truncated or slugified

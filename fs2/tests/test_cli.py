@@ -129,7 +129,7 @@ class PrepareSynthesizeDataTest(TestCase):
             ),
             text_representation=DatasetTextRepresentation.characters,
         )
-        self.assertEqual(len(data), 9)
+        self.assertEqual(len(data), 10)
         self.assertTrue(all((d["language"] == "foo" for d in data)))
 
     def test_filelist_speaker(self):
@@ -151,7 +151,12 @@ class PrepareSynthesizeDataTest(TestCase):
             ),
             text_representation=DatasetTextRepresentation.characters,
         )
-        self.assertEqual(len(data), 9)
+        self.assertEqual(
+            data[-1]["basename"],
+            "LJ002 this is a really long basename",
+            "Asserts that if a filelist provides a basename, it won't get slugified or truncated",
+        )
+        self.assertEqual(len(data), 10)
         self.assertTrue(all((d["speaker"] == "bar" for d in data)))
 
     def test_plain_filelist(self):
@@ -171,6 +176,11 @@ class PrepareSynthesizeDataTest(TestCase):
                 ),
                 text_representation=DatasetTextRepresentation.characters,
             )
+        self.assertEqual(
+            data[-1]["basename"],
+            "Other-cases-are-reco-674e00ab",
+            "Asserts that basenames are truncated and slugified",
+        )
         self.assertEqual(len(data), 9)
         self.assertTrue(all((d["language"] == "foo" for d in data)))
         self.assertTrue(all((d["speaker"] == "bar" for d in data)))
