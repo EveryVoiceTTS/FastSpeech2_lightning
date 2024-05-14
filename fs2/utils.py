@@ -3,7 +3,7 @@ from typing import Optional
 import torch
 from matplotlib import pyplot as plt
 
-from .type_definitions import Stats
+from .type_definitions_heavy import Stats
 
 
 def plot_attn_maps(attn_softs, attn_hards, mel_lens, text_lens, n=4):

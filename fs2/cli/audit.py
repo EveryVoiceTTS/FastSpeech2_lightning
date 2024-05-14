@@ -24,7 +24,7 @@ def audit(
     import torch
 
     from ..config import FastSpeech2Config
-    from ..type_definitions import Stats, StatsInfo
+    from ..type_definitions_heavy import Stats, StatsInfo
 
     def check_stats(data, path, stats: StatsInfo):
         import torch

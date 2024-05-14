@@ -12,7 +12,7 @@ from .attn.alignment import mas_width1
 from .attn.attention import ConvAttention
 from .config import FastSpeech2Config
 from .layers import VarianceConvolutionLayer
-from .type_definitions import InferenceControl, Stats, StatsInfo
+from .type_definitions_heavy import InferenceControl, Stats, StatsInfo
 
 
 class VariancePredictor(nn.Module):
@@ -174,9 +174,9 @@ class VarianceAdaptor(nn.Module):
                 hard_attn = mas_width1(
                     log_attn_cpu[ind, 0, : out_lens_cpu[ind], : in_lens_cpu[ind]]
                 )
-                attn_out_cpu[
-                    ind, 0, : out_lens_cpu[ind], : in_lens_cpu[ind]
-                ] = hard_attn
+                attn_out_cpu[ind, 0, : out_lens_cpu[ind], : in_lens_cpu[ind]] = (
+                    hard_attn
+                )
             attn_out = torch.tensor(attn_out_cpu, device=attn.device, dtype=attn.dtype)
         return attn_out
 

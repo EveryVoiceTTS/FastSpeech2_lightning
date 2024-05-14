@@ -1,6 +1,10 @@
-from enum import Enum
+"""
+This file is for light-weight type definitions with no dependencies.
+This should load in milliseconds.
+Expensive type definitions, e.g., requiring pydantic, belong in type_definitions_heavy.py.
+"""
 
-from pydantic import BaseModel, ConfigDict
+from enum import Enum
 
 
 class SynthesizeOutputFormats(str, Enum):
@@ -8,25 +12,3 @@ class SynthesizeOutputFormats(str, Enum):
 
     wav = "wav"
     spec = "spec"
-
-
-class InferenceControl(BaseModel):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    pitch: float = 1.0
-    energy: float = 1.0
-    duration: float = 1.0
-
-
-class StatsInfo(BaseModel):
-    min: float
-    max: float
-    std: float
-    mean: float
-    norm_min: float
-    norm_max: float
-
-
-class Stats(BaseModel):
-    pitch: StatsInfo
-    energy: StatsInfo

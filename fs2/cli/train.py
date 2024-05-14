@@ -12,7 +12,7 @@ def train(**kwargs):
     from ..config import FastSpeech2Config
     from ..dataset import FastSpeech2DataModule
     from ..model import FastSpeech2
-    from ..type_definitions import Stats
+    from ..type_definitions_heavy import Stats
 
     config_args = kwargs["config_args"]
     config_file = kwargs["config_file"]
