@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from .blocks import ConvNorm, DepthwiseSeparableConv1d
-from .utils import make_positions
+from .utils.heavy import make_positions
 
 
 class Transpose(nn.Module):

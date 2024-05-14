@@ -1,28 +1,41 @@
-import hashlib
 from typing import Optional
 
 import torch
-from everyvoice.utils import slugify
 from matplotlib import pyplot as plt
 
-from .type_definitions_heavy import Stats
+from ..type_definitions_heavy import Stats
 
 BASENAME_MAX_LENGTH = 20
 
 
-def truncate_basename(basename: str) -> str:
-    """
-    Shortens basename to BASENAME_MAX_LENGTH and uses the rest of basename to generate a sha1.
-    This is done to make sure the file name stays short but that two utterances
-    starting with the same prefix doesn't get ovverridden.
-    """
-    basename_cleaned = slugify(basename)
-    if len(basename_cleaned) <= BASENAME_MAX_LENGTH:
-        return basename_cleaned
+def mask_from_lens(lens, max_len: Optional[int] = None):
+    if max_len is None:
+        max_len = lens.max()
+    ids = torch.arange(0, max_len, device=lens.device, dtype=lens.dtype)
+    return torch.lt(ids, lens.unsqueeze(1))
 
-    m = hashlib.sha1()
-    m.update(bytes(basename, encoding="UTF-8"))
-    return basename_cleaned[:BASENAME_MAX_LENGTH] + "-" + m.hexdigest()[:8]
+
+def get_mask_from_lengths(lengths, max_len=None):
+    batch_size = lengths.shape[0]
+    if max_len is None:
+        max_len = max(lengths).item()
+
+    ids = (
+        torch.arange(0, max_len).unsqueeze(0).expand(batch_size, -1).to(lengths.device)
+    )
+    return ids >= lengths.unsqueeze(1).expand(-1, max_len)
+
+
+def make_positions(tensor, padding_idx):
+    """Replace non-padding symbols with their position numbers.
+    Position numbers begin at padding_idx+1. Padding symbols are ignored.
+    """
+    # The series of casts and type-conversions here are carefully
+    # balanced to both work with ONNX export and XLA. In particular XLA
+    # prefers ints, cumsum defaults to output longs, and ONNX doesn"t know
+    # how to handle the dtype kwarg in cumsum.
+    mask = tensor.ne(padding_idx).int()
+    return (torch.cumsum(mask, dim=1).type_as(mask) * mask).long() + padding_idx
 
 
 def plot_attn_maps(attn_softs, attn_hards, mel_lens, text_lens, n=4):
@@ -95,33 +108,3 @@ def plot_mel(data, stats: Stats, titles):
         )
 
     return fig
-
-
-def mask_from_lens(lens, max_len: Optional[int] = None):
-    if max_len is None:
-        max_len = lens.max()
-    ids = torch.arange(0, max_len, device=lens.device, dtype=lens.dtype)
-    return torch.lt(ids, lens.unsqueeze(1))
-
-
-def get_mask_from_lengths(lengths, max_len=None):
-    batch_size = lengths.shape[0]
-    if max_len is None:
-        max_len = max(lengths).item()
-
-    ids = (
-        torch.arange(0, max_len).unsqueeze(0).expand(batch_size, -1).to(lengths.device)
-    )
-    return ids >= lengths.unsqueeze(1).expand(-1, max_len)
-
-
-def make_positions(tensor, padding_idx):
-    """Replace non-padding symbols with their position numbers.
-    Position numbers begin at padding_idx+1. Padding symbols are ignored.
-    """
-    # The series of casts and type-conversions here are carefully
-    # balanced to both work with ONNX export and XLA. In particular XLA
-    # prefers ints, cumsum defaults to output longs, and ONNX doesn"t know
-    # how to handle the dtype kwarg in cumsum.
-    mask = tensor.ne(padding_idx).int()
-    return (torch.cumsum(mask, dim=1).type_as(mask) * mask).long() + padding_idx

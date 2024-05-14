@@ -22,7 +22,7 @@ from .loss import FastSpeech2Loss
 from .noam import NoamLR
 from .synthesizer import get_synthesizer
 from .type_definitions_heavy import InferenceControl, Stats
-from .utils import mask_from_lens, plot_attn_maps, plot_mel
+from .utils.heavy import mask_from_lens, plot_attn_maps, plot_mel
 from .variance_adaptor import VarianceAdaptor
 
 DEFAULT_LANG2ID: LookupTable = {}
