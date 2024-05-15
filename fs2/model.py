@@ -175,7 +175,7 @@ class FastSpeech2(pl.LightningModule):
             inputs, x, batch, src_mask, control, inference=inference
         )
         # Create inference Mel lens
-        if inference:
+        if inference and mel_lens is None:
             mel_lens = torch.IntTensor(
                 [x.nonzero().size(0) for x in variance_adaptor_out["target_mask"]]
             ).to(text_inputs.device)
@@ -321,34 +321,29 @@ class FastSpeech2(pl.LightningModule):
             if not self.config.model.learn_alignment:
                 # energy targets are frame-wise if alignment is learned
                 gt_energy_for_plotting = expand(gt_energy_for_plotting, duration_np)
-
-        # plot_mel() requires stat, but self.stats is actually Optional
-        # TODO: if self.stats is always set by the time we get here, OK, if not
-        # skip this step when it's missing or give the user a helpful error message
-        assert self.stats is not None
-
-        self.logger.experiment.add_figure(
-            f"pred/spec_{batch['basename'][0]}",
-            plot_mel(
-                [
-                    {
-                        "mel": np.swapaxes(batch["mel"][0].cpu().numpy(), 0, 1),
-                        "pitch": gt_pitch_for_plotting,
-                        "energy": gt_energy_for_plotting,
-                    },
-                    {
-                        "mel": np.swapaxes(
-                            output[self.output_key][0].cpu().numpy(), 0, 1
-                        ),
-                        "pitch": pred_pitch_for_plotting,
-                        "energy": pred_energy_for_plotting,
-                    },
-                ],
-                self.stats,
-                ["Ground-Truth Spectrogram", "Synthesized Spectrogram"],
-            ),
-            self.global_step,
-        )
+        if self.stats is not None:
+            self.logger.experiment.add_figure(
+                f"pred/spec_{batch['basename'][0]}",
+                plot_mel(
+                    [
+                        {
+                            "mel": np.swapaxes(batch["mel"][0].cpu().numpy(), 0, 1),
+                            "pitch": gt_pitch_for_plotting,
+                            "energy": gt_energy_for_plotting,
+                        },
+                        {
+                            "mel": np.swapaxes(
+                                output[self.output_key][0].cpu().numpy(), 0, 1
+                            ),
+                            "pitch": pred_pitch_for_plotting,
+                            "energy": pred_energy_for_plotting,
+                        },
+                    ],
+                    self.stats,
+                    ["Ground-Truth Spectrogram", "Synthesized Spectrogram"],
+                ),
+                self.global_step,
+            )
 
         if self.config.training.vocoder_path:
             input_ = output[self.output_key]

@@ -88,19 +88,15 @@ class FastSpeechDataset(Dataset):
             item["character_tokens"] = character_tokens
             item["phone_tokens"] = phone_tokens
         if self.teacher_forcing or not self.inference:
-            try:
-                mel = self._load_file(
-                    basename,
-                    speaker,
-                    language,
-                    "spec",
-                    f"spec-{self.sampling_rate}-{self.config.preprocessing.audio.spec_type}.pt",
-                ).transpose(
-                    0, 1
-                )  # [mel_bins, frames] -> [frames, mel_bins]
-            except FileNotFoundError:
-                mel = None
-                self.teacher_forcing = False
+            mel = self._load_file(
+                basename,
+                speaker,
+                language,
+                "spec",
+                f"spec-{self.sampling_rate}-{self.config.preprocessing.audio.spec_type}.pt",
+            ).transpose(
+                0, 1
+            )  # [mel_bins, frames] -> [frames, mel_bins]
         else:
             mel = None
         if (
@@ -194,9 +190,12 @@ class FastSpeechDataset(Dataset):
 
 
 class FastSpeech2DataModule(BaseDataModule):
-    def __init__(self, config: FastSpeech2Config, inference=False):
+    def __init__(
+        self, config: FastSpeech2Config, inference=False, teacher_forcing=False
+    ):
         super().__init__(config=config)
         self.inference = inference
+        self.teacher_forcing = teacher_forcing
         self.collate_fn = partial(
             self.collate_method, learn_alignment=config.model.learn_alignment
         )
@@ -261,6 +260,7 @@ class FastSpeech2DataModule(BaseDataModule):
                 self.lang2id,
                 self.speaker2id,
                 inference=self.inference,
+                teacher_forcing=self.teacher_forcing,
             )
             torch.save(self.predict_dataset, self.predict_path)
         else:
@@ -308,8 +308,9 @@ class FastSpeech2SynthesisDataModule(FastSpeech2DataModule):
         data: list[dict],
         lang2id: LookupTable,
         speaker2id: LookupTable,
+        teacher_forcing: bool = False,
     ):
-        super().__init__(config=config, inference=True)
+        super().__init__(config=config, inference=True, teacher_forcing=teacher_forcing)
         self.inference = True
         self.data = data
         self.collate_fn = partial(

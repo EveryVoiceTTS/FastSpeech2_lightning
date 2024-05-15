@@ -230,6 +230,15 @@ def synthesize(  # noqa: C901
         **wav** is the default and will synthesize to a playable audio file;
         **spec** will generate predicted Mel spectrograms. Tensors are time-oriented (T, K) where T is equal to the number of frames and K is equal to the number of Mel bands.""",
     ),
+    teacher_forcing_folder: Path = typer.Option(
+        None,
+        "--teacher-forcing-folder",
+        "-T",
+        help="ADVANCED. The path to preprocessed folder containing spec and duration folders to use for teacher-forcing the synthesized outputs.",
+        dir_okay=True,
+        file_okay=False,
+        autocompletion=complete_path,
+    ),
     vocoder_path: Path = typer.Option(
         None,
         "--vocoder-path",
@@ -340,13 +349,21 @@ def synthesize(  # noqa: C901
             global_step=get_global_step(model_path),
         ),
     )
-
+    if teacher_forcing_folder is not None:
+        teacher_forcing = True
+        model.config.preprocessing.save_dir = teacher_forcing_folder
+    else:
+        teacher_forcing = False
     # overwrite batch_size and num_workers
     model.config.training.batch_size = batch_size
     model.config.training.train_data_workers = num_workers
     trainer.predict(
         model,
         FastSpeech2SynthesisDataModule(
-            model.config, data, model.lang2id, model.speaker2id
+            model.config,
+            data,
+            model.lang2id,
+            model.speaker2id,
+            teacher_forcing=teacher_forcing,
         ),
     )

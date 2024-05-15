@@ -234,7 +234,9 @@ class VarianceAdaptor(nn.Module):
         x = encoder_output.clone()
         energy_target = batch["energy"] if not inference else None
         pitch_target = batch["pitch"] if not inference else None
-        duration_target = batch["duration"] if not inference else None
+        duration_target = (
+            batch["duration"] if batch["duration"][0] is not None else None
+        )
         max_target_len = batch["max_mel_len"]
         src_mask = src_mask
         attn_logprob = None  # Overwritten if alignment is learned
@@ -263,16 +265,25 @@ class VarianceAdaptor(nn.Module):
             # Viterbi --> durations
             attn_hard_dur = attn_hard.sum(2)[:, 0, :]
             duration_target = attn_hard_dur.int()
-            if (pitch_target.size(1) == text_emb.size(1)) or (
-                energy_target.size(1) == text_emb.size(1)
+            if (
+                pitch_target is not None and (pitch_target.size(1) == text_emb.size(1))
+            ) or (
+                energy_target is not None
+                and (energy_target.size(1) == text_emb.size(1))
             ):
                 logger.error(
                     "Your pitch and/or energy targets are already averaged across phones, but when you are learning alignment with phone-level energy or pitch modelling, you must have an un-averaged target for these as the duration of phones changes during training. This should happen automatically if you re-run the preprocessing step for energy and pitch."
                 )
                 sys.exit(1)
-            if self.config.model.variance_predictors.energy.level == "phone":
+            if (
+                energy_target is not None
+                and self.config.model.variance_predictors.energy.level == "phone"
+            ):
                 energy_target = self.average_variance(energy_target, duration_target)
-            if self.config.model.variance_predictors.pitch.level == "phone":
+            if (
+                pitch_target is not None
+                and self.config.model.variance_predictors.pitch.level == "phone"
+            ):
                 pitch_target = self.average_variance(pitch_target, duration_target)
             try:
                 equal_dur_targets = torch.eq(
