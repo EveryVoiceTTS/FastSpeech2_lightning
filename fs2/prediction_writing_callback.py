@@ -63,7 +63,7 @@ class PredictionWritingCallbackBase(Callback):
         self.save_dir.mkdir(parents=True, exist_ok=True)
 
     def _get_filename(self, basename: str, speaker: str, language: str) -> Path:
-        return self.save_dir / self.sep.join(
+        path = self.save_dir / self.sep.join(
             [
                 basename,
                 speaker,
@@ -72,6 +72,10 @@ class PredictionWritingCallbackBase(Callback):
                 self.file_extension,
             ]
         )
+        path.parent.mkdir(
+            parents=True, exist_ok=True
+        )  # synthesizing spec allows nested outputs
+        return path
 
 
 class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
