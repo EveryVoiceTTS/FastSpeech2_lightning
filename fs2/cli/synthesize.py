@@ -252,13 +252,14 @@ def synthesize(  # noqa: C901
         help="Number of workers to process the data.",
     ),
 ):
+
     """Given some text and a trained model, generate some audio. i.e. perform typical speech synthesis"""
     # TODO: allow for changing of language/speaker and variance control
     from everyvoice.text.phonemizer import AVAILABLE_G2P_ENGINES
     from everyvoice.utils.heavy import get_device_from_accelerator
 
+    from ..dataset import FastSpeech2SynthesisDataModule
     from ..model import FastSpeech2
-    from ..synthesize_text_dataset import SynthesizeTextDataSet
 
     if texts and filelist:
         print(
@@ -320,13 +321,6 @@ def synthesize(  # noqa: C901
         model=model,
         text_representation=text_representation,
     )
-    dataset = SynthesizeTextDataSet(
-        data,
-        config=model.config,
-        lang2id=model.lang2id,
-        speaker2id=model.speaker2id,
-        target_text_representation_level=model.config.model.target_text_representation_level,
-    )
 
     from pytorch_lightning import Trainer
 
@@ -347,16 +341,12 @@ def synthesize(  # noqa: C901
         ),
     )
 
-    from torch.utils.data import DataLoader
-
-    from ..synthesize_text_dataset import collator
-
+    # overwrite batch_size and num_workers
+    model.config.training.batch_size = batch_size
+    model.config.training.train_data_workers = num_workers
     trainer.predict(
         model,
-        DataLoader(
-            dataset=dataset,
-            batch_size=batch_size,
-            num_workers=num_workers,
-            collate_fn=collator,
+        FastSpeech2SynthesisDataModule(
+            model.config, data, model.lang2id, model.speaker2id
         ),
     )
