@@ -21,7 +21,7 @@ from .layers import PositionalEmbedding, PostNet
 from .loss import FastSpeech2Loss
 from .noam import NoamLR
 from .synthesizer import get_synthesizer
-from .type_definitions import InferenceControl, Stats
+from .type_definitions_heavy import InferenceControl, Stats
 from .utils import mask_from_lens, plot_attn_maps, plot_mel
 from .variance_adaptor import VarianceAdaptor
 
@@ -321,6 +321,11 @@ class FastSpeech2(pl.LightningModule):
             if not self.config.model.learn_alignment:
                 # energy targets are frame-wise if alignment is learned
                 gt_energy_for_plotting = expand(gt_energy_for_plotting, duration_np)
+
+        # plot_mel() requires stat, but self.stats is actually Optional
+        # TODO: if self.stats is always set by the time we get here, OK, if not
+        # skip this step when it's missing or give the user a helpful error message
+        assert self.stats is not None
 
         self.logger.experiment.add_figure(
             f"pred/spec_{batch['basename'][0]}",
