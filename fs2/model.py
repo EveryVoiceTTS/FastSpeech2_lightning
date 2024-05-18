@@ -226,11 +226,18 @@ class FastSpeech2(pl.LightningModule):
         self.config = FeaturePredictionConfig(
             **checkpoint["hyper_parameters"]["config"]
         )
+        if (
+            "stats" in checkpoint["hyper_parameters"]
+            and checkpoint["hyper_parameters"]["stats"] is not None
+        ):
+            self.stats = Stats(**checkpoint["hyper_parameters"]["stats"])
 
     def on_save_checkpoint(self, checkpoint):
         """Serialize the checkpoint hyperparameters"""
         # Convert the config to a checkpoint-safe config
         checkpoint["hyper_parameters"]["config"] = self.config.model_checkpoint_dump()
+        if self.stats is not None:
+            checkpoint["hyper_parameters"]["stats"] = self.stats.model_dump(mode="json")
 
     def predict_step(self, batch, batch_idx):
         with torch.no_grad():
