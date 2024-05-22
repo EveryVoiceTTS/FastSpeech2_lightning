@@ -15,7 +15,14 @@ from everyvoice.config.text_config import TextConfig
 from everyvoice.config.type_definitions import TargetTrainingTextRepresentationLevel
 from everyvoice.config.utils import load_partials
 from everyvoice.utils import load_config_from_json_or_yaml_path
-from pydantic import Field, FilePath, ValidationInfo, field_validator, model_validator
+from pydantic import (
+    Field,
+    FilePath,
+    ValidationInfo,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 
 class ConformerConfig(ConfigModel):
@@ -77,12 +84,20 @@ class VariancePredictorBase(ConfigModel):
         True, description="Whether to use depthwise separable convolutions."
     )
 
+    @field_serializer("loss")
+    def convert_loss_enum(self, loss: VarianceLossEnum):
+        return loss.value
+
 
 class VariancePredictorConfig(VariancePredictorBase):
     level: VarianceLevelEnum = Field(
         VarianceLevelEnum.phone,
         description="The level for the variance predictor to use. 'frame' will make predictions at the frame level. 'phone' will average predictions across all frames in each phone.",
     )
+
+    @field_serializer("level")
+    def convert_level_enum(self, level: VarianceLevelEnum):
+        return level.value
 
 
 class VariancePredictors(ConfigModel):
@@ -137,6 +152,16 @@ class FastSpeech2ModelConfig(ConfigModel):
         description="Whether to train a multispeaker model. For this to work, your filelist must contain a column/field for 'speaker' with values for each utterance.",
     )
 
+    @field_serializer("mel_loss")
+    def convert_mel_loss_enum(self, mel_loss: VarianceLossEnum):
+        return mel_loss.value
+
+    @field_serializer("target_text_representation_level")
+    def convert_training_enum(
+        self, target_text_representation_level: TargetTrainingTextRepresentationLevel
+    ):
+        return target_text_representation_level.value
+
 
 class EarlyStoppingMetricEnum(str, Enum):
     none = "none"
@@ -147,6 +172,10 @@ class EarlyStoppingMetricEnum(str, Enum):
 class EarlyStoppingConfig(ConfigModel):
     metric: EarlyStoppingMetricEnum = EarlyStoppingMetricEnum.none
     patience: int = 4
+
+    @field_serializer("metric")
+    def convert_metric_enum(self, metric: EarlyStoppingMetricEnum):
+        return metric.value
 
 
 class FastSpeech2TrainingConfig(BaseTrainingConfig):
