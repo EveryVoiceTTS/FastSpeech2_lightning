@@ -133,6 +133,15 @@ class FastSpeech2(pl.LightningModule):
             )
 
     def forward(self, batch, control=InferenceControl(), inference=False):
+        # Determine whether we're teacher forcing or not
+        # To do so, we need to be in inference mode and
+        # the data loader should have loaded some Mel lengths
+        # to force the output to match.
+        if inference and batch["mel_lens"] is not None:
+            teacher_forcing = True
+        else:
+            teacher_forcing = False
+
         # For model diagram see https://github.com/ming024/FastSpeech2/blob/master/img/model.png
         src_lens = batch["src_lens"]
         max_src_len = batch["max_src_len"]
@@ -172,10 +181,16 @@ class FastSpeech2(pl.LightningModule):
 
         # VarianceAdaptor out
         variance_adaptor_out = self.variance_adaptor(
-            inputs, x, batch, src_mask, control, inference=inference
+            inputs,
+            x,
+            batch,
+            src_mask,
+            control,
+            inference=inference,
+            teacher_forcing=teacher_forcing,
         )
         # Create inference Mel lens
-        if inference and mel_lens is None:
+        if not teacher_forcing:
             mel_lens = torch.IntTensor(
                 [x.nonzero().size(0) for x in variance_adaptor_out["target_mask"]]
             ).to(text_inputs.device)

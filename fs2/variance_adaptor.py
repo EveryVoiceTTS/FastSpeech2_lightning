@@ -174,9 +174,9 @@ class VarianceAdaptor(nn.Module):
                 hard_attn = mas_width1(
                     log_attn_cpu[ind, 0, : out_lens_cpu[ind], : in_lens_cpu[ind]]
                 )
-                attn_out_cpu[ind, 0, : out_lens_cpu[ind], : in_lens_cpu[ind]] = (
-                    hard_attn
-                )
+                attn_out_cpu[
+                    ind, 0, : out_lens_cpu[ind], : in_lens_cpu[ind]
+                ] = hard_attn
             attn_out = torch.tensor(attn_out_cpu, device=attn.device, dtype=attn.dtype)
         return attn_out
 
@@ -229,6 +229,7 @@ class VarianceAdaptor(nn.Module):
         src_mask,
         control=InferenceControl(),
         inference=False,
+        teacher_forcing=False,
     ):  # sourcery skip: swap-if-expression
         # Get information from batch
         x = encoder_output.clone()
@@ -244,7 +245,7 @@ class VarianceAdaptor(nn.Module):
         attn_hard = None
         # speaker embedding is handled in main model
         # Alignment
-        if not inference and self.config.model.learn_alignment:
+        if (teacher_forcing or not inference) and self.config.model.learn_alignment:
             # make sure to do the alignments before folding
             attn_mask = src_mask[..., None] == 0
             # attn_mask should be 1 for unused timesteps in the text_enc_w_spkvec tensor
@@ -350,7 +351,7 @@ class VarianceAdaptor(nn.Module):
 
         log_duration_prediction = self.duration_predictor(x, mask=src_mask)
         # upsampling from text time steps to mel time steps
-        if not inference:
+        if teacher_forcing or not inference:
             x, tgt_mask = self.length_regulator(
                 x, duration_target, max_length=max_target_len
             )
