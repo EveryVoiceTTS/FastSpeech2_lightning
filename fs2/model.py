@@ -190,7 +190,7 @@ class FastSpeech2(pl.LightningModule):
             teacher_forcing=teacher_forcing,
         )
         # Create inference Mel lens
-        if not teacher_forcing:
+        if inference and not teacher_forcing:
             mel_lens = torch.IntTensor(
                 [x.nonzero().size(0) for x in variance_adaptor_out["target_mask"]]
             ).to(text_inputs.device)

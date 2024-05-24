@@ -33,7 +33,7 @@ class FastSpeechDataset(Dataset):
         config: FastSpeech2Config,
         lang2id: LookupTable,
         speaker2id: LookupTable,
-        teacher_forcing=True,
+        teacher_forcing=False,
         inference=False,
     ):
         self.dataset = dataset

@@ -63,6 +63,8 @@ class PredictionWritingCallbackBase(Callback):
         self.save_dir.mkdir(parents=True, exist_ok=True)
 
     def _get_filename(self, basename: str, speaker: str, language: str) -> Path:
+        # We don't truncate or alter the filename here because the basename is
+        # already truncated/cleaned in cli/synthesize.py
         path = self.save_dir / self.sep.join(
             [
                 basename,
@@ -101,6 +103,8 @@ class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
         logger.info(f"Saving pytorch output to {self.save_dir}")
 
     def _get_filename(self, basename: str, speaker: str, language: str) -> Path:
+        # We don't truncate or alter the filename here because the basename is
+        # already truncated/cleaned in cli/synthesize.py
         # the spec should not have the global step printed because it is used to fine-tune
         # and the dataloader does not expect a global step in the filename
         path = self.save_dir / self.sep.join(
