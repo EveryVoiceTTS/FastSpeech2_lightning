@@ -230,9 +230,9 @@ def synthesize(  # noqa: C901
         **wav** is the default and will synthesize to a playable audio file;
         **spec** will generate predicted Mel spectrograms. Tensors are time-oriented (T, K) where T is equal to the number of frames and K is equal to the number of Mel bands.""",
     ),
-    teacher_forcing_folder: Path = typer.Option(
+    teacher_forcing_directory: Path = typer.Option(
         None,
-        "--teacher-forcing-folder",
+        "--teacher-forcing-directory",
         "-T",
         help="ADVANCED. The path to preprocessed folder containing spec and duration folders to use for teacher-forcing the synthesized outputs.",
         dir_okay=True,
@@ -349,9 +349,9 @@ def synthesize(  # noqa: C901
             global_step=get_global_step(model_path),
         ),
     )
-    if teacher_forcing_folder is not None:
+    if teacher_forcing_directory is not None:
         teacher_forcing = True
-        model.config.preprocessing.save_dir = teacher_forcing_folder
+        model.config.preprocessing.save_dir = teacher_forcing_directory
     else:
         teacher_forcing = False
     # overwrite batch_size and num_workers
