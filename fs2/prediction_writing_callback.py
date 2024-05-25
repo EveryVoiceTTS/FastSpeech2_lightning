@@ -3,7 +3,9 @@ from typing import Any, Sequence
 
 import numpy as np
 import torch
+from everyvoice.text.text_processor import TextProcessor
 from loguru import logger
+from pympi import TextGrid
 from pytorch_lightning.callbacks import Callback
 
 from .config import FastSpeech2Config
@@ -27,6 +29,15 @@ def get_synthesis_output_callbacks(
     if SynthesizeOutputFormats.spec in output_type:
         callbacks.append(
             PredictionWritingSpecCallback(
+                config=config,
+                global_step=global_step,
+                output_dir=output_dir,
+                output_key=output_key,
+            )
+        )
+    if SynthesizeOutputFormats.textgrid in output_type:
+        callbacks.append(
+            PredictionWritingTextGridCallback(
                 config=config,
                 global_step=global_step,
                 output_dir=output_dir,
@@ -146,6 +157,137 @@ class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
                     language=language,
                 ),
             )
+
+
+class PredictionWritingTextGridCallback(PredictionWritingCallbackBase):
+    """
+    This callback runs inference on a provided text-to-spec model and saves the resulting textgrid of the predicted durations to disk. This can be used for evaluation.
+    """
+
+    def __init__(
+        self,
+        config: FastSpeech2Config,
+        global_step: int,
+        output_dir: Path,
+        output_key: str,
+    ):
+        super().__init__(
+            global_step=global_step,
+            file_extension=f"{config.preprocessing.audio.input_sampling_rate}-{config.preprocessing.audio.spec_type}.TextGrid",
+            save_dir=output_dir / "textgrids",
+        )
+        self.text_processor = TextProcessor(config.text)
+        self.output_key = output_key
+        self.config = config
+        logger.info(f"Saving pytorch output to {self.save_dir}")
+
+    def _get_filename(self, basename: str, speaker: str, language: str) -> Path:
+        # We don't truncate or alter the filename here because the basename is
+        # already truncated/cleaned in cli/synthesize.py
+        # the spec should not have the global step printed because it is used to fine-tune
+        # and the dataloader does not expect a global step in the filename
+        path = self.save_dir / self.sep.join(
+            [
+                basename,
+                speaker,
+                language,
+                self.file_extension,
+            ]
+        )
+        path.parent.mkdir(
+            parents=True, exist_ok=True
+        )  # synthesizing spec allows nested outputs
+        return path
+
+    def frames_to_seconds(self, frames: int) -> float:
+        return (
+            frames * self.config.preprocessing.audio.fft_hop_size
+        ) / self.config.preprocessing.audio.output_sampling_rate
+
+    def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
+        self,
+        _trainer,
+        _pl_module,
+        outputs: dict[str, torch.Tensor | None],
+        batch: dict[str, Any],
+        _batch_idx: int,
+        _dataloader_idx: int = 0,
+    ):
+        assert self.output_key in outputs and outputs[self.output_key] is not None
+        assert (
+            "duration_prediction" in outputs
+            and outputs["duration_prediction"] is not None
+        )
+        for basename, speaker, language, raw_text, text, duration in zip(
+            batch["basename"],
+            batch["speaker"],
+            batch["language"],
+            batch["raw_text"],
+            batch["text"],  # type: ignore
+            outputs["duration_prediction"],
+        ):
+            # Get all durations in frames
+            duration_frames = (
+                torch.clamp(torch.round(torch.exp(duration) - 1), min=0).int().tolist()
+            )
+            # Get all input labels
+            text_labels = self.text_processor.decode_tokens(
+                text.tolist(), join_character=None
+            )
+            assert len(duration_frames) == len(
+                text_labels
+            ), f"can't synthesize {raw_text} because the number of predicted duration steps ({len(duration_frames)}) doesn't equal the number of input text labels ({len(text_labels)})"
+            # get the duration of the audio: (sum_of_frames * hop_size) / sample_rate
+            xmax_seconds = self.frames_to_seconds(sum(duration_frames))
+            # create new textgrid
+            new_tg = TextGrid(xmax=xmax_seconds)
+            # create the tiers
+            words: list[tuple[float, float, str]] = []
+            phones: list[tuple[float, float, str]] = []
+            raw_text_words = raw_text.split()
+            current_word_duration = 0.0
+            last_phone_end = 0.0
+            last_word_end = 0.0
+            phone_tier = new_tg.add_tier("phones")
+            phone_annotation_tier = new_tg.add_tier("phone annotations")
+            word_tier = new_tg.add_tier("words")
+            word_annotation_tier = new_tg.add_tier("word annotations")
+            for label, duration in zip(text_labels, duration_frames):
+                # skip padding
+                if label == "\x80":
+                    continue
+                # add phone label
+                phone_duration = self.frames_to_seconds(duration)
+                current_phone_end = last_phone_end + phone_duration
+                interval = (last_phone_end, current_phone_end, label)
+                phones.append(interval)
+                phone_annotation_tier.add_interval(interval[0], interval[1], "")
+                phone_tier.add_interval(*interval)
+                last_phone_end = current_phone_end
+                # accumulate phone to word label
+                current_word_duration += phone_duration
+                # if label is space, add the word and recount
+                if label == " ":
+                    current_word_end = last_word_end + current_word_duration
+                    interval = (
+                        last_word_end,
+                        current_word_end,
+                        raw_text_words[len(words)],
+                    )
+                    words.append(interval)
+                    word_tier.add_interval(*interval)
+                    word_annotation_tier.add_interval(interval[0], interval[1], "")
+                    last_word_end = current_word_end
+                    current_word_duration = 0
+
+            # get the filename
+            filename = self._get_filename(
+                basename=basename,
+                speaker=speaker,
+                language=language,
+            )
+            # write the file
+            new_tg.to_file(filename)
 
 
 class PredictionWritingWavCallback(PredictionWritingCallbackBase):
