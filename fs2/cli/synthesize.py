@@ -197,6 +197,12 @@ def synthesize(  # noqa: C901
         "-l",
         help="Specify which language to use in a multilingual system. [requires --text]",
     ),
+    duration_control: Optional[float] = typer.Option(
+        1.0,
+        "--duration-control",
+        "-D",
+        help="Control the speaking rate of the synthesis. Set a value to multily the durations by, lower numbers produce quicker speaking rates, larger numbers produce slower speaking rates. Default is 1.0",
+    ),
     speaker: Optional[str] = typer.Option(
         None,
         "--speaker",
@@ -245,7 +251,7 @@ def synthesize(  # noqa: C901
         None,
         "--vocoder-path",
         "-v",
-        help="The path to a trained vocoder in case one was not specified in your model configuration.",
+        help="The path to a trained vocoder (aka spec-to-wav model).",
         dir_okay=False,
         file_okay=True,
         autocompletion=complete_path,
@@ -298,6 +304,7 @@ def synthesize(  # noqa: C901
     # computed when instantiating a trainer and that is exactly when we need
     # the information to create the callbacks.
     device = get_device_from_accelerator(accelerator)
+
     # Load checkpoints
     print(f"Loading checkpoint from {model_path}", file=sys.stderr)
     model: FastSpeech2 = FastSpeech2.load_from_checkpoint(model_path).to(device)
@@ -359,13 +366,18 @@ def synthesize(  # noqa: C901
     # overwrite batch_size and num_workers
     model.config.training.batch_size = batch_size
     model.config.training.train_data_workers = num_workers
-    trainer.predict(
-        model,
-        FastSpeech2SynthesisDataModule(
-            model.config,
-            data,
-            model.lang2id,
-            model.speaker2id,
-            teacher_forcing=teacher_forcing,
+    return (
+        model.config,
+        device,
+        trainer.predict(
+            model,
+            FastSpeech2SynthesisDataModule(
+                model.config,
+                data,
+                model.lang2id,
+                model.speaker2id,
+                teacher_forcing=teacher_forcing,
+            ),
+            return_predictions=True,
         ),
     )

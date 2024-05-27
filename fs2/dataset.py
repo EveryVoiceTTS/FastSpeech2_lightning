@@ -191,9 +191,13 @@ class FastSpeechDataset(Dataset):
 
 class FastSpeech2DataModule(BaseDataModule):
     def __init__(
-        self, config: FastSpeech2Config, inference=False, teacher_forcing=False
+        self,
+        config: FastSpeech2Config,
+        inference=False,
+        teacher_forcing=False,
+        inference_output_dir=Path("synthesis_output"),
     ):
-        super().__init__(config=config)
+        super().__init__(config=config, inference_output_dir=inference_output_dir)
         self.inference = inference
         self.teacher_forcing = teacher_forcing
         self.collate_fn = partial(

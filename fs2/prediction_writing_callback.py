@@ -355,19 +355,7 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
                 sampling_rate_change * vocoder_config.preprocessing.audio.fft_hop_size
             )
 
-    def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
-        self,
-        _trainer,
-        _pl_module,
-        outputs: dict[str, torch.Tensor | None],
-        batch: dict[str, Any],
-        _batch_idx: int,
-        _dataloader_idx: int = 0,
-    ):
-        from scipy.io.wavfile import write
-
-        logger.trace("Generating waveform...")
-
+    def synthesize_audio(self, outputs):
         sr: int
         wavs: np.ndarray
         output_value = outputs[self.output_key]
@@ -393,6 +381,22 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
         if (wavs >= -1.0).all() & (wavs <= 1.0).all():
             wavs = wavs * self.config.preprocessing.audio.max_wav_value
             wavs = wavs.astype("int16")
+        return wavs, sr
+
+    def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
+        self,
+        _trainer,
+        _pl_module,
+        outputs: dict[str, torch.Tensor | None],
+        batch: dict[str, Any],
+        _batch_idx: int,
+        _dataloader_idx: int = 0,
+    ):
+        from scipy.io.wavfile import write
+
+        logger.trace("Generating waveform...")
+
+        wavs, sr = self.synthesize_audio(outputs)
 
         assert "tgt_lens" in outputs and outputs["tgt_lens"] is not None
         for basename, speaker, language, wav, unmasked_len in zip(
