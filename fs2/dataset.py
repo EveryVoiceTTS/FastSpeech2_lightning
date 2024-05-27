@@ -57,6 +57,7 @@ class FastSpeechDataset(Dataset):
         Returns dict with keys: {
             "mel"
             "duration"
+            "duration_control"
             "pfs"
             "text"
             "raw_text"
@@ -73,6 +74,9 @@ class FastSpeechDataset(Dataset):
         item = self.dataset[index]
         speaker = "default" if "speaker" not in item else item["speaker"]
         language = "default" if "language" not in item else item["language"]
+        duration_control = (
+            1.0 if "duration_control" not in item else item["duration_control"]
+        )
         speaker_id = self.speaker2id[speaker]
         language_id = self.lang2id[language]
         basename = item["basename"]
@@ -169,6 +173,7 @@ class FastSpeechDataset(Dataset):
         return {
             "mel": mel,
             "duration": duration,
+            "duration_control": duration_control,
             "pfs": pfs,
             "text": text,
             "raw_text": raw_text,

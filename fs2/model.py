@@ -133,6 +133,11 @@ class FastSpeech2(pl.LightningModule):
             )
 
     def forward(self, batch, control=InferenceControl(), inference=False):
+        # Add duration control. TODO: currently we just take the first item of the batch
+        # and update the control accordingly, but this is hacky and should be fixed
+        if "duration_control" in batch and batch["duration_control"][0]:
+            control.duration = batch["duration_control"][0]
+
         # Determine whether we're teacher forcing or not
         # To do so, we need to be in inference mode and
         # the data loader should have loaded some Mel lengths

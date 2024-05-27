@@ -71,6 +71,7 @@ def prepare_data(
     # fast and enable mocking in unit testing.
     model: Any,
     text_representation: DatasetTextRepresentation,
+    duration_control: float,
 ) -> list[dict[str, Any]]:
     """"""
     from everyvoice.utils import slugify
@@ -151,6 +152,10 @@ def prepare_data(
         key="speaker",
         multi=model.config.model.multispeaker,
     )
+
+    # Add duration_control
+    for item in data:
+        item["duration_control"] = duration_control
 
     return data
 
@@ -335,6 +340,7 @@ def synthesize(  # noqa: C901
         texts=texts,
         language=language,
         speaker=speaker,
+        duration_control=duration_control if duration_control else 1.0,
         filelist=filelist,
         model=model,
         text_representation=text_representation,
