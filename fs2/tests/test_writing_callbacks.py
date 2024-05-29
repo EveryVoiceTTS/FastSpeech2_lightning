@@ -92,8 +92,8 @@ class WritingTestBase(TestCase):
             ],
             "raw_text": ["test", "W̱SÁNEĆ"],
             "text": [
-                torch.IntTensor([0, 1, 2, 3, 4, 5, 6], device="cpu"),
-                torch.IntTensor([0, 1, 2, 3, 4, 5, 6], device="cpu"),
+                torch.IntTensor([2, 3, 4, 5, 6, 7, 8], device="cpu"),
+                torch.IntTensor([2, 3, 4, 5, 6, 7, 8], device="cpu"),
             ],
             "speaker": [
                 "spk1",
@@ -233,6 +233,7 @@ class TestWritingWav(WritingTestBase):
                 output_key=self.output_key,
                 vocoder_model=vocoder,
                 vocoder_config=vocoder.config,
+                vocoder_global_step=10,
             )
             writer.on_predict_batch_end(
                 _trainer=None,
@@ -246,11 +247,13 @@ class TestWritingWav(WritingTestBase):
             # print(output_dir, *output_dir.glob("**"))  # For debugging
             self.assertTrue(output_dir.exists())
             self.assertTrue(
-                (output_dir / "short--spk1--lngA--ckpt=77--v_ckpt=0--pred.wav").exists()
+                (
+                    output_dir / "short--spk1--lngA--ckpt=77--v_ckpt=10--pred.wav"
+                ).exists()
             )
             self.assertTrue(
                 (
                     output_dir
-                    / "This utterance is way too long--spk2--lngB--ckpt=77--v_ckpt=0--pred.wav"
+                    / "This utterance is way too long--spk2--lngB--ckpt=77--v_ckpt=10--pred.wav"
                 ).exists()
             )
