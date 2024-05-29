@@ -257,10 +257,12 @@ class PredictionWritingTextGridCallback(PredictionWritingCallbackBase):
             phone_annotation_tier = new_tg.add_tier("phone annotations")
             word_tier = new_tg.add_tier("words")
             word_annotation_tier = new_tg.add_tier("word annotations")
-            for label, duration in zip(text_labels, duration_frames):
-                # skip padding
-                if label == "\x80":
-                    continue
+            # skip padding
+            text_labels_no_padding = [tl for tl in text_labels if tl != "\x80"]
+            duration_frames_no_padding = duration_frames[: len(text_labels_no_padding)]
+            for label, duration in zip(
+                text_labels_no_padding, duration_frames_no_padding
+            ):
                 # add phone label
                 phone_duration = self.frames_to_seconds(duration)
                 current_phone_end = last_phone_end + phone_duration
@@ -271,8 +273,8 @@ class PredictionWritingTextGridCallback(PredictionWritingCallbackBase):
                 last_phone_end = current_phone_end
                 # accumulate phone to word label
                 current_word_duration += phone_duration
-                # if label is space, add the word and recount
-                if label == " ":
+                # if label is space or the last phone, add the word and recount
+                if label == " " or len(phones) == len(text_labels_no_padding):
                     current_word_end = last_word_end + current_word_duration
                     interval = (
                         last_word_end,
@@ -284,7 +286,6 @@ class PredictionWritingTextGridCallback(PredictionWritingCallbackBase):
                     word_annotation_tier.add_interval(interval[0], interval[1], "")
                     last_word_end = current_word_end
                     current_word_duration = 0
-
             # get the filename
             filename = self._get_filename(
                 basename=basename,

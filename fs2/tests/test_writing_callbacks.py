@@ -6,11 +6,13 @@ import torch
 from everyvoice.config.shared_types import ContactInformation
 from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import HiFiGANConfig
 from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import HiFiGAN
+from pympi import TextGrid
 from pytorch_lightning import Trainer
 
 from ..config import FastSpeech2Config, FastSpeech2TrainingConfig
 from ..prediction_writing_callback import (
     PredictionWritingSpecCallback,
+    PredictionWritingTextGridCallback,
     PredictionWritingWavCallback,
 )
 from ..utils import BASENAME_MAX_LENGTH, truncate_basename
@@ -77,6 +79,7 @@ class WritingTestBase(TestCase):
         cls.output_key = "output"
         cls.outputs = {
             cls.output_key: torch.ones([2, 500, 80], device="cpu"),
+            "duration_prediction": torch.ones([2, 7], device="cpu"),
             "tgt_lens": [
                 90,
                 490,
@@ -86,6 +89,11 @@ class WritingTestBase(TestCase):
             "basename": [
                 "short",
                 "This utterance is way too long",
+            ],
+            "raw_text": ["test", "W̱SÁNEĆ"],
+            "text": [
+                torch.IntTensor([0, 1, 2, 3, 4, 5, 6], device="cpu"),
+                torch.IntTensor([0, 1, 2, 3, 4, 5, 6], device="cpu"),
             ],
             "speaker": [
                 "spk1",
@@ -138,6 +146,58 @@ class TestWritingSpec(WritingTestBase):
                     / "This utterance is way too long--spk2--lngB--spec-pred-22050-mel-librosa.pt"
                 ).exists()
             )
+
+
+class TestWritingTextGrid(WritingTestBase):
+    """
+    Testing the callback that writes TextGrid files.
+    """
+
+    def test_filenames_not_truncated(self):
+        """
+        We limit the file name's length to at most BASENAME_MAX_LENGTH in the CLI,
+        but the callback does not truncate the basenames passed to it
+        """
+        with TemporaryDirectory() as tmp_dir:
+            tmp_dir = Path(tmp_dir)
+            writer = PredictionWritingTextGridCallback(
+                config=FastSpeech2Config(contact=self.contact),
+                global_step=77,
+                output_dir=tmp_dir,
+                output_key=self.output_key,
+            )
+            writer.on_predict_batch_end(
+                _trainer=None,
+                _pl_module=None,
+                outputs=self.outputs,
+                batch=self.batch,
+                _batch_idx=0,
+                _dataloader_idx=0,
+            )
+            output_dir = writer.save_dir
+            # print(output_dir, *output_dir.glob("**"))  # For debugging
+            self.assertTrue(output_dir.exists())
+            self.assertTrue(
+                (output_dir / "short--spk1--lngA--22050-mel-librosa.TextGrid").exists()
+            )
+            self.assertTrue(
+                (
+                    output_dir
+                    / "This utterance is way too long--spk2--lngB--22050-mel-librosa.TextGrid"
+                ).exists()
+            )
+            tg = TextGrid(
+                file_path=(
+                    output_dir
+                    / "This utterance is way too long--spk2--lngB--22050-mel-librosa.TextGrid"
+                )
+            )
+            tiers = list(tg.get_tiers())
+            self.assertEqual(tiers[0].name, "phones")
+            self.assertEqual(tiers[1].name, "phone annotations")
+            self.assertEqual(tiers[2].name, "words")
+            self.assertEqual(tiers[3].name, "word annotations")
+            self.assertEqual(tiers[2].intervals[0][2], "W̱SÁNEĆ")
 
 
 class TestWritingWav(WritingTestBase):
