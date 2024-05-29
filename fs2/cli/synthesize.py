@@ -180,6 +180,7 @@ def synthesize_helper(
     speaker: Optional[str],
     duration_control: Optional[float],
     global_step: int,
+    vocoder_global_step: int,
     output_type: list[SynthesizeOutputFormats],
     text_representation: TargetTrainingTextRepresentationLevel,
     accelerator: str,
@@ -245,6 +246,7 @@ def synthesize_helper(
             global_step=global_step,
             vocoder_model=vocoder_model,
             vocoder_config=vocoder_config,
+            vocoder_global_step=vocoder_global_step,
         ),
     )
     if teacher_forcing_directory is not None:
@@ -419,6 +421,7 @@ def synthesize(  # noqa: C901
     model.eval()
 
     # get global step
+    # We can't just use model.global_step because it gets reset by lightning
     global_step = get_global_step(model_path)
 
     # load vocoder
@@ -434,6 +437,8 @@ def synthesize(  # noqa: C901
         vocoder_model, vocoder_config = load_hifigan_from_checkpoint(
             vocoder_ckpt, device
         )
+        # We can't just use model.global_step because it gets reset by lightning
+        vocoder_global_step = get_global_step(vocoder_path)
         return synthesize_helper(
             model=model,
             texts=texts,
@@ -453,4 +458,5 @@ def synthesize(  # noqa: C901
             output_dir=output_dir,
             vocoder_model=vocoder_model,
             vocoder_config=vocoder_config,
+            vocoder_global_step=vocoder_global_step,
         )

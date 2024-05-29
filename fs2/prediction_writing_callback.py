@@ -23,6 +23,7 @@ def get_synthesis_output_callbacks(
     global_step: int,
     vocoder_model: HiFiGAN,
     vocoder_config: HiFiGANConfig,
+    vocoder_global_step: int,
 ):
     """
     Given a list of desired output file formats, return the proper callbacks
@@ -57,6 +58,7 @@ def get_synthesis_output_callbacks(
                 output_key=output_key,
                 vocoder_model=vocoder_model,
                 vocoder_config=vocoder_config,
+                vocoder_global_step=vocoder_global_step,
             )
         )
 
@@ -310,6 +312,7 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
         global_step: int,
         vocoder_model: HiFiGAN,
         vocoder_config: HiFiGANConfig,
+        vocoder_global_step: int,
     ):
         super().__init__(
             file_extension="pred.wav",
@@ -320,7 +323,6 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
         self.output_key = output_key
         self.device = device
         self.config = config
-        vocoder_global_step = vocoder_model.global_step
         self.vocoder_model = vocoder_model
         self.vocoder_config = vocoder_config
         sampling_rate_change = (
