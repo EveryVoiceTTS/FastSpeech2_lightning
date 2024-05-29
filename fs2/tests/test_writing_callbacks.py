@@ -171,6 +171,8 @@ class TestWritingWav(WritingTestBase):
                 global_step=77,
                 output_dir=tmp_dir,
                 output_key=self.output_key,
+                vocoder_model=vocoder,
+                vocoder_config=vocoder.config,
             )
             writer.on_predict_batch_end(
                 _trainer=None,
