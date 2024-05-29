@@ -8,6 +8,10 @@ import torch
 import torchaudio
 from everyvoice.config.type_definitions import TargetTrainingTextRepresentationLevel
 from everyvoice.model.feature_prediction.config import FeaturePredictionConfig
+from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
+    load_hifigan_from_checkpoint,
+    synthesize_data,
+)
 from everyvoice.text.features import N_PHONOLOGICAL_FEATURES
 from everyvoice.text.lookups import LookupTable
 from everyvoice.text.text_processor import TextProcessor
@@ -20,7 +24,6 @@ from .config import FastSpeech2Config
 from .layers import PositionalEmbedding, PostNet
 from .loss import FastSpeech2Loss
 from .noam import NoamLR
-from .synthesizer import get_synthesizer
 from .type_definitions_heavy import InferenceControl, Stats
 from .utils.heavy import mask_from_lens, plot_attn_maps, plot_mel
 from .variance_adaptor import VarianceAdaptor
@@ -301,8 +304,13 @@ class FastSpeech2(pl.LightningModule):
         )
         if self.config.training.vocoder_path:
             input_ = batch["mel"]
-            synthesizer = get_synthesizer(self.config, input_.device)
-            wav, sr = synthesizer(input_=input_)
+            vocoder_ckpt = torch.load(
+                self.config.training.vocoder_path, map_location=input_.device
+            )
+            vocoder_model, vocoder_config = load_hifigan_from_checkpoint(
+                vocoder_ckpt, input_.device
+            )
+            wav, sr = synthesize_data(input_, vocoder_model, vocoder_config)
 
             self.logger.experiment.add_audio(
                 f"copy-synthesis/wav_{batch['basename'][0]}",
@@ -374,8 +382,13 @@ class FastSpeech2(pl.LightningModule):
 
         if self.config.training.vocoder_path:
             input_ = output[self.output_key]
-            synthesizer = get_synthesizer(self.config, input_.device)
-            wav, sr = synthesizer(input_=input_)
+            vocoder_ckpt = torch.load(
+                self.config.training.vocoder_path, map_location=input_.device
+            )
+            vocoder_model, vocoder_config = load_hifigan_from_checkpoint(
+                vocoder_ckpt, input_.device
+            )
+            wav, sr = synthesize_data(input_, vocoder_model, vocoder_config)
             self.logger.experiment.add_audio(
                 f"pred/wav_{batch['basename'][0]}", wav, self.global_step, sr
             )

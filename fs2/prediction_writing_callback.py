@@ -3,13 +3,14 @@ from typing import Any, Sequence
 
 import numpy as np
 import torch
+from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import HiFiGANConfig
+from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.model import HiFiGAN
 from everyvoice.text.text_processor import TextProcessor
 from loguru import logger
 from pympi import TextGrid
 from pytorch_lightning.callbacks import Callback
 
 from .config import FastSpeech2Config
-from .synthesizer import Synthesizer, get_synthesizer
 from .type_definitions import SynthesizeOutputFormats
 
 
@@ -20,6 +21,8 @@ def get_synthesis_output_callbacks(
     output_key: str,
     device: torch.device,
     global_step: int,
+    vocoder_model: HiFiGAN,
+    vocoder_config: HiFiGANConfig,
 ):
     """
     Given a list of desired output file formats, return the proper callbacks
@@ -52,6 +55,8 @@ def get_synthesis_output_callbacks(
                 global_step=global_step,
                 output_dir=output_dir,
                 output_key=output_key,
+                vocoder_model=vocoder_model,
+                vocoder_config=vocoder_config,
             )
         )
 
@@ -302,6 +307,8 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
         output_key: str,
         device: torch.device,
         global_step: int,
+        vocoder_model: HiFiGAN,
+        vocoder_config: HiFiGANConfig,
     ):
         super().__init__(
             file_extension="pred.wav",
@@ -312,55 +319,34 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
         self.output_key = output_key
         self.device = device
         self.config = config
+        vocoder_global_step = vocoder_model.global_step
+        self.vocoder_model = vocoder_model
+        self.vocoder_config = vocoder_config
+        sampling_rate_change = (
+            vocoder_config.preprocessing.audio.output_sampling_rate
+            // vocoder_config.preprocessing.audio.input_sampling_rate
+        )
+        self.output_hop_size = (
+            sampling_rate_change * vocoder_config.preprocessing.audio.fft_hop_size
+        )
+        self.file_extension = self.sep.join(
+            (f"v_ckpt={vocoder_global_step}", self.file_extension)
+        )
+
         logger.info(f"Saving wav output to {self.save_dir}")
 
-        logger.info(f"Loading Vocoder from {self.config.training.vocoder_path}")
-        if self.config.training.vocoder_path is None:
-            import sys
-
-            logger.error(
-                "No vocoder was provided, please specify "
-                "--vocoder-path /path/to/vocoder on the command line."
-            )
-            sys.exit(1)
-        else:
-            self.synthesizer = get_synthesizer(self.config, self.device)
-            vocoder_config = self.config
-            # [Example converted to pattern matching](https://stackoverflow.com/a/67524642)
-            # [Class Patterns](https://peps.python.org/pep-0634/#class-patterns)
-            # [PEP 636 – Structural Pattern Matching: Tutorial](https://peps.python.org/pep-0636)
-            match self.synthesizer:
-                case Synthesizer():
-                    from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import (
-                        HiFiGANConfig,
-                    )
-
-                    vocoder_config_tmp: dict | HiFiGANConfig = self.synthesizer.vocoder[
-                        "hyper_parameters"
-                    ]["config"]
-                    if isinstance(vocoder_config_tmp, dict):
-                        vocoder_config = HiFiGANConfig(**vocoder_config_tmp)
-                    vocoder_global_step = self.synthesizer.vocoder.get("global_step", 0)
-                    self.file_extension = self.sep.join(
-                        (f"v_ckpt={vocoder_global_step}", self.file_extension)
-                    )
-                case _:
-                    raise TypeError(f"We don't yet handle {type(self.synthesizer)}.")
-
-            sampling_rate_change = (
-                vocoder_config.preprocessing.audio.output_sampling_rate
-                // vocoder_config.preprocessing.audio.input_sampling_rate
-            )
-            self.output_hop_size = (
-                sampling_rate_change * vocoder_config.preprocessing.audio.fft_hop_size
-            )
-
     def synthesize_audio(self, outputs):
+        from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
+            synthesize_data,
+        )
+
         sr: int
         wavs: np.ndarray
         output_value = outputs[self.output_key]
         if output_value is not None:
-            wavs, sr = self.synthesizer(output_value)
+            wavs, sr = synthesize_data(
+                output_value, self.vocoder_model, self.vocoder_config
+            )
         else:
             raise ValueError(
                 f"{self.output_key} does not exist in the output of your model"

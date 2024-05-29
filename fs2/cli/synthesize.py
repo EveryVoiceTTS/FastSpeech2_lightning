@@ -171,6 +171,107 @@ def get_global_step(model_path: Path) -> int:
     return m["global_step"]
 
 
+def synthesize_helper(
+    model,
+    vocoder_model,
+    vocoder_config,
+    texts: list[str],
+    language: Optional[str],
+    speaker: Optional[str],
+    duration_control: Optional[float],
+    global_step: int,
+    output_type: list[SynthesizeOutputFormats],
+    text_representation: TargetTrainingTextRepresentationLevel,
+    accelerator: str,
+    devices: str,
+    device,
+    batch_size: int,
+    num_workers: int,
+    filelist: Path,
+    output_dir: Path,
+    teacher_forcing_directory: Path,
+):
+    """This is a helper to perform synthesis once the model has been loaded.
+    It allows us to use the same command for synthesis via the CLI and
+    via the gradio demo.
+    """
+    from everyvoice.text.phonemizer import AVAILABLE_G2P_ENGINES
+
+    from ..dataset import FastSpeech2SynthesisDataModule
+
+    if (
+        model.config.model.target_text_representation_level
+        == TargetTrainingTextRepresentationLevel.characters
+        and text_representation != DatasetTextRepresentation.characters
+    ):
+        raise ValueError(
+            f"Your model was trained on {model.config.model.target_text_representation_level} but you provided {text_representation.value} which is incompatible."
+        )
+    if (
+        model.config.model.target_text_representation_level
+        != TargetTrainingTextRepresentationLevel.characters
+        and text_representation == DatasetTextRepresentation.characters
+        and language not in AVAILABLE_G2P_ENGINES
+    ):
+        raise ValueError(
+            f"Your model was trained on {model.config.model.target_text_representation_level} but you provided {text_representation.value} and there is no available grapheme-to-phoneme engine available for {language}. Please see <TODO: Docs!> for more information on how to add one."
+        )
+
+    data = prepare_data(
+        texts=texts,
+        language=language,
+        speaker=speaker,
+        duration_control=duration_control if duration_control else 1.0,
+        filelist=filelist,
+        model=model,
+        text_representation=text_representation,
+    )
+
+    from pytorch_lightning import Trainer
+
+    from ..prediction_writing_callback import get_synthesis_output_callbacks
+
+    trainer = Trainer(
+        logger=False,  # We don't need to log things to tensorboard during inference
+        accelerator=accelerator,
+        devices=devices,
+        max_epochs=model.config.training.max_epochs,
+        callbacks=get_synthesis_output_callbacks(
+            output_type=output_type,
+            output_dir=output_dir,
+            config=model.config,
+            output_key=model.output_key,
+            device=device,
+            global_step=global_step,
+            vocoder_model=vocoder_model,
+            vocoder_config=vocoder_config,
+        ),
+    )
+    if teacher_forcing_directory is not None:
+        teacher_forcing = True
+        model.config.preprocessing.save_dir = teacher_forcing_directory
+    else:
+        teacher_forcing = False
+    # overwrite batch_size and num_workers
+    model.config.training.batch_size = batch_size
+    model.config.training.train_data_workers = num_workers
+    return (
+        model.config,
+        device,
+        trainer.predict(
+            model,
+            FastSpeech2SynthesisDataModule(
+                model.config,
+                data,
+                model.lang2id,
+                model.speaker2id,
+                teacher_forcing=teacher_forcing,
+            ),
+            return_predictions=True,
+        ),
+    )
+
+
 def synthesize(  # noqa: C901
     model_path: Path = typer.Argument(
         ...,
@@ -277,10 +378,12 @@ def synthesize(  # noqa: C901
 
     """Given some text and a trained model, generate some audio. i.e. perform typical speech synthesis"""
     # TODO: allow for changing of language/speaker and variance control
-    from everyvoice.text.phonemizer import AVAILABLE_G2P_ENGINES
+    import torch
+    from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
+        load_hifigan_from_checkpoint,
+    )
     from everyvoice.utils.heavy import get_device_from_accelerator
 
-    from ..dataset import FastSpeech2SynthesisDataModule
     from ..model import FastSpeech2
 
     if texts and filelist:
@@ -315,75 +418,39 @@ def synthesize(  # noqa: C901
     model: FastSpeech2 = FastSpeech2.load_from_checkpoint(model_path).to(device)
     model.eval()
 
-    if SynthesizeOutputFormats.wav in output_type:
-        model.config.training.vocoder_path = vocoder_path
+    # get global step
+    global_step = get_global_step(model_path)
 
-    if (
-        model.config.model.target_text_representation_level
-        == TargetTrainingTextRepresentationLevel.characters
-        and text_representation != DatasetTextRepresentation.characters
-    ):
-        raise ValueError(
-            f"Your model was trained on {model.config.model.target_text_representation_level} but you provided {text_representation.value} which is incompatible."
+    # load vocoder
+    logger.info(f"Loading Vocoder from {vocoder_path}")
+    if vocoder_path is None:
+        logger.error(
+            "No vocoder was provided, please specify "
+            "--vocoder-path /path/to/vocoder on the command line."
         )
-    if (
-        model.config.model.target_text_representation_level
-        != TargetTrainingTextRepresentationLevel.characters
-        and text_representation == DatasetTextRepresentation.characters
-        and language not in AVAILABLE_G2P_ENGINES
-    ):
-        raise ValueError(
-            f"Your model was trained on {model.config.model.target_text_representation_level} but you provided {text_representation.value} and there is no available grapheme-to-phoneme engine available for {language}. Please see <TODO: Docs!> for more information on how to add one."
-        )
-
-    data = prepare_data(
-        texts=texts,
-        language=language,
-        speaker=speaker,
-        duration_control=duration_control if duration_control else 1.0,
-        filelist=filelist,
-        model=model,
-        text_representation=text_representation,
-    )
-
-    from pytorch_lightning import Trainer
-
-    from ..prediction_writing_callback import get_synthesis_output_callbacks
-
-    trainer = Trainer(
-        logger=False,  # We don't need to log things to tensorboard during inference
-        accelerator=accelerator,
-        devices=devices,
-        max_epochs=model.config.training.max_epochs,
-        callbacks=get_synthesis_output_callbacks(
-            output_type=output_type,
-            output_dir=output_dir,
-            config=model.config,
-            output_key=model.output_key,
-            device=device,
-            global_step=get_global_step(model_path),
-        ),
-    )
-    if teacher_forcing_directory is not None:
-        teacher_forcing = True
-        model.config.preprocessing.save_dir = teacher_forcing_directory
+        sys.exit(1)
     else:
-        teacher_forcing = False
-    # overwrite batch_size and num_workers
-    model.config.training.batch_size = batch_size
-    model.config.training.train_data_workers = num_workers
-    return (
-        model.config,
-        device,
-        trainer.predict(
-            model,
-            FastSpeech2SynthesisDataModule(
-                model.config,
-                data,
-                model.lang2id,
-                model.speaker2id,
-                teacher_forcing=teacher_forcing,
-            ),
-            return_predictions=True,
-        ),
-    )
+        vocoder_ckpt = torch.load(vocoder_path, map_location=device)
+        vocoder_model, vocoder_config = load_hifigan_from_checkpoint(
+            vocoder_ckpt, device
+        )
+        return synthesize_helper(
+            model=model,
+            texts=texts,
+            language=language,
+            speaker=speaker,
+            duration_control=duration_control,
+            global_step=global_step,
+            output_type=output_type,
+            text_representation=text_representation,
+            accelerator=accelerator,
+            devices=devices,
+            device=device,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            filelist=filelist,
+            teacher_forcing_directory=teacher_forcing_directory,
+            output_dir=output_dir,
+            vocoder_model=vocoder_model,
+            vocoder_config=vocoder_config,
+        )
