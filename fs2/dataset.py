@@ -204,6 +204,7 @@ class FastSpeech2DataModule(BaseDataModule):
     ):
         super().__init__(config=config, inference_output_dir=inference_output_dir)
         self.inference = inference
+        self.prepared = False
         self.teacher_forcing = teacher_forcing
         self.collate_fn = partial(
             self.collate_method, learn_alignment=config.model.learn_alignment
@@ -272,7 +273,7 @@ class FastSpeech2DataModule(BaseDataModule):
                 teacher_forcing=self.teacher_forcing,
             )
             torch.save(self.predict_dataset, self.predict_path)
-        else:
+        elif not self.prepared:
             self.train_dataset = (
                 filter_dataset_based_on_target_text_representation_level(
                     self.config.model.target_text_representation_level,
@@ -308,6 +309,7 @@ class FastSpeech2DataModule(BaseDataModule):
             # save it to disk
             torch.save(self.train_dataset, self.train_path)
             torch.save(self.val_dataset, self.val_path)
+            self.prepared = True
 
 
 class FastSpeech2SynthesisDataModule(FastSpeech2DataModule):
