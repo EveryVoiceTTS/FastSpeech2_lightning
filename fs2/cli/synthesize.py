@@ -110,7 +110,7 @@ def prepare_data(
             ]
         except KeyError:
             # TODO: Errors should have better formatting:
-            #       https://github.com/roedoejet/FastSpeech2_lightning/issues/26
+            #       https://github.com/EveryVoiceTTS/FastSpeech2_lightning/issues/26
             logger.info(
                 textwrap.dedent(
                     """
@@ -377,7 +377,6 @@ def synthesize(  # noqa: C901
         help="Number of workers to process the data.",
     ),
 ):
-
     """Given some text and a trained model, generate some audio. i.e. perform typical speech synthesis"""
     # TODO: allow for changing of language/speaker and variance control
     import torch
