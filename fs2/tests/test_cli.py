@@ -299,7 +299,6 @@ class CLITest(TestCase):
     def setUp(self) -> None:
         self.runner = CliRunner()
         self.subcommands = (
-            "audit",
             "benchmark",
             "check_data",
             "preprocess",

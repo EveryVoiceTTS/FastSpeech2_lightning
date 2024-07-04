@@ -1,7 +1,6 @@
 import typer
 from everyvoice.wizard import TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX
 
-from .audit import audit as app_audit
 from .benchmark import benchmark as app_benchmark
 from .check_data import check_data as app_check_data
 from .preprocess import preprocess as app_preprocess
@@ -13,11 +12,6 @@ app = typer.Typer(
     context_settings={"help_option_names": ["-h", "--help"]},
     help="A PyTorch Lightning implementation of the FastSpeech2 Text-to-Speech Feature Prediction Model",
 )
-
-app.command(
-    name="audit",
-    short_help="",
-)(app_audit)
 
 app.command(
     name="benchmark",
