@@ -2,7 +2,6 @@ import typer
 from everyvoice.wizard import TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX
 
 from .benchmark import benchmark as app_benchmark
-from .check_data import check_data as app_check_data
 from .preprocess import preprocess as app_preprocess
 from .synthesize import synthesize as app_synthesize
 from .train import train as app_train
@@ -17,11 +16,6 @@ app.command(
     name="benchmark",
     short_help="",
 )(app_benchmark)
-
-app.command(
-    name="check_data",
-    short_help="",
-)(app_check_data)
 
 app.command(
     name="preprocess",

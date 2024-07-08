@@ -300,7 +300,6 @@ class CLITest(TestCase):
         self.runner = CliRunner()
         self.subcommands = (
             "benchmark",
-            "check_data",
             "preprocess",
             "synthesize",
             "train",
