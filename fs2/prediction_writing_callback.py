@@ -238,9 +238,8 @@ class PredictionWritingTextGridCallback(PredictionWritingCallbackBase):
                 torch.clamp(torch.round(torch.exp(duration) - 1), min=0).int().tolist()
             )
             # Get all input labels
-            text_labels = self.text_processor.decode_tokens(
-                text.tolist(), join_character=None
-            )
+            tokens: list[int] = text.tolist()
+            text_labels = self.text_processor.decode_tokens(tokens, join_character=None)
             assert len(duration_frames) == len(
                 text_labels
             ), f"can't synthesize {raw_text} because the number of predicted duration steps ({len(duration_frames)}) doesn't equal the number of input text labels ({len(text_labels)})"

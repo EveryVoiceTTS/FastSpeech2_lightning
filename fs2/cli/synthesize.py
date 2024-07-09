@@ -182,7 +182,7 @@ def synthesize_helper(
     global_step: int,
     vocoder_global_step: int,
     output_type: list[SynthesizeOutputFormats],
-    text_representation: TargetTrainingTextRepresentationLevel,
+    text_representation: DatasetTextRepresentation,
     accelerator: str,
     devices: str,
     device,
