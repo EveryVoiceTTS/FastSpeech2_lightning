@@ -379,7 +379,10 @@ def synthesize(  # noqa: C901
 ):
     """Given some text and a trained model, generate some audio. i.e. perform typical speech synthesis"""
     # TODO: allow for changing of language/speaker and variance control
+    logger.info("Loading torch")
     import torch
+
+    logger.info("Loading other dependencies")
     from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
         load_hifigan_from_checkpoint,
     )
@@ -415,7 +418,7 @@ def synthesize(  # noqa: C901
     device = get_device_from_accelerator(accelerator)
 
     # Load checkpoints
-    print(f"Loading checkpoint from {model_path}", file=sys.stderr)
+    logger.info(f"Loading checkpoint from {model_path}")
     model: FastSpeech2 = FastSpeech2.load_from_checkpoint(model_path).to(device)
     model.eval()
 
