@@ -328,7 +328,7 @@ def synthesize(  # noqa: C901
         exists=True,
         file_okay=True,
         dir_okay=False,
-        help="Synthesize all audio in a given filelist. Use --text if you want to just synthesize one sample.",
+        help="The path to a file containing a list of utterances (a.k.a filelist). Use --text if you want to just synthesize one sample.",
         autocompletion=complete_path,
     ),
     text_representation: DatasetTextRepresentation = typer.Option(
