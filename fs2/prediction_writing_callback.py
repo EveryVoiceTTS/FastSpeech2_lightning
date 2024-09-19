@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Optional, Sequence
 
 import numpy as np
 import torch
@@ -21,9 +21,9 @@ def get_synthesis_output_callbacks(
     output_key: str,
     device: torch.device,
     global_step: int,
-    vocoder_model: HiFiGAN,
-    vocoder_config: HiFiGANConfig,
-    vocoder_global_step: int,
+    vocoder_model: Optional[HiFiGAN] = None,
+    vocoder_config: Optional[HiFiGANConfig] = None,
+    vocoder_global_step: Optional[int] = None,
 ):
     """
     Given a list of desired output file formats, return the proper callbacks
@@ -49,6 +49,14 @@ def get_synthesis_output_callbacks(
             )
         )
     if SynthesizeOutputFormats.wav in output_type:
+        if (
+            vocoder_model is None
+            or vocoder_config is None
+            or vocoder_global_step is None
+        ):
+            raise ValueError(
+                "We cannot synthesize waveforms without a vocoder. Please ensure that a vocoder is specified."
+            )
         callbacks.append(
             PredictionWritingWavCallback(
                 config=config,

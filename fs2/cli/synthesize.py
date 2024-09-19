@@ -173,14 +173,11 @@ def get_global_step(model_path: Path) -> int:
 
 def synthesize_helper(
     model,
-    vocoder_model,
-    vocoder_config,
     texts: list[str],
     language: Optional[str],
     speaker: Optional[str],
     duration_control: Optional[float],
     global_step: int,
-    vocoder_global_step: int,
     output_type: list[SynthesizeOutputFormats],
     text_representation: DatasetTextRepresentation,
     accelerator: str,
@@ -191,6 +188,9 @@ def synthesize_helper(
     filelist: Path,
     output_dir: Path,
     teacher_forcing_directory: Path,
+    vocoder_global_step: Optional[int] = None,
+    vocoder_model=None,
+    vocoder_config=None,
 ):
     """This is a helper to perform synthesis once the model has been loaded.
     It allows us to use the same command for synthesis via the CLI and
@@ -416,7 +416,7 @@ def synthesize(  # noqa: C901
 
     # Load checkpoints
     print(f"Loading checkpoint from {model_path}", file=sys.stderr)
-    model: FastSpeech2 = FastSpeech2.load_from_checkpoint(model_path).to(device)
+    model: FastSpeech2 = FastSpeech2.load_from_checkpoint(model_path).to(device)  # type: ignore
     model.eval()
 
     # get global step
@@ -425,37 +425,35 @@ def synthesize(  # noqa: C901
 
     # load vocoder
     logger.info(f"Loading Vocoder from {vocoder_path}")
-    if vocoder_path is None:
-        logger.error(
-            "No vocoder was provided, please specify "
-            "--vocoder-path /path/to/vocoder on the command line."
-        )
-        sys.exit(1)
-    else:
+    if vocoder_path is not None:
         vocoder_ckpt = torch.load(vocoder_path, map_location=device)
         vocoder_model, vocoder_config = load_hifigan_from_checkpoint(
             vocoder_ckpt, device
         )
         # We can't just use model.global_step because it gets reset by lightning
         vocoder_global_step = get_global_step(vocoder_path)
-        return synthesize_helper(
-            model=model,
-            texts=texts,
-            language=language,
-            speaker=speaker,
-            duration_control=duration_control,
-            global_step=global_step,
-            output_type=output_type,
-            text_representation=text_representation,
-            accelerator=accelerator,
-            devices=devices,
-            device=device,
-            batch_size=batch_size,
-            num_workers=num_workers,
-            filelist=filelist,
-            teacher_forcing_directory=teacher_forcing_directory,
-            output_dir=output_dir,
-            vocoder_model=vocoder_model,
-            vocoder_config=vocoder_config,
-            vocoder_global_step=vocoder_global_step,
-        )
+    else:
+        vocoder_model = None
+        vocoder_config = None
+        vocoder_global_step = None
+    return synthesize_helper(
+        model=model,
+        texts=texts,
+        language=language,
+        speaker=speaker,
+        duration_control=duration_control,
+        global_step=global_step,
+        output_type=output_type,
+        text_representation=text_representation,
+        accelerator=accelerator,
+        devices=devices,
+        device=device,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        filelist=filelist,
+        teacher_forcing_directory=teacher_forcing_directory,
+        output_dir=output_dir,
+        vocoder_model=vocoder_model,
+        vocoder_config=vocoder_config,
+        vocoder_global_step=vocoder_global_step,
+    )
