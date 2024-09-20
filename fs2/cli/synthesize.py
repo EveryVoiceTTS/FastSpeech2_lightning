@@ -280,7 +280,7 @@ def synthesize(  # noqa: C901
         file_okay=True,
         exists=True,
         dir_okay=False,
-        help="The path to a trained text-to-spec or e2e EveryVoice model.",
+        help="The path to a trained text-to-spec (i.e., feature prediction) or e2e EveryVoice model.",
         autocompletion=complete_path,
     ),
     output_dir: Path = typer.Option(
