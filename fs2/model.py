@@ -34,6 +34,8 @@ DEFAULT_SPEAKER2ID: LookupTable = {}
 
 
 class FastSpeech2(pl.LightningModule):
+    __version__: str = "1"
+
     def __init__(
         self,
         config: dict | FastSpeech2Config,
@@ -256,6 +258,13 @@ class FastSpeech2(pl.LightningModule):
         Note, this shouldn't fail on different versions of pydantic anymore,
         but it will fail on breaking changes to the config. We should catch those exceptions
         and handle them appropriately."""
+        if "model_info" in checkpoint:
+            assert (
+                checkpoint["model_info"]["name"] == FastSpeech2.__name__
+            ), f"""Wrong model type ({checkpoint["model_info"]["name"]}), we are expecting a { FastSpeech2.__name__ }"""
+            assert (
+                checkpoint["model_info"]["version"] == self.__version__
+            ), f"""Wrong model's version({checkpoint["model_info"]["version"]}), we are expecting version {FastSpeech2.__version__}"""
         self.config = FeaturePredictionConfig(
             **checkpoint["hyper_parameters"]["config"]
         )
@@ -271,6 +280,10 @@ class FastSpeech2(pl.LightningModule):
         checkpoint["hyper_parameters"]["config"] = self.config.model_checkpoint_dump()
         if self.stats is not None:
             checkpoint["hyper_parameters"]["stats"] = self.stats.model_dump(mode="json")
+        checkpoint["model_info"] = {
+            "name": self.__class__.__name__,
+            "version": self.__version__,
+        }
 
     def predict_step(self, batch, batch_idx):
         with torch.no_grad():
