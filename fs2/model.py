@@ -34,6 +34,8 @@ DEFAULT_SPEAKER2ID: LookupTable = {}
 
 
 class FastSpeech2(pl.LightningModule):
+    _VERSION: str = "1.0"
+
     def __init__(
         self,
         config: dict | FastSpeech2Config,
@@ -251,11 +253,45 @@ class FastSpeech2(pl.LightningModule):
             "pitch_target": variance_adaptor_out["pitch_target"],
         }
 
+    def check_and_upgrade_checkpoint(self, checkpoint):
+        """
+        Check model's compatibility and possibly upgrade.
+        """
+        from packaging.version import Version
+
+        model_info = checkpoint.get(
+            "model_info",
+            {
+                "name": self.__class__.__name__,
+                "version": "1.0",
+            },
+        )
+
+        ckpt_model_type = model_info.get("name", "MISSING_TYPE")
+        if ckpt_model_type != self.__class__.__name__:
+            raise TypeError(
+                f"""Wrong model type ({ckpt_model_type}), we are expecting a '{ self.__class__.__name__ }' model"""
+            )
+
+        ckpt_version = Version(model_info.get("version", "0.0"))
+        if ckpt_version > Version(self._VERSION):
+            raise ValueError(
+                "Your model was created with a newer version of EveryVoice, please update your software."
+            )
+        # Successively convert model checkpoints to newer version.
+        if ckpt_version < Version("1.0"):
+            # Upgrading from 0.0 to 1.0 requires no changes; future versions might require changes
+            checkpoint["model_info"]["version"] = "1.0"
+
+        return checkpoint
+
     def on_load_checkpoint(self, checkpoint):
         """Deserialize the checkpoint hyperparameters.
         Note, this shouldn't fail on different versions of pydantic anymore,
         but it will fail on breaking changes to the config. We should catch those exceptions
         and handle them appropriately."""
+        checkpoint = self.check_and_upgrade_checkpoint(checkpoint)
+
         self.config = FeaturePredictionConfig(
             **checkpoint["hyper_parameters"]["config"]
         )
@@ -271,6 +307,10 @@ class FastSpeech2(pl.LightningModule):
         checkpoint["hyper_parameters"]["config"] = self.config.model_checkpoint_dump()
         if self.stats is not None:
             checkpoint["hyper_parameters"]["stats"] = self.stats.model_dump(mode="json")
+        checkpoint["model_info"] = {
+            "name": self.__class__.__name__,
+            "version": self._VERSION,
+        }
 
     def predict_step(self, batch, batch_idx):
         with torch.no_grad():
