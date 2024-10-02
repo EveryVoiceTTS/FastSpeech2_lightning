@@ -15,6 +15,7 @@ from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
 from everyvoice.text.features import N_PHONOLOGICAL_FEATURES
 from everyvoice.text.lookups import LookupTable
 from everyvoice.text.text_processor import TextProcessor
+from everyvoice.utils import pydantic_validation_error_shortener
 from everyvoice.utils.heavy import expand
 from loguru import logger
 from torch import nn
@@ -43,7 +44,16 @@ class FastSpeech2(pl.LightningModule):
         """ """
         super().__init__()
         if not isinstance(config, FastSpeech2Config):
-            config = FastSpeech2Config(**config)
+            from pydantic import ValidationError
+
+            try:
+                config = FastSpeech2Config(**config)
+            except ValidationError as e:
+                logger.error(f"{pydantic_validation_error_shortener(e)}")
+                raise TypeError(
+                    "Unable to load config.  Possible causes: is it really a FastSpeech2Config? or the correct version?"
+                )
+
         if stats is not None and not isinstance(stats, Stats):
             stats = Stats(**stats)
         self.config = config
