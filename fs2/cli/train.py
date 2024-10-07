@@ -1,18 +1,23 @@
 import json
 
 from everyvoice.base_cli.interfaces import train_base_command_interface
+from everyvoice.utils import spinner
 from merge_args import merge_args
 
 
 @merge_args(train_base_command_interface)
 def train(**kwargs):
-    from everyvoice.base_cli.helpers import load_config_base_command, train_base_command
-    from everyvoice.text.lookups import lookuptables_from_config
+    with spinner():
+        from everyvoice.base_cli.helpers import (
+            load_config_base_command,
+            train_base_command,
+        )
+        from everyvoice.text.lookups import lookuptables_from_config
 
-    from ..config import FastSpeech2Config
-    from ..dataset import FastSpeech2DataModule
-    from ..model import FastSpeech2
-    from ..type_definitions_heavy import Stats
+        from ..config import FastSpeech2Config
+        from ..dataset import FastSpeech2DataModule
+        from ..model import FastSpeech2
+        from ..type_definitions_heavy import Stats
 
     config_args = kwargs["config_args"]
     config_file = kwargs["config_file"]

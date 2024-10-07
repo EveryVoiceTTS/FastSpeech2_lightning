@@ -9,6 +9,7 @@ from everyvoice.config.type_definitions import (
     DatasetTextRepresentation,
     TargetTrainingTextRepresentationLevel,
 )
+from everyvoice.utils import spinner
 from loguru import logger
 
 from ..type_definitions import SynthesizeOutputFormats
@@ -379,14 +380,8 @@ def synthesize(  # noqa: C901
 ):
     """Given some text and a trained model, generate some audio. i.e. perform typical speech synthesis"""
     # TODO: allow for changing of language/speaker and variance control
-    import torch
-    from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
-        load_hifigan_from_checkpoint,
-    )
-    from everyvoice.utils.heavy import get_device_from_accelerator
 
-    from ..model import FastSpeech2
-
+    # Do argument error checking before doing expensive imports
     if texts and filelist:
         print(
             "Got arguments for both text and a filelist - this will only process the text."
@@ -404,6 +399,15 @@ def synthesize(  # noqa: C901
             file=sys.stderr,
         )
         sys.exit(1)
+
+    with spinner():
+        import torch
+        from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
+            load_hifigan_from_checkpoint,
+        )
+        from everyvoice.utils.heavy import get_device_from_accelerator
+
+        from ..model import FastSpeech2
 
     output_dir.mkdir(exist_ok=True, parents=True)
     # NOTE: We want to be able to put the vocoder on the proper accelerator for

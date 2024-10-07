@@ -3,6 +3,7 @@ from enum import Enum
 
 import typer
 from everyvoice.base_cli.interfaces import preprocess_base_command_interface
+from everyvoice.utils import spinner
 from merge_args import merge_args
 
 
@@ -28,9 +29,10 @@ def preprocess(
     ),
     **kwargs,
 ):
-    from everyvoice.base_cli.helpers import preprocess_base_command
+    with spinner():
+        from everyvoice.base_cli.helpers import preprocess_base_command
 
-    from ..config import FastSpeech2Config
+        from ..config import FastSpeech2Config
 
     preprocessor, config, processed = preprocess_base_command(
         model_config=FastSpeech2Config,

@@ -3,6 +3,7 @@ from pathlib import Path
 
 import typer
 from everyvoice.base_cli.interfaces import complete_path
+from everyvoice.utils import spinner
 
 
 class BenchmarkType(str, Enum):
@@ -27,12 +28,13 @@ def benchmark(
     import time
     from functools import partial
 
-    import numpy as np
-    import torch
+    with spinner():
+        import numpy as np
+        import torch
 
-    from ..config import FastSpeech2Config
-    from ..dataset import FastSpeech2DataModule
-    from ..model import FastSpeech2
+        from ..config import FastSpeech2Config
+        from ..dataset import FastSpeech2DataModule
+        from ..model import FastSpeech2
 
     config = FastSpeech2Config.load_config_from_path(config_file)
     loader = FastSpeech2DataModule(config)
