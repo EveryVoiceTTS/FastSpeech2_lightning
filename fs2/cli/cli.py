@@ -9,6 +9,7 @@ from .train import train as app_train
 app = typer.Typer(
     pretty_exceptions_show_locals=False,
     context_settings={"help_option_names": ["-h", "--help"]},
+    rich_markup_mode="markdown",
     help="A PyTorch Lightning implementation of the FastSpeech2 Text-to-Speech Feature Prediction Model",
 )
 
