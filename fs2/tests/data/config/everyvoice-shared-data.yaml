@@ -1,0 +1,17 @@
+audio: {alignment_sampling_rate: 22050, f_max: 8000, f_min: 0,
+  fft_hop_size: 256, fft_window_size: 1024, n_fft: 1024, input_sampling_rate: 22050, max_audio_length: 11.0,
+  max_wav_value: 32767.0, min_audio_length: 0.4, n_mels: 80,
+  output_sampling_rate: 22050, spec_type: mel-librosa,
+  target_bit_depth: 16, vocoder_segment_size: 8192}
+dataset: relative
+dataset_split_seed: 1234
+save_dir: ../preprocessed
+source_data:
+- data_dir: ../../lj/wavs
+  filelist: ../r-filelist.psv
+  filelist_loader: everyvoice.utils.generic_psv_filelist_reader
+  label: dataset_0
+  permissions_obtained: true
+  sox_effects:
+  - [channels, '1']
+train_split: 0.9
