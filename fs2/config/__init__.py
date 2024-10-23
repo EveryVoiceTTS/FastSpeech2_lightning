@@ -230,7 +230,18 @@ class FastSpeech2TrainingConfig(BaseTrainingConfig):
         return value
 
 
+FastSpeech2Config_latest_version: str = "1.0"
+
+
 class FastSpeech2Config(BaseModelWithContact):
+    VERSION: Annotated[
+        str,
+        Field(
+            default_factory=lambda: "1.0",
+            init_var=False,
+        ),
+    ]
+
     model: FastSpeech2ModelConfig = Field(
         default_factory=FastSpeech2ModelConfig,
         description="The model configuration settings.",
@@ -280,5 +291,23 @@ class FastSpeech2Config(BaseModelWithContact):
         with init_context({"config_path": path}):
             config = FastSpeech2Config(**config)
         return config
+
+    @model_validator(mode="before")
+    @classmethod
+    def check_and_upgrade_checkpoint(cls, data: Any) -> Any:
+        """
+        Check model's compatibility and possibly upgrade.
+        """
+        ckpt_version = data.get("VERSION", "0.0")
+        if ckpt_version > FastSpeech2Config_latest_version:
+            raise ValueError(
+                "Your config was created with a newer version of EveryVoice, please update your software."
+            )
+        # Successively convert model checkpoints to newer version.
+        if ckpt_version < "1.0":
+            # TODO: Write code to convert model to version 1.0.
+            data["VERSION"] = "1.0"
+
+        return data
 
     # INPUT_TODO: initialize text with union of symbols from dataset
