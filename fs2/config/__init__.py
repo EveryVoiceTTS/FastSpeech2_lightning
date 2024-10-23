@@ -24,6 +24,9 @@ from pydantic import (
     model_validator,
 )
 
+# FastSpeech2Config's latest version number
+LATEST_VERSION: str = "1.0"
+
 
 class ConformerConfig(ConfigModel):
     layers: int = Field(4, description="The number of layers in the Conformer.")
@@ -231,6 +234,14 @@ class FastSpeech2TrainingConfig(BaseTrainingConfig):
 
 
 class FastSpeech2Config(BaseModelWithContact):
+    VERSION: Annotated[
+        str,
+        Field(
+            default_factory=lambda: LATEST_VERSION,
+            init_var=False,
+        ),
+    ]
+
     model: FastSpeech2ModelConfig = Field(
         default_factory=FastSpeech2ModelConfig,
         description="The model configuration settings.",
@@ -280,5 +291,25 @@ class FastSpeech2Config(BaseModelWithContact):
         with init_context({"config_path": path}):
             config = FastSpeech2Config(**config)
         return config
+
+    @model_validator(mode="before")
+    @classmethod
+    def check_and_upgrade_checkpoint(cls, data: Any) -> Any:
+        """
+        Check model's compatibility and possibly upgrade.
+        """
+        from packaging.version import Version
+
+        ckpt_version = Version(data.get("VERSION", "0.0"))
+        if ckpt_version > Version(LATEST_VERSION):
+            raise ValueError(
+                "Your config was created with a newer version of EveryVoice, please update your software."
+            )
+        # Successively convert model checkpoints to newer version.
+        if ckpt_version < Version("1.0"):
+            # Converting to 1.0 just requires setting the VERSION field
+            data["VERSION"] = "1.0"
+
+        return data
 
     # INPUT_TODO: initialize text with union of symbols from dataset
