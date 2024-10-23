@@ -1,0 +1,43 @@
+contact:
+  contact_name: Test name
+  contact_email: info@everyvoice.ca
+model:
+  decoder: {conv_kernel_size: 9,
+    dropout: 0.2, feedforward_dim: 1024, heads: 2, input_dim: 256, layers: 4}
+  encoder: {conv_kernel_size: 9,
+    dropout: 0.2, feedforward_dim: 1024, heads: 2, input_dim: 256, layers: 4}
+  learn_alignment: true
+  max_length: 1000
+  mel_loss: mse
+  multilingual: false
+  multispeaker: false
+  use_postnet: true
+  variance_predictors:
+    duration: {depthwise: true, dropout: 0.5, input_dim: 256, kernel_size: 3, loss: mse, n_bins: 256, n_layers: 5}
+    energy: {depthwise: true, dropout: 0.5, input_dim: 256, kernel_size: 3, level: phone,
+      loss: mse, n_bins: 256, n_layers: 5}
+    pitch: {depthwise: true, dropout: 0.5, input_dim: 256, kernel_size: 3, level: phone,
+      loss: mse, n_bins: 256, n_layers: 5}
+path_to_preprocessing_config_file: everyvoice-shared-data.yaml
+path_to_text_config_file: everyvoice-shared-text.yaml
+training:
+  batch_size: 16
+  ckpt_epochs: 1
+  filelist_loader: everyvoice.utils.generic_psv_filelist_reader
+  logger: {name: FeaturePredictionExperiment, save_dir: ../logs_and_checkpoints, sub_dir_callable: everyvoice.utils.get_current_time,
+    version: base}
+  max_epochs: 1000
+  max_steps: 100000
+  optimizer:
+    betas: [0.9, 0.98]
+    eps: 1.0e-08
+    learning_rate: 0.0001
+    name: noam
+    warmup_steps: 4000
+    weight_decay: 0.01
+  save_top_k_ckpts: 5
+  train_data_workers: 4
+  training_filelist: ../preprocessed/training_filelist.psv
+  use_weighted_sampler: false
+  val_data_workers: 0
+  validation_filelist: ../preprocessed/validation_filelist.psv
