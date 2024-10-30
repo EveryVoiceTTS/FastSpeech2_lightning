@@ -168,10 +168,12 @@ class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
                 data[:unmasked_len]
                 .cpu()
                 .transpose(0, 1),  # save tensors as [K (bands), T (frames)]
-                self._get_filename(
-                    basename=basename,
-                    speaker=speaker,
-                    language=language,
+                str(
+                    self._get_filename(
+                        basename=basename,
+                        speaker=speaker,
+                        language=language,
+                    )
                 ),
             )
 
@@ -399,10 +401,12 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
             outputs["tgt_lens"],
         ):
             torchaudio.save(
-                self._get_filename(
-                    basename=basename,
-                    speaker=speaker,
-                    language=language,
+                str(
+                    self._get_filename(
+                        basename=basename,
+                        speaker=speaker,
+                        language=language,
+                    )
                 ),
                 # the vocoder output includes padding so we have to remove that
                 wav[: (unmasked_len * self.output_hop_size)],
