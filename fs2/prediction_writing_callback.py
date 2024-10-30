@@ -159,7 +159,9 @@ class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
             outputs["tgt_lens"],
         ):
             torch.save(
-                data[:unmasked_len].cpu(),
+                data[:unmasked_len]
+                .cpu()
+                .transpose(0, 1),  # save tensors as [K (bands), T (frames)]
                 self.get_filename(basename, speaker, language),
             )
 
@@ -409,7 +411,7 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
 
         sr: int
         wavs: np.ndarray
-        output_value = outputs[self.output_key]
+        output_value = outputs[self.output_key].transpose(1, 2)
         if output_value is not None:
             wavs, sr = synthesize_data(
                 output_value, self.vocoder_model, self.vocoder_config
@@ -419,21 +421,15 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
                 f"{self.output_key} does not exist in the output of your model"
             )
 
-        # wavs: [B (batch_size), T (samples)]
+        # wavs: [B (batch_size), C (channels), T (samples)]
         assert (
-            wavs.ndim == 2
-        ), f"The generated audio contained more than 2 dimensions. First dimension should be B(atch) and the second dimension should be T(ime) in samples. Got {wavs.shape} instead."
-        assert "output" in outputs and outputs["output"] is not None
-        assert wavs.shape[0] == outputs["output"].size(
+            wavs.ndim == 3
+        ), f"The generated audio did not contain 3 dimensions. First dimension should be B(atch) and the second dimension should be C(hannels) and third dimension should be T(ime) in samples. Got {wavs.shape} instead."
+        assert self.output_key in outputs and outputs[self.output_key] is not None
+        assert wavs.shape[0] == outputs[self.output_key].size(
             0
-        ), f"You provided {outputs['output'].size(0)} utterances, but {wavs.shape[0]} audio files were synthesized instead."
+        ), f"You provided {outputs[self.output_key].size(0)} utterances, but {wavs.shape[0]} audio files were synthesized instead."
 
-        # synthesize 16 bit audio
-        # we don't do this higher up in the inference methods
-        # because tensorboard logs require audio data as floats
-        if (wavs >= -1.0).all() & (wavs <= 1.0).all():
-            wavs = wavs * self.config.preprocessing.audio.max_wav_value
-            wavs = wavs.astype("int16")
         return wavs, sr
 
     def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
@@ -445,7 +441,7 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
         _batch_idx: int,
         _dataloader_idx: int = 0,
     ):
-        from scipy.io.wavfile import write
+        import torchaudio
 
         logger.trace("Generating waveform...")
 
@@ -459,11 +455,14 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
             wavs,
             outputs["tgt_lens"],
         ):
-            write(
+            torchaudio.save(
                 self.get_filename(
                     basename, speaker, language, include_global_step=True
                 ),
-                sr,
                 # the vocoder output includes padding so we have to remove that
                 wav[: (unmasked_len * self.output_hop_size)],
+                sr,
+                format="wav",
+                encoding="PCM_S",
+                bits_per_sample=16,
             )
