@@ -106,7 +106,7 @@ class PredictionWritingCallbackBase(Callback):
         speaker: str,
         language: str,
         include_global_step: bool = False,
-    ) -> Path:
+    ) -> str:
         # We don't truncate or alter the filename here because the basename is
         # already truncated/cleaned in cli/synthesize.py
         name_parts = [basename, speaker, language, self.file_extension]
@@ -115,7 +115,7 @@ class PredictionWritingCallbackBase(Callback):
         path = self.save_dir / self.sep.join(name_parts)
         # synthesizing spec allows nested outputs so we may need to make subdirs
         path.parent.mkdir(parents=True, exist_ok=True)
-        return path
+        return str(path)
 
 
 class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
