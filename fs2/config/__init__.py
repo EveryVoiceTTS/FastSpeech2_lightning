@@ -236,11 +236,8 @@ class FastSpeech2TrainingConfig(BaseTrainingConfig):
 class FastSpeech2Config(BaseModelWithContact):
     VERSION: Annotated[
         str,
-        Field(
-            default_factory=lambda: LATEST_VERSION,
-            init_var=False,
-        ),
-    ]
+        Field(init_var=False),
+    ] = LATEST_VERSION
 
     model: FastSpeech2ModelConfig = Field(
         default_factory=FastSpeech2ModelConfig,
