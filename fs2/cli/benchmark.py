@@ -18,7 +18,7 @@ def benchmark(
         dir_okay=False,
         file_okay=True,
         help="The path to your model configuration file.",
-        autocompletion=complete_path,
+        shell_complete=complete_path,
     ),
     benchmark_type: BenchmarkType = BenchmarkType.training,
     gpu: bool = True,
