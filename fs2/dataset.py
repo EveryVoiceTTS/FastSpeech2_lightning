@@ -35,6 +35,7 @@ class FastSpeechDataset(Dataset):
         speaker2id: LookupTable,
         teacher_forcing=False,
         inference=False,
+        style_reference=False,
     ):
         self.dataset = dataset
         self.config = config
@@ -43,6 +44,7 @@ class FastSpeechDataset(Dataset):
         self.preprocessed_dir = Path(self.config.preprocessing.save_dir)
         self.sampling_rate = self.config.preprocessing.audio.input_sampling_rate
         self.teacher_forcing = teacher_forcing
+        self.style_reference = style_reference
         self.inference = inference
         self.lang2id = lang2id
         self.speaker2id = speaker2id
@@ -57,6 +59,7 @@ class FastSpeechDataset(Dataset):
         """
         Returns dict with keys: {
             "mel"
+            "mel_style_reference"
             "duration"
             "duration_control"
             "pfs"
@@ -104,6 +107,12 @@ class FastSpeechDataset(Dataset):
             )  # [mel_bins, frames] -> [frames, mel_bins]
         else:
             mel = None
+
+        if self.style_reference:
+            mel_style_reference = item["mel_style_reference"].squeeze(0).transpose(0, 1)
+        else:
+            mel_style_reference = None
+
         if (
             self.teacher_forcing or not self.inference
         ) and self.config.model.learn_alignment:
@@ -176,9 +185,9 @@ class FastSpeechDataset(Dataset):
         else:
             energy = None
             pitch = None
-
         return {
             "mel": mel,
+            "mel_style_reference": mel_style_reference,
             "duration": duration,
             "duration_control": duration_control,
             "pfs": pfs,
@@ -208,11 +217,13 @@ class FastSpeech2DataModule(BaseDataModule):
         inference=False,
         teacher_forcing=False,
         inference_output_dir=Path("synthesis_output"),
+        style_reference=False,
     ):
         super().__init__(config=config, inference_output_dir=inference_output_dir)
         self.inference = inference
         self.prepared = False
         self.teacher_forcing = teacher_forcing
+        self.style_reference = style_reference
         self.collate_fn = partial(
             self.collate_method, learn_alignment=config.model.learn_alignment
         )
@@ -278,6 +289,7 @@ class FastSpeech2DataModule(BaseDataModule):
                 self.speaker2id,
                 inference=self.inference,
                 teacher_forcing=self.teacher_forcing,
+                style_reference=self.style_reference,
             )
             torch.save(self.predict_dataset, self.predict_path)
         elif not self.prepared:
@@ -327,8 +339,14 @@ class FastSpeech2SynthesisDataModule(FastSpeech2DataModule):
         lang2id: LookupTable,
         speaker2id: LookupTable,
         teacher_forcing: bool = False,
+        style_reference=False,
     ):
-        super().__init__(config=config, inference=True, teacher_forcing=teacher_forcing)
+        super().__init__(
+            config=config,
+            inference=True,
+            teacher_forcing=teacher_forcing,
+            style_reference=style_reference,
+        )
         self.inference = True
         self.data = data
         self.collate_fn = partial(

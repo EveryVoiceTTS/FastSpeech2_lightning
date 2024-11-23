@@ -138,6 +138,10 @@ class FastSpeech2ModelConfig(ConfigModel):
         True,
         description="Whether to jointly learn alignments using monotonic alignment search module (See Badlani et. al. 2021: https://arxiv.org/abs/2108.10447). If set to False, you will have to provide text/audio alignments separately before training a text-to-spec (feature prediction) model.",
     )
+    use_global_style_token_module: bool = Field(
+        False,
+        description="Whether to use the Global Style Token (GST) module from Style Tokens: Unsupervised Style Modeling, Control and Transfer in End-to-End Speech Synthesis (https://arxiv.org/abs/1803.09017)",
+    )
     max_length: int = Field(
         1000, description="The maximum length (i.e. number of symbols) for text inputs."
     )

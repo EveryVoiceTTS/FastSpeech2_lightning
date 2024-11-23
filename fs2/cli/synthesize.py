@@ -73,6 +73,7 @@ def prepare_data(
     model: Any,
     text_representation: DatasetTextRepresentation,
     duration_control: float,
+    style_reference: Path | None,
 ) -> list[dict[str, Any]]:
     """"""
     from everyvoice.utils import slugify
@@ -154,9 +155,36 @@ def prepare_data(
         multi=model.config.model.multispeaker,
     )
 
+    # We only allow a single style reference right now, so it's fine to load it once here.
+    if style_reference:
+        from everyvoice.utils.heavy import get_spectral_transform
+
+        spectral_transform = get_spectral_transform(
+            model.config.preprocessing.audio.spec_type,
+            model.config.preprocessing.audio.n_fft,
+            model.config.preprocessing.audio.fft_window_size,
+            model.config.preprocessing.audio.fft_hop_size,
+            f_min=model.config.preprocessing.audio.f_min,
+            f_max=model.config.preprocessing.audio.f_max,
+            sample_rate=model.config.preprocessing.audio.output_sampling_rate,
+            n_mels=model.config.preprocessing.audio.n_mels,
+        )
+        import torchaudio
+
+        style_reference_audio, style_reference_sr = torchaudio.load(style_reference)
+        if style_reference_sr != model.config.preprocessing.audio.input_sampling_rate:
+            style_reference_audio = torchaudio.functional.resample(
+                style_reference_audio,
+                style_reference_sr,
+                model.config.preprocessing.audio.input_sampling_rate,
+            )
+        style_reference_spec = spectral_transform(style_reference_audio)
     # Add duration_control
     for item in data:
         item["duration_control"] = duration_control
+        # Add style reference
+        if style_reference:
+            item["mel_style_reference"] = style_reference_spec
 
     return data
 
@@ -175,6 +203,7 @@ def get_global_step(model_path: Path) -> int:
 def synthesize_helper(
     model,
     texts: list[str],
+    style_reference: Optional[Path],
     language: Optional[str],
     speaker: Optional[str],
     duration_control: Optional[float],
@@ -227,8 +256,8 @@ def synthesize_helper(
         filelist=filelist,
         model=model,
         text_representation=text_representation,
+        style_reference=style_reference,
     )
-
     from pytorch_lightning import Trainer
 
     from ..prediction_writing_callback import get_synthesis_output_callbacks
@@ -270,6 +299,7 @@ def synthesize_helper(
                 model.lang2id,
                 model.speaker2id,
                 teacher_forcing=teacher_forcing,
+                style_reference=style_reference is not None,
             ),
             return_predictions=True,
         ),
@@ -313,6 +343,16 @@ def synthesize(  # noqa: C901
         "--duration-control",
         "-D",
         help="Control the speaking rate of the synthesis. Set a value to multily the durations by, lower numbers produce quicker speaking rates, larger numbers produce slower speaking rates. Default is 1.0",
+    ),
+    style_reference: Optional[Path] = typer.Option(
+        None,
+        "--style-reference",
+        "-S",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        help="The path to an audio file containing a style reference. Your text-to-spec must have been trained with the global style token module to use this feature.",
+        autocompletion=complete_path,
     ),
     speaker: Optional[str] = typer.Option(
         None,
@@ -472,6 +512,7 @@ def synthesize(  # noqa: C901
     synthesize_helper(
         model=model,
         texts=texts,
+        style_reference=style_reference,
         language=language,
         speaker=speaker,
         duration_control=duration_control,
