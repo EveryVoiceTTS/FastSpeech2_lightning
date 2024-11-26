@@ -1,0 +1,16 @@
+[run]
+source_pkgs =
+    fs2
+    everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2
+omit =
+    *tmp*
+    */run_tests.py
+    */tests/*
+    */__main__.py
+
+[report]
+precision = 2
+exclude_lines =
+    pragma: no cover
+    if 0:
+    if __name__ == .__main__.:
