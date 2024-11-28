@@ -14,7 +14,7 @@ from everyvoice.config.type_definitions import (
     DatasetTextRepresentation,
     TargetTrainingTextRepresentationLevel,
 )
-from everyvoice.tests.stubs import mute_logger
+from everyvoice.tests.stubs import silence_c_stderr
 from everyvoice.utils import generic_psv_filelist_reader
 from typer.testing import CliRunner
 
@@ -162,7 +162,7 @@ class PrepareSynthesizeDataTest(TestCase):
         self.assertTrue(all((d["speaker"] == "bar" for d in data)))
 
     def test_plain_filelist(self):
-        with mute_logger("fs2.cli"):
+        with silence_c_stderr():
             data = prepare_synthesize_data(
                 texts=[],
                 language=None,

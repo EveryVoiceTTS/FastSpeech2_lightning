@@ -6,6 +6,7 @@ import torch
 from everyvoice.config.shared_types import ContactInformation
 from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import HiFiGANConfig
 from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import HiFiGAN
+from everyvoice.tests.stubs import silence_c_stderr
 from pympi import TextGrid
 from pytorch_lightning import Trainer
 
@@ -118,12 +119,13 @@ class TestWritingSpec(WritingTestBase):
         """
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
-            writer = PredictionWritingSpecCallback(
-                config=FastSpeech2Config(contact=self.contact),
-                global_step=77,
-                output_dir=tmp_dir,
-                output_key=self.output_key,
-            )
+            with silence_c_stderr():
+                writer = PredictionWritingSpecCallback(
+                    config=FastSpeech2Config(contact=self.contact),
+                    global_step=77,
+                    output_dir=tmp_dir,
+                    output_key=self.output_key,
+                )
             writer.on_predict_batch_end(
                 _trainer=None,
                 _pl_module=None,
@@ -160,12 +162,13 @@ class TestWritingTextGrid(WritingTestBase):
         """
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
-            writer = PredictionWritingTextGridCallback(
-                config=FastSpeech2Config(contact=self.contact),
-                global_step=77,
-                output_dir=tmp_dir,
-                output_key=self.output_key,
-            )
+            with silence_c_stderr():
+                writer = PredictionWritingTextGridCallback(
+                    config=FastSpeech2Config(contact=self.contact),
+                    global_step=77,
+                    output_dir=tmp_dir,
+                    output_key=self.output_key,
+                )
             writer.on_predict_batch_end(
                 _trainer=None,
                 _pl_module=None,
@@ -217,24 +220,26 @@ class TestWritingWav(WritingTestBase):
                 contact_name="Test Runner", contact_email="info@everyvoice.ca"
             )
             vocoder = HiFiGAN(HiFiGANConfig(contact=contact_info))
-            trainer = Trainer(default_root_dir=str(tmp_dir), barebones=True)
+            with silence_c_stderr():
+                trainer = Trainer(default_root_dir=str(tmp_dir), barebones=True)
             trainer.strategy.connect(vocoder)
             vocoder_path = Path(tmp_dir) / "vocoder"
             trainer.save_checkpoint(vocoder_path)
 
-            writer = PredictionWritingWavCallback(
-                config=FastSpeech2Config(
-                    contact=self.contact,
-                    training=FastSpeech2TrainingConfig(vocoder_path=vocoder_path),
-                ),
-                device=torch.device("cpu"),
-                global_step=77,
-                output_dir=tmp_dir,
-                output_key=self.output_key,
-                vocoder_model=vocoder,
-                vocoder_config=vocoder.config,
-                vocoder_global_step=10,
-            )
+            with silence_c_stderr():
+                writer = PredictionWritingWavCallback(
+                    config=FastSpeech2Config(
+                        contact=self.contact,
+                        training=FastSpeech2TrainingConfig(vocoder_path=vocoder_path),
+                    ),
+                    device=torch.device("cpu"),
+                    global_step=77,
+                    output_dir=tmp_dir,
+                    output_key=self.output_key,
+                    vocoder_model=vocoder,
+                    vocoder_config=vocoder.config,
+                    vocoder_global_step=10,
+                )
             writer.on_predict_batch_end(
                 _trainer=None,
                 _pl_module=None,
