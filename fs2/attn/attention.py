@@ -239,7 +239,7 @@ class ConvAttention(torch.nn.Module):
         attn = (queries_enc[:, :, :, None] - keys_enc[:, :, None]) ** 2
         # compute log likelihood from a gaussian
         attn = -0.0005 * attn.sum(1, keepdim=True)
-        if attn_prior is not None:
+        if torch.is_tensor(attn_prior):
             attn = self.log_softmax(attn) + torch.log(attn_prior[:, None] + 1e-8)
 
         attn_logprob = attn.clone()
