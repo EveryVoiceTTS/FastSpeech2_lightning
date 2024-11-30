@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from csv import DictWriter
 from pathlib import Path
 from typing import Any, Optional, Sequence
 
@@ -32,12 +33,20 @@ def get_synthesis_output_callbacks(
     vocoder_model: Optional[HiFiGAN] = None,
     vocoder_config: Optional[HiFiGANConfig] = None,
     vocoder_global_step: Optional[int] = None,
+    return_scores=False,
 ) -> dict[SynthesizeOutputFormats, Callback]:
     """
     Given a list of desired output file formats, return the proper callbacks
     that will generate those files.
     """
     callbacks: dict[SynthesizeOutputFormats, Callback] = {}
+    if return_scores:
+        callbacks['score'] = ScorerCallback(
+                config=config,
+                global_step=global_step,
+                output_dir=output_dir,
+                output_key=output_key,
+            )
     if (
         SynthesizeOutputFormats.wav in output_type
         or SynthesizeOutputFormats.readalong_html in output_type
@@ -133,6 +142,82 @@ class PredictionWritingCallbackBase(Callback):
         # synthesizing spec allows nested outputs so we may need to make subdirs
         path.parent.mkdir(parents=True, exist_ok=True)
         return str(path)
+
+
+class ScorerCallback(Callback):
+    """
+    This callback runs inference on a provided text-to-spec model and saves the resulting losses to disk.
+    """
+
+    def __init__(
+        self,
+        config: FastSpeech2Config,
+        global_step: int,
+        output_dir: Path,
+        output_key: str,
+    ):
+        self.global_step = global_step
+        self.save_dir = output_dir
+        self.output_key = output_key
+        self.config = config
+        logger.info(f"Saving pytorch output to {self.save_dir}")
+        self.scores = []
+
+    def _get_filename(self) -> Path:
+        path = self.save_dir / f"scores-{self.global_step}.psv"
+        path.parent.mkdir(
+            parents=True, exist_ok=True
+        )  # synthesizing spec allows nested outputs
+        return path
+
+    def sort_scores(self):
+        self.scores.sort(key=lambda x: (-x["total"], x["trigram_coverage_score"]))
+
+    def on_predict_epoch_end(
+        self,
+        _trainer,
+        model,
+    ):
+        self.sort_scores()
+        with open(self._get_filename(), "w") as f:
+            fieldnames = [
+                "basename",
+                "speaker",
+                "language",
+                "total",
+                "trigram_coverage_score",
+                "duration",
+                "spec",
+                "postnet",
+                "attn_ctc",
+                "attn_bin",
+                "raw_text",
+                "phone_coverage_score",
+            ]
+            writer = DictWriter(f, fieldnames=fieldnames, delimiter="|")
+            writer.writeheader()
+            for score in self.scores:
+                writer.writerow(score)
+
+    def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
+        self,
+        _trainer,
+        model,
+        outputs: dict[str, torch.Tensor | None],
+        batch: dict[str, Any],
+        _batch_idx: int,
+        _dataloader_idx: int = 0,
+    ):
+        with torch.no_grad():
+            losses = model.loss(outputs, batch, model.current_epoch)
+        score = {k: float(v) for k, v in losses.items()}
+        score["basename"] = batch["basename"][0]
+        score["speaker"] = batch["speaker"][0]
+        score["language"] = batch["language"][0]
+        score["raw_text"] = batch["raw_text"][0]
+        score["phone_coverage_score"] = batch["phone_coverage_score"][0]
+        score["trigram_coverage_score"] = batch["trigram_coverage_score"][0]
+        self.scores.append(score)
 
 
 class PredictionWritingSpecCallback(PredictionWritingCallbackBase):

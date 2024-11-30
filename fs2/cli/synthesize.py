@@ -1,5 +1,6 @@
 import sys
 import textwrap
+from collections import Counter
 from pathlib import Path
 from typing import Any, Optional
 
@@ -11,6 +12,7 @@ from everyvoice.config.type_definitions import (
 )
 from everyvoice.utils import spinner
 from loguru import logger
+from tqdm import tqdm
 
 from ..type_definitions import SynthesizeOutputFormats
 from ..utils import truncate_basename
@@ -221,6 +223,7 @@ def synthesize_helper(
     vocoder_global_step: Optional[int] = None,
     vocoder_model=None,
     vocoder_config=None,
+    return_scores=False,
 ):
     """This is a helper to perform synthesis once the model has been loaded.
     It allows us to use the same command for synthesis via the CLI and
@@ -258,6 +261,28 @@ def synthesize_helper(
         text_representation=text_representation,
         style_reference=style_reference,
     )
+    if return_scores:
+        from nltk.util import ngrams
+
+        token_counter = Counter()
+        trigram_counter = Counter()
+        for line in tqdm(
+            data, desc="calculating filelist statistics for score calculation"
+        ):
+            tokens = line[f"{text_representation.value[:-1]}_tokens"].split("/")
+            for t in tokens:
+                token_counter[t] += 1
+            tokens.insert(0, "<BOS>")
+            tokens.append("<EOS>")
+            for trigram in ngrams(tokens, 3):
+                trigram_counter[trigram] += 1
+        for line in tqdm(data, desc="scoring utterances"):
+            tokens = line[f"{text_representation.value[:-1]}_tokens"].split("/")
+            line["phone_coverage_score"] = sum((1 / token_counter[t]) for t in tokens)
+            line["trigram_coverage_score"] = sum(
+                (1 / trigram_counter[n]) for n in ngrams(tokens, 3)
+            )
+
     from pytorch_lightning import Trainer
 
     from ..prediction_writing_callback import get_synthesis_output_callbacks
@@ -272,6 +297,7 @@ def synthesize_helper(
         vocoder_model=vocoder_model,
         vocoder_config=vocoder_config,
         vocoder_global_step=vocoder_global_step,
+        return_scores=return_scores,
     )
     trainer = Trainer(
         logger=False,  # We don't need to log things to tensorboard during inference
@@ -284,6 +310,10 @@ def synthesize_helper(
         teacher_forcing = True
         model.config.preprocessing.save_dir = teacher_forcing_directory
     else:
+        if return_scores:
+            raise ValueError(
+                "In order to return the scores, we also need access to the directory containing your ground truth audio. Please pass this in using the --teacher-forcing-directory option. e.g. --teacher-forcing-directory ./preprocessed"
+            )
         teacher_forcing = False
     # overwrite batch_size and num_workers
     model.config.training.batch_size = batch_size
@@ -401,6 +431,12 @@ def synthesize(  # noqa: C901
         '**readalong-html**' will generate a single file Offline HTML ReadAlong that can be further edited in the ReadAlong Studio Editor, and opened by itself. Also implies '--output-type wav'. Requires --vocoder-path.
         """,
     ),
+    return_scores: bool = typer.Option(
+        False,
+        "--return-scores",
+        "-R",
+        help="ADVANCED. Setting this to True will change your batch size to 1 and output a PSV file with the losses for each synthesized audio along with a score of trigram density to measure the phonological importance of the utterance.",
+    ),
     teacher_forcing_directory: Path = typer.Option(
         None,
         "--teacher-forcing-directory",
@@ -466,6 +502,9 @@ def synthesize(  # noqa: C901
 
         from ..model import FastSpeech2
 
+    if return_scores:
+        batch_size = 1
+
     output_dir.mkdir(exist_ok=True, parents=True)
     # NOTE: We want to be able to put the vocoder on the proper accelerator for
     # it to be compatible with the vocoder's input device.
@@ -530,4 +569,5 @@ def synthesize(  # noqa: C901
         vocoder_model=vocoder_model,
         vocoder_config=vocoder_config,
         vocoder_global_step=vocoder_global_step,
+        return_scores=return_scores,
     )
