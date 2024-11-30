@@ -352,7 +352,7 @@ def synthesize(  # noqa: C901
         file_okay=True,
         dir_okay=False,
         help="The path to an audio file containing a style reference. Your text-to-spec must have been trained with the global style token module to use this feature.",
-        autocompletion=complete_path,
+        shell_complete=complete_path,
     ),
     speaker: Optional[str] = typer.Option(
         None,
