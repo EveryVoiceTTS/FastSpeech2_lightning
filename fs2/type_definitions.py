@@ -13,3 +13,4 @@ class SynthesizeOutputFormats(str, Enum):
     wav = "wav"
     spec = "spec"
     textgrid = "textgrid"
+    readalong = "readalong"
