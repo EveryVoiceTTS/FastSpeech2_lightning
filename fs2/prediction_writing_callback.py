@@ -86,11 +86,13 @@ def get_synthesis_output_callbacks(
 class PredictionWritingCallbackBase(Callback):
     def __init__(
         self,
+        config: FastSpeech2Config,
         file_extension: str,
         global_step: int,
         save_dir: Path,
     ) -> None:
         super().__init__()
+        self.config = config
         self.file_extension = file_extension
         self.global_step = f"ckpt={global_step}"
         self.save_dir = save_dir
@@ -115,6 +117,11 @@ class PredictionWritingCallbackBase(Callback):
         path.parent.mkdir(parents=True, exist_ok=True)
         return path
 
+    def frames_to_seconds(self, frames: int) -> float:
+        return (
+            frames * self.config.preprocessing.audio.fft_hop_size
+        ) / self.config.preprocessing.audio.output_sampling_rate
+
 
 class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
     """
@@ -129,13 +136,13 @@ class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
         output_key: str,
     ):
         super().__init__(
+            config=config,
             global_step=global_step,
             file_extension=f"spec-pred-{config.preprocessing.audio.input_sampling_rate}-{config.preprocessing.audio.spec_type}.pt",
             save_dir=output_dir / "synthesized_spec",
         )
 
         self.output_key = output_key
-        self.config = config
         logger.info(f"Saving pytorch output to {self.save_dir}")
 
     def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
@@ -175,19 +182,14 @@ class PredictionWritingTextGridCallback(PredictionWritingCallbackBase):
         output_key: str,
     ):
         super().__init__(
+            config=config,
             global_step=global_step,
             file_extension=f"{config.preprocessing.audio.input_sampling_rate}-{config.preprocessing.audio.spec_type}.TextGrid",
             save_dir=output_dir / "textgrids",
         )
         self.text_processor = TextProcessor(config.text)
         self.output_key = output_key
-        self.config = config
         logger.info(f"Saving pytorch output to {self.save_dir}")
-
-    def frames_to_seconds(self, frames: int) -> float:
-        return (
-            frames * self.config.preprocessing.audio.fft_hop_size
-        ) / self.config.preprocessing.audio.output_sampling_rate
 
     def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
         self,
@@ -284,19 +286,14 @@ class PredictionWritingReadAlongCallback(PredictionWritingCallbackBase):
         output_key: str,
     ):
         super().__init__(
+            config=config,
             global_step=global_step,
             file_extension=f"{config.preprocessing.audio.input_sampling_rate}-{config.preprocessing.audio.spec_type}.readalong",
             save_dir=output_dir / "readalongs",
         )
         self.text_processor = TextProcessor(config.text)
         self.output_key = output_key
-        self.config = config
         logger.info(f"Saving pytorch output to {self.save_dir}")
-
-    def frames_to_seconds(self, frames: int) -> float:
-        return (
-            frames * self.config.preprocessing.audio.fft_hop_size
-        ) / self.config.preprocessing.audio.output_sampling_rate
 
     def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
         self,
@@ -401,6 +398,7 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
         vocoder_global_step: int,
     ):
         super().__init__(
+            config=config,
             file_extension="pred.wav",
             global_step=global_step,
             save_dir=output_dir / "wav",
@@ -408,7 +406,6 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
 
         self.output_key = output_key
         self.device = device
-        self.config = config
         self.vocoder_model = vocoder_model
         self.vocoder_config = vocoder_config
         sampling_rate_change = (
