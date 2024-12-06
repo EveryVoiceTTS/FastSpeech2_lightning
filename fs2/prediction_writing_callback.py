@@ -351,12 +351,11 @@ class PredictionWritingReadAlongCallback(PredictionWritingAlignedTextCallback):
     def save_aligned_text_to_file(self, max_seconds, phones, words, language, filename):
         """Save the aligned text as a .readalong file"""
 
-        # Convert the (time, end, label) word tuples into RAS Tokens
         ras_tokens: list[Token] = []
-        for word in words:
+        for start, end, label in words:
             if ras_tokens:
-                ras_tokens.append(Token(" "))
-            ras_tokens.append(Token(word[2], word[0], word[1]))
+                ras_tokens.append(Token(text=" ", is_word=False))
+            ras_tokens.append(Token(text=label, time=start, dur=end - start))
 
         readalong = convert_to_readalong([ras_tokens], [language])
         with open(filename, "w", encoding="utf8") as f:
