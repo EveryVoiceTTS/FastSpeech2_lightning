@@ -12,6 +12,7 @@ from pytorch_lightning import Trainer
 
 from ..config import FastSpeech2Config, FastSpeech2TrainingConfig
 from ..prediction_writing_callback import (
+    PredictionWritingReadAlongCallback,
     PredictionWritingSpecCallback,
     PredictionWritingTextGridCallback,
     PredictionWritingWavCallback,
@@ -178,7 +179,7 @@ class TestWritingTextGrid(WritingTestBase):
                 _dataloader_idx=0,
             )
             output_dir = writer.save_dir
-            # print(output_dir, *output_dir.glob("**"))  # For debugging
+            # print(output_dir, *output_dir.glob("**/*"))  # For debugging
             self.assertTrue(output_dir.exists())
             self.assertTrue(
                 (output_dir / "short--spk1--lngA--22050-mel-librosa.TextGrid").exists()
@@ -201,6 +202,47 @@ class TestWritingTextGrid(WritingTestBase):
             self.assertEqual(tiers[2].name, "words")
             self.assertEqual(tiers[3].name, "word annotations")
             self.assertEqual(tiers[2].intervals[0][2], "W̱SÁNEĆ")
+
+
+class TestWritingReadAlong(WritingTestBase):
+    """
+    Testing the callback that writes .readalong files.
+    """
+
+    def test_writing_readalong(self):
+        with TemporaryDirectory() as tmp_dir:
+            tmp_dir = Path(tmp_dir)
+            with silence_c_stderr():
+                writer = PredictionWritingReadAlongCallback(
+                    config=FastSpeech2Config(contact=self.contact),
+                    global_step=77,
+                    output_dir=tmp_dir,
+                    output_key=self.output_key,
+                )
+            writer.on_predict_batch_end(
+                _trainer=None,
+                _pl_module=None,
+                outputs=self.outputs,
+                batch=self.batch,
+                _batch_idx=0,
+                _dataloader_idx=0,
+            )
+            output_dir = writer.save_dir
+
+            # print(output_dir, *output_dir.glob("**/*"))  # For debugging
+            output_files = (
+                output_dir / "short--spk1--lngA--22050-mel-librosa.readalong",
+                output_dir
+                / "This utterance is way too long--spk2--lngB--22050-mel-librosa.readalong",
+            )
+            for output_file in output_files:
+                with self.subTest(output_file=output_file):
+                    self.assertTrue(output_file.exists())
+                    with open(output_file, "r", encoding="utf8") as f:
+                        readalong = f.read()
+                    # print(readalong)
+                    self.assertIn("<read-along ", readalong)
+                    self.assertIn('<w time="0.0" dur=', readalong)
 
 
 class TestWritingWav(WritingTestBase):
