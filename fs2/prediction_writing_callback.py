@@ -98,21 +98,21 @@ class PredictionWritingCallbackBase(Callback):
 
         self.save_dir.mkdir(parents=True, exist_ok=True)
 
-    def _get_filename(self, basename: str, speaker: str, language: str) -> Path:
+    def _get_filename(
+        self,
+        basename: str,
+        speaker: str,
+        language: str,
+        include_global_step: bool = False,
+    ) -> Path:
         # We don't truncate or alter the filename here because the basename is
         # already truncated/cleaned in cli/synthesize.py
-        path = self.save_dir / self.sep.join(
-            [
-                basename,
-                speaker,
-                language,
-                self.global_step,
-                self.file_extension,
-            ]
-        )
-        path.parent.mkdir(
-            parents=True, exist_ok=True
-        )  # synthesizing spec allows nested outputs
+        name_parts = [basename, speaker, language, self.file_extension]
+        if include_global_step:
+            name_parts.insert(-1, self.global_step)
+        path = self.save_dir / self.sep.join(name_parts)
+        # synthesizing spec allows nested outputs so we may need to make subdirs
+        path.parent.mkdir(parents=True, exist_ok=True)
         return path
 
 
@@ -138,24 +138,6 @@ class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
         self.config = config
         logger.info(f"Saving pytorch output to {self.save_dir}")
 
-    def _get_filename(self, basename: str, speaker: str, language: str) -> Path:
-        # We don't truncate or alter the filename here because the basename is
-        # already truncated/cleaned in cli/synthesize.py
-        # the spec should not have the global step printed because it is used to fine-tune
-        # and the dataloader does not expect a global step in the filename
-        path = self.save_dir / self.sep.join(
-            [
-                basename,
-                speaker,
-                language,
-                self.file_extension,
-            ]
-        )
-        path.parent.mkdir(
-            parents=True, exist_ok=True
-        )  # synthesizing spec allows nested outputs
-        return path
-
     def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
         self,
         _trainer,
@@ -176,11 +158,7 @@ class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
         ):
             torch.save(
                 data[:unmasked_len].cpu(),
-                self._get_filename(
-                    basename=basename,
-                    speaker=speaker,
-                    language=language,
-                ),
+                self._get_filename(basename, speaker, language),
             )
 
 
@@ -205,24 +183,6 @@ class PredictionWritingTextGridCallback(PredictionWritingCallbackBase):
         self.output_key = output_key
         self.config = config
         logger.info(f"Saving pytorch output to {self.save_dir}")
-
-    def _get_filename(self, basename: str, speaker: str, language: str) -> Path:
-        # We don't truncate or alter the filename here because the basename is
-        # already truncated/cleaned in cli/synthesize.py
-        # the textgrid should not have the global step printed because it is used to fine-tune
-        # and the dataloader does not expect a global step in the filename
-        path = self.save_dir / self.sep.join(
-            [
-                basename,
-                speaker,
-                language,
-                self.file_extension,
-            ]
-        )
-        path.parent.mkdir(
-            parents=True, exist_ok=True
-        )  # synthesizing spec allows nested outputs
-        return path
 
     def frames_to_seconds(self, frames: int) -> float:
         return (
@@ -306,11 +266,7 @@ class PredictionWritingTextGridCallback(PredictionWritingCallbackBase):
                     last_word_end = current_word_end
                     current_word_duration = 0
             # get the filename
-            filename = self._get_filename(
-                basename=basename,
-                speaker=speaker,
-                language=language,
-            )
+            filename = self._get_filename(basename, speaker, language)
             # write the file
             new_tg.to_file(filename)
 
@@ -336,24 +292,6 @@ class PredictionWritingReadAlongCallback(PredictionWritingCallbackBase):
         self.output_key = output_key
         self.config = config
         logger.info(f"Saving pytorch output to {self.save_dir}")
-
-    def _get_filename(self, basename: str, speaker: str, language: str) -> Path:
-        # We don't truncate or alter the filename here because the basename is
-        # already truncated/cleaned in cli/synthesize.py
-        # the textgrid should not have the global step printed because it is used to fine-tune
-        # and the dataloader does not expect a global step in the filename
-        path = self.save_dir / self.sep.join(
-            [
-                basename,
-                speaker,
-                language,
-                self.file_extension,
-            ]
-        )
-        path.parent.mkdir(
-            parents=True, exist_ok=True
-        )  # synthesizing spec allows nested outputs
-        return path
 
     def frames_to_seconds(self, frames: int) -> float:
         return (
@@ -440,11 +378,7 @@ class PredictionWritingReadAlongCallback(PredictionWritingCallbackBase):
             # Convert the ras_tokens to a readalong
             readalong = convert_to_readalong([words], [language])
             # get the filename
-            filename = self._get_filename(
-                basename=basename,
-                speaker=speaker,
-                language=language,
-            )
+            filename = self._get_filename(basename, speaker, language)
             # write the file
             with open(filename, "w", encoding="utf8") as f:
                 f.write(readalong)
@@ -549,9 +483,7 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
         ):
             write(
                 self._get_filename(
-                    basename=basename,
-                    speaker=speaker,
-                    language=language,
+                    basename, speaker, language, include_global_step=True
                 ),
                 sr,
                 # the vocoder output includes padding so we have to remove that
