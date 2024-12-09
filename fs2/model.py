@@ -22,6 +22,7 @@ from torch import nn
 from torchaudio.models import Conformer
 
 from .config import FastSpeech2Config
+from .gst.model import StyleEncoder
 from .layers import PositionalEmbedding, PostNet
 from .loss import FastSpeech2Loss
 from .noam import NoamLR
@@ -88,7 +89,8 @@ class FastSpeech2(pl.LightningModule):
         self.position_embedding = PositionalEmbedding(
             self.config.model.encoder.input_dim
         )
-
+        if self.config.model.use_global_style_token_module:
+            self.gst = StyleEncoder(idim=self.config.preprocessing.audio.n_mels)
         self.encoder = Conformer(
             input_dim=self.config.model.encoder.input_dim,
             num_heads=self.config.model.encoder.heads,
@@ -152,7 +154,6 @@ class FastSpeech2(pl.LightningModule):
         # and update the control accordingly, but this is hacky and should be fixed
         if "duration_control" in batch and batch["duration_control"][0]:
             control.duration = batch["duration_control"][0]
-
         # Determine whether we're teacher forcing or not
         # To do so, we need to be in inference mode and
         # the data loader should have loaded some Mel lengths
@@ -189,6 +190,16 @@ class FastSpeech2(pl.LightningModule):
 
         # Encoder
         x, _ = self.encoder(inputs + enc_pos_emb, src_lens)  # expects B, T, K
+
+        # Add Global Style Token Embedding
+        if self.config.model.use_global_style_token_module:
+            if torch.is_tensor(batch["mel_style_reference"]):
+                # Used in training and also for synthesis with a reference audio
+                style_embs = self.gst(batch["mel_style_reference"])
+            else:
+                style_embs = self.gst.condition_on_gst_tokens(batch["text"].size(0))
+            x = x + style_embs.unsqueeze(1)
+
         # Speaker Embedding
         if self.config.model.multispeaker and self.speaker_embedding:
             speaker_emb = self.speaker_embedding(speaker_ids)
