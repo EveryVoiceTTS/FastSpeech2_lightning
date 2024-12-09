@@ -353,7 +353,7 @@ class FastSpeech2(pl.LightningModule):
             self.config.preprocessing.audio.output_sampling_rate,
         )
         if self.config.training.vocoder_path:
-            input_ = batch["mel"]
+            input_ = batch["mel"].transpose(1, 2)
             vocoder_ckpt = torch.load(
                 self.config.training.vocoder_path, map_location=input_.device
             )
@@ -431,7 +431,7 @@ class FastSpeech2(pl.LightningModule):
             )
 
         if self.config.training.vocoder_path:
-            input_ = output[self.output_key]
+            input_ = output[self.output_key].transpose(1, 2)
             vocoder_ckpt = torch.load(
                 self.config.training.vocoder_path, map_location=input_.device
             )
