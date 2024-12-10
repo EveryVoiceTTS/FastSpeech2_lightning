@@ -343,7 +343,7 @@ def synthesize(  # noqa: C901
         help="""Which format(s) to synthesize to.
         Multiple formats can be provided by repeating `--output-type`.
         '**wav**' is the default and will synthesize to a playable audio file;
-        '**spec**' will generate predicted Mel spectrograms. Tensors are time-oriented (T, K) where T is equal to the number of frames and K is equal to the number of Mel bands.
+        '**spec**' will generate predicted Mel spectrograms. Tensors are Mel band-oriented (K, T) where K is equal to the number of Mel bands and T is equal to the number of frames. 
         '**textgrid**' will generate a Praat TextGrid with alignment labels. This can be helpful for evaluation.
         '**readalong**' will generate a ReadAlong from the given text and synthesized audio (see https://github.com/ReadAlongs).
         """,
@@ -436,8 +436,8 @@ def synthesize(  # noqa: C901
     global_step = get_global_step(model_path)
 
     # load vocoder
-    logger.info(f"Loading Vocoder from {vocoder_path}")
     if vocoder_path is not None:
+        logger.info(f"Loading Vocoder from {vocoder_path}")
         vocoder_ckpt = torch.load(vocoder_path, map_location=device)
         try:
             vocoder_model, vocoder_config = load_hifigan_from_checkpoint(
