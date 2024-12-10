@@ -11,11 +11,8 @@ from pympi import TextGrid
 from pytorch_lightning import Trainer
 
 from ..config import FastSpeech2Config, FastSpeech2TrainingConfig
-from ..prediction_writing_callback import (
-    PredictionWritingSpecCallback,
-    PredictionWritingTextGridCallback,
-    PredictionWritingWavCallback,
-)
+from ..prediction_writing_callback import get_synthesis_output_callbacks
+from ..type_definitions import SynthesizeOutputFormats
 from ..utils import BASENAME_MAX_LENGTH, truncate_basename
 
 
@@ -120,12 +117,14 @@ class TestWritingSpec(WritingTestBase):
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
             with silence_c_stderr():
-                writer = PredictionWritingSpecCallback(
+                writer = get_synthesis_output_callbacks(
+                    [SynthesizeOutputFormats.spec],
                     config=FastSpeech2Config(contact=self.contact),
                     global_step=77,
                     output_dir=tmp_dir,
                     output_key=self.output_key,
-                )
+                    device=torch.device("cpu"),
+                )[0]
             writer.on_predict_batch_end(
                 _trainer=None,
                 _pl_module=None,
@@ -163,12 +162,14 @@ class TestWritingTextGrid(WritingTestBase):
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
             with silence_c_stderr():
-                writer = PredictionWritingTextGridCallback(
+                writer = get_synthesis_output_callbacks(
+                    [SynthesizeOutputFormats.textgrid],
                     config=FastSpeech2Config(contact=self.contact),
                     global_step=77,
                     output_dir=tmp_dir,
                     output_key=self.output_key,
-                )
+                    device=torch.device("cpu"),
+                )[0]
             writer.on_predict_batch_end(
                 _trainer=None,
                 _pl_module=None,
@@ -178,7 +179,7 @@ class TestWritingTextGrid(WritingTestBase):
                 _dataloader_idx=0,
             )
             output_dir = writer.save_dir
-            # print(output_dir, *output_dir.glob("**"))  # For debugging
+            # print(output_dir, *output_dir.glob("**/*"))  # For debugging
             self.assertTrue(output_dir.exists())
             self.assertTrue(
                 (output_dir / "short--spk1--lngA--22050-mel-librosa.TextGrid").exists()
@@ -201,6 +202,49 @@ class TestWritingTextGrid(WritingTestBase):
             self.assertEqual(tiers[2].name, "words")
             self.assertEqual(tiers[3].name, "word annotations")
             self.assertEqual(tiers[2].intervals[0][2], "W̱SÁNEĆ")
+
+
+class TestWritingReadAlong(WritingTestBase):
+    """
+    Testing the callback that writes .readalong files.
+    """
+
+    def test_writing_readalong(self):
+        with TemporaryDirectory() as tmp_dir:
+            tmp_dir = Path(tmp_dir)
+            with silence_c_stderr():
+                writer = get_synthesis_output_callbacks(
+                    [SynthesizeOutputFormats.readalong],
+                    config=FastSpeech2Config(contact=self.contact),
+                    global_step=77,
+                    output_dir=tmp_dir,
+                    output_key=self.output_key,
+                    device=torch.device("cpu"),
+                )[0]
+            writer.on_predict_batch_end(
+                _trainer=None,
+                _pl_module=None,
+                outputs=self.outputs,
+                batch=self.batch,
+                _batch_idx=0,
+                _dataloader_idx=0,
+            )
+            output_dir = writer.save_dir
+
+            # print(output_dir, *output_dir.glob("**/*"))  # For debugging
+            output_files = (
+                output_dir / "short--spk1--lngA--22050-mel-librosa.readalong",
+                output_dir
+                / "This utterance is way too long--spk2--lngB--22050-mel-librosa.readalong",
+            )
+            for output_file in output_files:
+                with self.subTest(output_file=output_file):
+                    self.assertTrue(output_file.exists())
+                    with open(output_file, "r", encoding="utf8") as f:
+                        readalong = f.read()
+                    # print(readalong)
+                    self.assertIn("<read-along ", readalong)
+                    self.assertIn('<w time="0.0" dur=', readalong)
 
 
 class TestWritingWav(WritingTestBase):
@@ -227,7 +271,8 @@ class TestWritingWav(WritingTestBase):
             trainer.save_checkpoint(vocoder_path)
 
             with silence_c_stderr():
-                writer = PredictionWritingWavCallback(
+                writer = get_synthesis_output_callbacks(
+                    [SynthesizeOutputFormats.wav],
                     config=FastSpeech2Config(
                         contact=self.contact,
                         training=FastSpeech2TrainingConfig(vocoder_path=vocoder_path),
@@ -239,7 +284,7 @@ class TestWritingWav(WritingTestBase):
                     vocoder_model=vocoder,
                     vocoder_config=vocoder.config,
                     vocoder_global_step=10,
-                )
+                )[0]
             writer.on_predict_batch_end(
                 _trainer=None,
                 _pl_module=None,
