@@ -25,7 +25,7 @@ def get_synthesis_output_callbacks(
     vocoder_model: Optional[HiFiGAN] = None,
     vocoder_config: Optional[HiFiGANConfig] = None,
     vocoder_global_step: Optional[int] = None,
-):
+) -> list[Callback]:
     """
     Given a list of desired output file formats, return the proper callbacks
     that will generate those files.

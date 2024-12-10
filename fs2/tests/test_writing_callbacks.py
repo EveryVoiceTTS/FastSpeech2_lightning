@@ -11,12 +11,8 @@ from pympi import TextGrid
 from pytorch_lightning import Trainer
 
 from ..config import FastSpeech2Config, FastSpeech2TrainingConfig
-from ..prediction_writing_callback import (
-    PredictionWritingReadAlongCallback,
-    PredictionWritingSpecCallback,
-    PredictionWritingTextGridCallback,
-    PredictionWritingWavCallback,
-)
+from ..prediction_writing_callback import get_synthesis_output_callbacks
+from ..type_definitions import SynthesizeOutputFormats
 from ..utils import BASENAME_MAX_LENGTH, truncate_basename
 
 
@@ -121,12 +117,14 @@ class TestWritingSpec(WritingTestBase):
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
             with silence_c_stderr():
-                writer = PredictionWritingSpecCallback(
+                writer = get_synthesis_output_callbacks(
+                    [SynthesizeOutputFormats.spec],
                     config=FastSpeech2Config(contact=self.contact),
                     global_step=77,
                     output_dir=tmp_dir,
                     output_key=self.output_key,
-                )
+                    device=torch.device("cpu"),
+                )[0]
             writer.on_predict_batch_end(
                 _trainer=None,
                 _pl_module=None,
@@ -164,12 +162,14 @@ class TestWritingTextGrid(WritingTestBase):
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
             with silence_c_stderr():
-                writer = PredictionWritingTextGridCallback(
+                writer = get_synthesis_output_callbacks(
+                    [SynthesizeOutputFormats.textgrid],
                     config=FastSpeech2Config(contact=self.contact),
                     global_step=77,
                     output_dir=tmp_dir,
                     output_key=self.output_key,
-                )
+                    device=torch.device("cpu"),
+                )[0]
             writer.on_predict_batch_end(
                 _trainer=None,
                 _pl_module=None,
@@ -213,12 +213,14 @@ class TestWritingReadAlong(WritingTestBase):
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
             with silence_c_stderr():
-                writer = PredictionWritingReadAlongCallback(
+                writer = get_synthesis_output_callbacks(
+                    [SynthesizeOutputFormats.readalong],
                     config=FastSpeech2Config(contact=self.contact),
                     global_step=77,
                     output_dir=tmp_dir,
                     output_key=self.output_key,
-                )
+                    device=torch.device("cpu"),
+                )[0]
             writer.on_predict_batch_end(
                 _trainer=None,
                 _pl_module=None,
@@ -269,7 +271,8 @@ class TestWritingWav(WritingTestBase):
             trainer.save_checkpoint(vocoder_path)
 
             with silence_c_stderr():
-                writer = PredictionWritingWavCallback(
+                writer = get_synthesis_output_callbacks(
+                    [SynthesizeOutputFormats.wav],
                     config=FastSpeech2Config(
                         contact=self.contact,
                         training=FastSpeech2TrainingConfig(vocoder_path=vocoder_path),
@@ -281,7 +284,7 @@ class TestWritingWav(WritingTestBase):
                     vocoder_model=vocoder,
                     vocoder_config=vocoder.config,
                     vocoder_global_step=10,
-                )
+                )[0]
             writer.on_predict_batch_end(
                 _trainer=None,
                 _pl_module=None,
