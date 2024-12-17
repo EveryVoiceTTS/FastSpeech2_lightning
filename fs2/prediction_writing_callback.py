@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 from typing import Any, Optional, Sequence
 
@@ -9,7 +11,11 @@ from everyvoice.text.text_processor import TextProcessor
 from loguru import logger
 from pympi import TextGrid
 from pytorch_lightning.callbacks import Callback
-from readalongs.api import Token, convert_to_readalong
+from readalongs.api import (
+    Token,
+    convert_prealigned_text_to_offline_html,
+    convert_prealigned_text_to_readalong,
+)
 
 from .config import FastSpeech2Config
 from .type_definitions import SynthesizeOutputFormats
@@ -49,7 +55,7 @@ def get_synthesis_output_callbacks(
                 output_key=output_key,
             )
         )
-    if SynthesizeOutputFormats.readalong in output_type:
+    if SynthesizeOutputFormats.readalong_xml in output_type:
         callbacks.append(
             PredictionWritingReadAlongCallback(
                 config=config,
@@ -58,7 +64,10 @@ def get_synthesis_output_callbacks(
                 output_key=output_key,
             )
         )
-    if SynthesizeOutputFormats.wav in output_type:
+    if (
+        SynthesizeOutputFormats.wav in output_type
+        or SynthesizeOutputFormats.readalong_html in output_type
+    ):
         if (
             vocoder_model is None
             or vocoder_config is None
@@ -77,6 +86,18 @@ def get_synthesis_output_callbacks(
                 vocoder_model=vocoder_model,
                 vocoder_config=vocoder_config,
                 vocoder_global_step=vocoder_global_step,
+            )
+        )
+    if SynthesizeOutputFormats.readalong_html in output_type:
+        wav_callback = callbacks[-1]
+        assert isinstance(wav_callback, PredictionWritingWavCallback)
+        callbacks.append(
+            PredictionWritingOfflineRASCallback(
+                config=config,
+                global_step=global_step,
+                output_dir=output_dir,
+                output_key=output_key,
+                wav_callback=wav_callback,
             )
         )
 
@@ -196,17 +217,12 @@ class PredictionWritingAlignedTextCallback(PredictionWritingCallbackBase):
         max_seconds: float,
         phones: list[tuple[float, float, str]],
         words: list[tuple[float, float, str]],
+        basename: str,
+        speaker: str,
         language: str,
-        filename: Path,
     ):  # pragma: no cover
-        """
-        Subclasses must implement this function to save the aligned text to file
-        in the desired format.
-
-        See for example PredictionWritingTextGridCallback.save_aligned_text_to_file
-        and PredictionWritingReadAlongCallback.save_aligned_text_to_file which save
-        the results to TextGrid and ReadAlong formats, respectively.
-        """
+        """Subclasses must implement this function to save the aligned text to file
+        in the desired format."""
         raise NotImplementedError
 
     def frames_to_seconds(self, frames: int) -> float:
@@ -281,11 +297,9 @@ class PredictionWritingAlignedTextCallback(PredictionWritingCallbackBase):
                     last_word_end = current_word_end
                     current_word_duration = 0
 
-            # get the filename
-            filename = self.get_filename(basename, speaker, language)
             # Save the output (the subclass has to implement this)
             self.save_aligned_text_to_file(
-                xmax_seconds, phones, words, language, filename
+                xmax_seconds, phones, words, basename, speaker, language
             )
 
 
@@ -309,7 +323,15 @@ class PredictionWritingTextGridCallback(PredictionWritingAlignedTextCallback):
             save_dir=output_dir / "textgrids",
         )
 
-    def save_aligned_text_to_file(self, max_seconds, phones, words, language, filename):
+    def save_aligned_text_to_file(
+        self,
+        max_seconds: float,
+        phones: list[tuple[float, float, str]],
+        words: list[tuple[float, float, str]],
+        basename: str,
+        speaker: str,
+        language: str,
+    ):
         """Save the aligned text as a TextGrid with phones and words layers"""
         new_tg = TextGrid(xmax=max_seconds)
         phone_tier = new_tg.add_tier("phones")
@@ -324,6 +346,7 @@ class PredictionWritingTextGridCallback(PredictionWritingAlignedTextCallback):
             word_tier.add_interval(*interval)
             word_annotation_tier.add_interval(interval[0], interval[1], "")
 
+        filename = self.get_filename(basename, speaker, language)
         new_tg.to_file(filename)
 
 
@@ -350,7 +373,15 @@ class PredictionWritingReadAlongCallback(PredictionWritingAlignedTextCallback):
         self.output_key = output_key
         logger.info(f"Saving pytorch output to {self.save_dir}")
 
-    def save_aligned_text_to_file(self, max_seconds, phones, words, language, filename):
+    def save_aligned_text_to_file(
+        self,
+        max_seconds: float,
+        phones: list[tuple[float, float, str]],
+        words: list[tuple[float, float, str]],
+        basename: str,
+        speaker: str,
+        language: str,
+    ):
         """Save the aligned text as a .readalong file"""
 
         ras_tokens: list[Token] = []
@@ -359,9 +390,69 @@ class PredictionWritingReadAlongCallback(PredictionWritingAlignedTextCallback):
                 ras_tokens.append(Token(text=" ", is_word=False))
             ras_tokens.append(Token(text=label, time=start, dur=end - start))
 
-        readalong = convert_to_readalong([ras_tokens], [language])
+        readalong = convert_prealigned_text_to_readalong([ras_tokens], [language])
+        filename = self.get_filename(basename, speaker, language)
         with open(filename, "w", encoding="utf8") as f:
             f.write(readalong)
+
+
+class PredictionWritingOfflineRASCallback(PredictionWritingAlignedTextCallback):
+    """
+    This callback runs inference on a provided text-to-spec model and saves the
+    resulting readalong of the predicted durations to disk as a single file
+    Offline HTML. This can be loaded in the ReadAlongs Studio-Web Editor for
+    further modification.
+    """
+
+    def __init__(
+        self,
+        config: FastSpeech2Config,
+        global_step: int,
+        output_dir: Path,
+        output_key: str,
+        wav_callback: PredictionWritingWavCallback,
+    ):
+        super().__init__(
+            config=config,
+            global_step=global_step,
+            output_key=output_key,
+            file_extension=f"{config.preprocessing.audio.input_sampling_rate}-{config.preprocessing.audio.spec_type}.html",
+            save_dir=output_dir / "readalongs",
+        )
+        self.text_processor = TextProcessor(config.text)
+        self.output_key = output_key
+        self.wav_callback = wav_callback
+        logger.info(f"Saving pytorch output to {self.save_dir}")
+
+    def save_aligned_text_to_file(
+        self,
+        max_seconds: float,
+        phones: list[tuple[float, float, str]],
+        words: list[tuple[float, float, str]],
+        basename: str,
+        speaker: str,
+        language: str,
+    ):
+        """Save the aligned text as an Offline HTML readalong file"""
+
+        ras_tokens: list[Token] = []
+        for start, end, label in words:
+            if ras_tokens:
+                ras_tokens.append(Token(text=" ", is_word=False))
+            ras_tokens.append(Token(text=label, time=start, dur=end - start))
+
+        wav_file_name = self.wav_callback.get_filename(
+            basename, speaker, language, include_global_step=True
+        )
+        readalong_html, _readalong_xml = convert_prealigned_text_to_offline_html(
+            [ras_tokens],
+            wav_file_name,
+            [language],
+            title="ReadAlong generated using EveryVoice",
+        )
+        filename = self.get_filename(basename, speaker, language)
+        with open(filename, "w", encoding="utf8") as f:
+            f.write(readalong_html)
 
 
 class PredictionWritingWavCallback(PredictionWritingCallbackBase):

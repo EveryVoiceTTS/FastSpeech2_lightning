@@ -214,7 +214,7 @@ class TestWritingReadAlong(WritingTestBase):
             tmp_dir = Path(tmp_dir)
             with silence_c_stderr():
                 writer = get_synthesis_output_callbacks(
-                    [SynthesizeOutputFormats.readalong],
+                    [SynthesizeOutputFormats.readalong_xml],
                     config=FastSpeech2Config(contact=self.contact),
                     global_step=77,
                     output_dir=tmp_dir,
@@ -247,6 +247,70 @@ class TestWritingReadAlong(WritingTestBase):
                     self.assertIn('<w time="0.0" dur=', readalong)
 
 
+class TestWritingOfflineRAS(WritingTestBase):
+    """
+    Testing the callback that writes Offline HTML readalong files.
+    """
+
+    def test_writing_offline_ras(self):
+        with TemporaryDirectory() as tmp_dir:
+            tmp_dir = Path(tmp_dir)
+            vocoder, vocoder_path = get_dummy_vocoder(tmp_dir)
+            with silence_c_stderr():
+                writers = get_synthesis_output_callbacks(
+                    [SynthesizeOutputFormats.readalong_html],
+                    config=FastSpeech2Config(
+                        contact=self.contact,
+                        training=FastSpeech2TrainingConfig(vocoder_path=vocoder_path),
+                    ),
+                    global_step=77,
+                    output_dir=tmp_dir,
+                    output_key=self.output_key,
+                    device=torch.device("cpu"),
+                    vocoder_model=vocoder,
+                    vocoder_config=vocoder.config,
+                    vocoder_global_step=10,
+                )
+            for writer in writers:
+                writer.on_predict_batch_end(
+                    _trainer=None,
+                    _pl_module=None,
+                    outputs=self.outputs,
+                    batch=self.batch,
+                    _batch_idx=0,
+                    _dataloader_idx=0,
+                )
+                output_dir = writer.save_dir
+
+            # print(output_dir, *output_dir.glob("**/*"))  # For debugging
+            output_files = (
+                output_dir / "short--spk1--lngA--22050-mel-librosa.html",
+                output_dir
+                / "This utterance is way too long--spk2--lngB--22050-mel-librosa.html",
+            )
+            for output_file in output_files:
+                with self.subTest(output_file=output_file):
+                    self.assertTrue(output_file.exists())
+                    with open(output_file, "r", encoding="utf8") as f:
+                        readalong = f.read()
+                    # print(readalong)
+                    self.assertIn("<read-along ", readalong)
+                    self.assertIn("<span slot", readalong)
+
+
+def get_dummy_vocoder(tmp_dir: Path) -> tuple[HiFiGAN, Path]:
+    contact_info = ContactInformation(
+        contact_name="Test Runner", contact_email="info@everyvoice.ca"
+    )
+    vocoder = HiFiGAN(HiFiGANConfig(contact=contact_info))
+    with silence_c_stderr():
+        trainer = Trainer(default_root_dir=str(tmp_dir), barebones=True)
+    trainer.strategy.connect(vocoder)
+    vocoder_path = tmp_dir / "vocoder"
+    trainer.save_checkpoint(vocoder_path)
+    return vocoder, vocoder_path
+
+
 class TestWritingWav(WritingTestBase):
     """
     Testing the callback that writes wav files.
@@ -260,15 +324,7 @@ class TestWritingWav(WritingTestBase):
         """
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
-            contact_info = ContactInformation(
-                contact_name="Test Runner", contact_email="info@everyvoice.ca"
-            )
-            vocoder = HiFiGAN(HiFiGANConfig(contact=contact_info))
-            with silence_c_stderr():
-                trainer = Trainer(default_root_dir=str(tmp_dir), barebones=True)
-            trainer.strategy.connect(vocoder)
-            vocoder_path = Path(tmp_dir) / "vocoder"
-            trainer.save_checkpoint(vocoder_path)
+            vocoder, vocoder_path = get_dummy_vocoder(tmp_dir)
 
             with silence_c_stderr():
                 writer = get_synthesis_output_callbacks(

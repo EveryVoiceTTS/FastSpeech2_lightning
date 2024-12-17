@@ -342,10 +342,21 @@ def synthesize(  # noqa: C901
         "--output-type",
         help="""Which format(s) to synthesize to.
         Multiple formats can be provided by repeating `--output-type`.
-        '**wav**' is the default and will synthesize to a playable audio file;
-        '**spec**' will generate predicted Mel spectrograms. Tensors are Mel band-oriented (K, T) where K is equal to the number of Mel bands and T is equal to the number of frames. 
+
+
+        '**wav**' is the default and will synthesize to a playable audio file. Requires --vocoder-path.
+
+
+        '**spec**' will generate predicted Mel spectrograms. Tensors are Mel band-oriented (K, T) where K is equal to the number of Mel bands and T is equal to the number of frames.
+
+
         '**textgrid**' will generate a Praat TextGrid with alignment labels. This can be helpful for evaluation.
-        '**readalong**' will generate a ReadAlong from the given text and synthesized audio (see https://github.com/ReadAlongs).
+
+
+        '**readalong-xml**' will generate a ReadAlong from the given text and synthesized audio in XML .readalong format (see https://github.com/ReadAlongs).
+
+
+        '**readalong-html**' will generate a single file Offline HTML ReadAlong that can be further edited in the ReadAlong Studio Editor, and opened by itself. Also implies '--output-type wav'. Requires --vocoder-path.
         """,
     ),
     teacher_forcing_directory: Path = typer.Option(
@@ -394,9 +405,12 @@ def synthesize(  # noqa: C901
         sys.exit(1)
 
     # output to .wav will require a valid spec-to-wav model
-    if SynthesizeOutputFormats.wav in output_type and not vocoder_path:
+    if (
+        SynthesizeOutputFormats.wav in output_type
+        or SynthesizeOutputFormats.readalong_html in output_type
+    ) and not vocoder_path:
         print(
-            "Missing --vocoder-path option, which is required when the output type is 'wav'.",
+            "Missing --vocoder-path option, which is required when the output type includes 'wav' or 'offline-ras'.",
             file=sys.stderr,
         )
         sys.exit(1)
