@@ -551,7 +551,7 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
                     basename, speaker, language, include_global_step=True
                 ),
                 # the vocoder output includes padding so we have to remove that
-                wav[: (unmasked_len * self.output_hop_size)],
+                wav[:, : (unmasked_len * self.output_hop_size)],
                 sr,
                 format="wav",
                 encoding="PCM_S",
