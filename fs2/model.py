@@ -251,6 +251,7 @@ class FastSpeech2(pl.LightningModule):
             "energy_target": variance_adaptor_out["energy_target"],
             "pitch_prediction": variance_adaptor_out["pitch_prediction"],
             "pitch_target": variance_adaptor_out["pitch_target"],
+            "text_input": text_inputs,
         }
 
     def check_and_upgrade_checkpoint(self, checkpoint):
