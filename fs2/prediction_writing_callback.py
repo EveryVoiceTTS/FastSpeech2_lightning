@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Optional, Sequence
 
 import numpy as np
+import numpy.typing as npt
 import torch
 from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import HiFiGANConfig
 from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.model import HiFiGAN
@@ -19,6 +20,72 @@ from readalongs.api import (
 
 from .config import FastSpeech2Config
 from .type_definitions import SynthesizeOutputFormats
+
+
+def frames_to_seconds(frames: int, fft_hop_size: int, sampling_rate: int) -> float:
+    return (frames * fft_hop_size) / sampling_rate
+
+
+def get_tokens_from_duration_and_labels(
+    duration_predictions: torch.Tensor,
+    text: npt.NDArray[np.float32],
+    raw_text: str,
+    text_processor: TextProcessor,
+    config: FastSpeech2Config,
+):
+    # Get all durations in frames
+    duration_frames = (
+        torch.clamp(torch.round(torch.exp(duration_predictions) - 1), min=0)
+        .int()
+        .tolist()
+    )
+    # Get all input labels
+    tokens: list[int] = text.tolist()
+    text_labels = text_processor.decode_tokens(tokens, join_character=None)
+    assert len(duration_frames) == len(
+        text_labels
+    ), f"can't synthesize {raw_text} because the number of predicted duration steps ({len(duration_frames)}) doesn't equal the number of input text labels ({len(text_labels)})"
+    # get the duration of the audio: (sum_of_frames * hop_size) / sample_rate
+    xmax_seconds = frames_to_seconds(
+        sum(duration_frames),
+        config.preprocessing.audio.fft_hop_size,
+        config.preprocessing.audio.output_sampling_rate,
+    )
+    # create the tiers
+    words: list[tuple[float, float, str]] = []
+    phones: list[tuple[float, float, str]] = []
+    raw_text_words = raw_text.split()
+    current_word_duration = 0.0
+    last_phone_end = 0.0
+    last_word_end = 0.0
+    # skip padding
+    text_labels_no_padding = [tl for tl in text_labels if tl != "\x80"]
+    duration_frames_no_padding = duration_frames[: len(text_labels_no_padding)]
+    for label, duration in zip(text_labels_no_padding, duration_frames_no_padding):
+        # add phone label
+        phone_duration = frames_to_seconds(
+            duration,
+            config.preprocessing.audio.fft_hop_size,
+            config.preprocessing.audio.output_sampling_rate,
+        )
+        current_phone_end = last_phone_end + phone_duration
+        interval = (last_phone_end, current_phone_end, label)
+        phones.append(interval)
+        last_phone_end = current_phone_end
+        # accumulate phone to word label
+        current_word_duration += phone_duration
+        # if label is space or the last phone, add the word and recount
+        if label == " " or len(phones) == len(text_labels_no_padding):
+            current_word_end = last_word_end + current_word_duration
+            interval = (
+                last_word_end,
+                current_word_end,
+                raw_text_words[len(words)],
+            )
+            words.append(interval)
+            last_word_end = current_word_end
+            current_word_duration = 0
+    return xmax_seconds, phones, words
 
 
 def get_synthesis_output_callbacks(
@@ -111,6 +178,7 @@ class PredictionWritingCallbackBase(Callback):
         file_extension: str,
         global_step: int,
         save_dir: Path,
+        include_global_step_in_filename: bool = False,
     ) -> None:
         super().__init__()
         self.config = config
@@ -118,6 +186,7 @@ class PredictionWritingCallbackBase(Callback):
         self.global_step = f"ckpt={global_step}"
         self.save_dir = save_dir
         self.sep = "--"
+        self.include_global_step_in_filename = include_global_step_in_filename
 
         self.save_dir.mkdir(parents=True, exist_ok=True)
 
@@ -126,12 +195,11 @@ class PredictionWritingCallbackBase(Callback):
         basename: str,
         speaker: str,
         language: str,
-        include_global_step: bool = False,
     ) -> str:
         # We don't truncate or alter the filename here because the basename is
         # already truncated/cleaned in cli/synthesize.py
         name_parts = [basename, speaker, language, self.file_extension]
-        if include_global_step:
+        if self.include_global_step_in_filename:
             name_parts.insert(-1, self.global_step)
         path = self.save_dir / self.sep.join(name_parts)
         # synthesizing spec allows nested outputs so we may need to make subdirs
@@ -225,11 +293,6 @@ class PredictionWritingAlignedTextCallback(PredictionWritingCallbackBase):
         in the desired format."""
         raise NotImplementedError
 
-    def frames_to_seconds(self, frames: int) -> float:
-        return (
-            frames * self.config.preprocessing.audio.fft_hop_size
-        ) / self.config.preprocessing.audio.output_sampling_rate
-
     def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
         self,
         _trainer,
@@ -252,50 +315,10 @@ class PredictionWritingAlignedTextCallback(PredictionWritingCallbackBase):
             batch["text"],  # type: ignore
             outputs["duration_prediction"],
         ):
-            # Get all durations in frames
-            duration_frames = (
-                torch.clamp(torch.round(torch.exp(duration) - 1), min=0).int().tolist()
+            # Get the phone/word alignment tokens
+            xmax_seconds, phones, words = get_tokens_from_duration_and_labels(
+                duration, text, raw_text, self.text_processor, self.config
             )
-            # Get all input labels
-            tokens: list[int] = text.tolist()
-            text_labels = self.text_processor.decode_tokens(tokens, join_character=None)
-            assert len(duration_frames) == len(
-                text_labels
-            ), f"can't synthesize {raw_text} because the number of predicted duration steps ({len(duration_frames)}) doesn't equal the number of input text labels ({len(text_labels)})"
-            # get the duration of the audio: (sum_of_frames * hop_size) / sample_rate
-            xmax_seconds = self.frames_to_seconds(sum(duration_frames))
-            # create the tiers
-            words: list[tuple[float, float, str]] = []
-            phones: list[tuple[float, float, str]] = []
-            raw_text_words = raw_text.split()
-            current_word_duration = 0.0
-            last_phone_end = 0.0
-            last_word_end = 0.0
-            # skip padding
-            text_labels_no_padding = [tl for tl in text_labels if tl != "\x80"]
-            duration_frames_no_padding = duration_frames[: len(text_labels_no_padding)]
-            for label, duration in zip(
-                text_labels_no_padding, duration_frames_no_padding
-            ):
-                # add phone label
-                phone_duration = self.frames_to_seconds(duration)
-                current_phone_end = last_phone_end + phone_duration
-                interval = (last_phone_end, current_phone_end, label)
-                phones.append(interval)
-                last_phone_end = current_phone_end
-                # accumulate phone to word label
-                current_word_duration += phone_duration
-                # if label is space or the last phone, add the word and recount
-                if label == " " or len(phones) == len(text_labels_no_padding):
-                    current_word_end = last_word_end + current_word_duration
-                    interval = (
-                        last_word_end,
-                        current_word_end,
-                        raw_text_words[len(words)],
-                    )
-                    words.append(interval)
-                    last_word_end = current_word_end
-                    current_word_duration = 0
 
             # Save the output (the subclass has to implement this)
             self.save_aligned_text_to_file(
@@ -441,9 +464,7 @@ class PredictionWritingOfflineRASCallback(PredictionWritingAlignedTextCallback):
                 ras_tokens.append(Token(text=" ", is_word=False))
             ras_tokens.append(Token(text=label, time=start, dur=end - start))
 
-        wav_file_name = self.wav_callback.get_filename(
-            basename, speaker, language, include_global_step=True
-        )
+        wav_file_name = self.wav_callback.get_filename(basename, speaker, language)
         readalong_html, _readalong_xml = convert_prealigned_text_to_offline_html(
             [ras_tokens],
             wav_file_name,
@@ -476,6 +497,7 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
             file_extension="pred.wav",
             global_step=global_step,
             save_dir=output_dir / "wav",
+            include_global_step_in_filename=True,
         )
 
         self.output_key = output_key
@@ -547,9 +569,7 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
             outputs["tgt_lens"],
         ):
             torchaudio.save(
-                self.get_filename(
-                    basename, speaker, language, include_global_step=True
-                ),
+                self.get_filename(basename, speaker, language),
                 # the vocoder output includes padding so we have to remove that
                 wav[:, : (unmasked_len * self.output_hop_size)],
                 sr,
