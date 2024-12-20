@@ -111,6 +111,7 @@ class PredictionWritingCallbackBase(Callback):
         file_extension: str,
         global_step: int,
         save_dir: Path,
+        include_global_step_in_filename: bool = False,
     ) -> None:
         super().__init__()
         self.config = config
@@ -118,6 +119,7 @@ class PredictionWritingCallbackBase(Callback):
         self.global_step = f"ckpt={global_step}"
         self.save_dir = save_dir
         self.sep = "--"
+        self.include_global_step_in_filename = include_global_step_in_filename
 
         self.save_dir.mkdir(parents=True, exist_ok=True)
 
@@ -126,12 +128,11 @@ class PredictionWritingCallbackBase(Callback):
         basename: str,
         speaker: str,
         language: str,
-        include_global_step: bool = False,
     ) -> str:
         # We don't truncate or alter the filename here because the basename is
         # already truncated/cleaned in cli/synthesize.py
         name_parts = [basename, speaker, language, self.file_extension]
-        if include_global_step:
+        if self.include_global_step_in_filename:
             name_parts.insert(-1, self.global_step)
         path = self.save_dir / self.sep.join(name_parts)
         # synthesizing spec allows nested outputs so we may need to make subdirs
@@ -441,9 +442,7 @@ class PredictionWritingOfflineRASCallback(PredictionWritingAlignedTextCallback):
                 ras_tokens.append(Token(text=" ", is_word=False))
             ras_tokens.append(Token(text=label, time=start, dur=end - start))
 
-        wav_file_name = self.wav_callback.get_filename(
-            basename, speaker, language, include_global_step=True
-        )
+        wav_file_name = self.wav_callback.get_filename(basename, speaker, language)
         readalong_html, _readalong_xml = convert_prealigned_text_to_offline_html(
             [ras_tokens],
             wav_file_name,
@@ -476,6 +475,7 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
             file_extension="pred.wav",
             global_step=global_step,
             save_dir=output_dir / "wav",
+            include_global_step_in_filename=True,
         )
 
         self.output_key = output_key
@@ -547,9 +547,7 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
             outputs["tgt_lens"],
         ):
             torchaudio.save(
-                self.get_filename(
-                    basename, speaker, language, include_global_step=True
-                ),
+                self.get_filename(basename, speaker, language),
                 # the vocoder output includes padding so we have to remove that
                 wav[:, : (unmasked_len * self.output_hop_size)],
                 sr,
