@@ -206,7 +206,7 @@ class PredictionWritingAlignedTextCallback(PredictionWritingCallbackBase):
         )
         self.text_processor = TextProcessor(config.text)
         self.output_key = output_key
-        logger.info(f"Saving pytorch output to {self.save_dir}")
+        logger.info(f"Saving text output to {self.save_dir}")
 
     def save_aligned_text_to_file(
         self,
@@ -379,7 +379,6 @@ class PredictionWritingReadAlongCallback(PredictionWritingAlignedTextCallback):
         )
         self.text_processor = TextProcessor(config.text)
         self.output_key = output_key
-        logger.info(f"Saving pytorch output to {self.save_dir}")
 
     def save_aligned_text_to_file(
         self,
@@ -430,7 +429,6 @@ class PredictionWritingOfflineRASCallback(PredictionWritingAlignedTextCallback):
         self.text_processor = TextProcessor(config.text)
         self.output_key = output_key
         self.wav_callback = wav_callback
-        logger.info(f"Saving pytorch output to {self.save_dir}")
 
     def save_aligned_text_to_file(
         self,

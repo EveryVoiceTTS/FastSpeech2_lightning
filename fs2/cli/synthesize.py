@@ -233,24 +233,23 @@ def synthesize_helper(
 
     from ..prediction_writing_callback import get_synthesis_output_callbacks
 
+    callbacks = get_synthesis_output_callbacks(
+        output_type=output_type,
+        output_dir=output_dir,
+        config=model.config,
+        output_key=model.output_key,
+        device=device,
+        global_step=global_step,
+        vocoder_model=vocoder_model,
+        vocoder_config=vocoder_config,
+        vocoder_global_step=vocoder_global_step,
+    )
     trainer = Trainer(
         logger=False,  # We don't need to log things to tensorboard during inference
         accelerator=accelerator,
         devices=devices,
         max_epochs=model.config.training.max_epochs,
-        callbacks=list(
-            get_synthesis_output_callbacks(
-                output_type=output_type,
-                output_dir=output_dir,
-                config=model.config,
-                output_key=model.output_key,
-                device=device,
-                global_step=global_step,
-                vocoder_model=vocoder_model,
-                vocoder_config=vocoder_config,
-                vocoder_global_step=vocoder_global_step,
-            ).values()
-        ),
+        callbacks=list(callbacks.values()),
     )
     if teacher_forcing_directory is not None:
         teacher_forcing = True
@@ -274,6 +273,7 @@ def synthesize_helper(
             ),
             return_predictions=True,
         ),
+        callbacks,
     )
 
 
@@ -468,7 +468,8 @@ def synthesize(  # noqa: C901
         vocoder_model = None
         vocoder_config = None
         vocoder_global_step = None
-    return synthesize_helper(
+
+    synthesize_helper(
         model=model,
         texts=texts,
         language=language,
