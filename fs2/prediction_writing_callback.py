@@ -22,72 +22,6 @@ from .config import FastSpeech2Config
 from .type_definitions import SynthesizeOutputFormats
 
 
-def frames_to_seconds(frames: int, fft_hop_size: int, sampling_rate: int) -> float:
-    return (frames * fft_hop_size) / sampling_rate
-
-
-def get_tokens_from_duration_and_labels(
-    duration_predictions: torch.Tensor,
-    text: npt.NDArray[np.float32],
-    raw_text: str,
-    text_processor: TextProcessor,
-    config: FastSpeech2Config,
-):
-    # Get all durations in frames
-    duration_frames = (
-        torch.clamp(torch.round(torch.exp(duration_predictions) - 1), min=0)
-        .int()
-        .tolist()
-    )
-    # Get all input labels
-    tokens: list[int] = text.tolist()
-    text_labels = text_processor.decode_tokens(tokens, join_character=None)
-    assert len(duration_frames) == len(
-        text_labels
-    ), f"can't synthesize {raw_text} because the number of predicted duration steps ({len(duration_frames)}) doesn't equal the number of input text labels ({len(text_labels)})"
-    # get the duration of the audio: (sum_of_frames * hop_size) / sample_rate
-    xmax_seconds = frames_to_seconds(
-        sum(duration_frames),
-        config.preprocessing.audio.fft_hop_size,
-        config.preprocessing.audio.output_sampling_rate,
-    )
-    # create the tiers
-    words: list[tuple[float, float, str]] = []
-    phones: list[tuple[float, float, str]] = []
-    raw_text_words = raw_text.split()
-    current_word_duration = 0.0
-    last_phone_end = 0.0
-    last_word_end = 0.0
-    # skip padding
-    text_labels_no_padding = [tl for tl in text_labels if tl != "\x80"]
-    duration_frames_no_padding = duration_frames[: len(text_labels_no_padding)]
-    for label, duration in zip(text_labels_no_padding, duration_frames_no_padding):
-        # add phone label
-        phone_duration = frames_to_seconds(
-            duration,
-            config.preprocessing.audio.fft_hop_size,
-            config.preprocessing.audio.output_sampling_rate,
-        )
-        current_phone_end = last_phone_end + phone_duration
-        interval = (last_phone_end, current_phone_end, label)
-        phones.append(interval)
-        last_phone_end = current_phone_end
-        # accumulate phone to word label
-        current_word_duration += phone_duration
-        # if label is space or the last phone, add the word and recount
-        if label == " " or len(phones) == len(text_labels_no_padding):
-            current_word_end = last_word_end + current_word_duration
-            interval = (
-                last_word_end,
-                current_word_end,
-                raw_text_words[len(words)],
-            )
-            words.append(interval)
-            last_word_end = current_word_end
-            current_word_duration = 0
-    return xmax_seconds, phones, words
-
-
 def get_synthesis_output_callbacks(
     output_type: Sequence[SynthesizeOutputFormats],
     output_dir: Path,
@@ -293,6 +227,63 @@ class PredictionWritingAlignedTextCallback(PredictionWritingCallbackBase):
         in the desired format."""
         raise NotImplementedError
 
+    def frames_to_seconds(self, frames: int) -> float:
+        return (
+            frames * self.config.preprocessing.audio.fft_hop_size
+        ) / self.config.preprocessing.audio.output_sampling_rate
+
+    def get_tokens_from_duration_and_labels(
+        self,
+        duration_predictions: torch.Tensor,
+        text: npt.NDArray[np.float32],
+        raw_text: str,
+    ):
+        # Get all durations in frames
+        duration_frames = (
+            torch.clamp(torch.round(torch.exp(duration_predictions) - 1), min=0)
+            .int()
+            .tolist()
+        )
+        # Get all input labels
+        tokens: list[int] = text.tolist()
+        text_labels = self.text_processor.decode_tokens(tokens, join_character=None)
+        assert len(duration_frames) == len(
+            text_labels
+        ), f"can't synthesize {raw_text} because the number of predicted duration steps ({len(duration_frames)}) doesn't equal the number of input text labels ({len(text_labels)})"
+        # get the duration of the audio: (sum_of_frames * hop_size) / sample_rate
+        xmax_seconds = self.frames_to_seconds(sum(duration_frames))
+        # create the tiers
+        words: list[tuple[float, float, str]] = []
+        phones: list[tuple[float, float, str]] = []
+        raw_text_words = raw_text.split()
+        current_word_duration = 0.0
+        last_phone_end = 0.0
+        last_word_end = 0.0
+        # skip padding
+        text_labels_no_padding = [tl for tl in text_labels if tl != "\x80"]
+        duration_frames_no_padding = duration_frames[: len(text_labels_no_padding)]
+        for label, duration in zip(text_labels_no_padding, duration_frames_no_padding):
+            # add phone label
+            phone_duration = self.frames_to_seconds(duration)
+            current_phone_end = last_phone_end + phone_duration
+            interval = (last_phone_end, current_phone_end, label)
+            phones.append(interval)
+            last_phone_end = current_phone_end
+            # accumulate phone to word label
+            current_word_duration += phone_duration
+            # if label is space or the last phone, add the word and recount
+            if label == " " or len(phones) == len(text_labels_no_padding):
+                current_word_end = last_word_end + current_word_duration
+                interval = (
+                    last_word_end,
+                    current_word_end,
+                    raw_text_words[len(words)],
+                )
+                words.append(interval)
+                last_word_end = current_word_end
+                current_word_duration = 0
+        return xmax_seconds, phones, words
+
     def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
         self,
         _trainer,
@@ -316,8 +307,8 @@ class PredictionWritingAlignedTextCallback(PredictionWritingCallbackBase):
             outputs["duration_prediction"],
         ):
             # Get the phone/word alignment tokens
-            xmax_seconds, phones, words = get_tokens_from_duration_and_labels(
-                duration, text, raw_text, self.text_processor, self.config
+            xmax_seconds, phones, words = self.get_tokens_from_duration_and_labels(
+                duration, text, raw_text
             )
 
             # Save the output (the subclass has to implement this)
