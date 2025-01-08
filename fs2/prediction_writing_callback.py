@@ -508,31 +508,30 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
 
         logger.info(f"Saving wav output to {self.save_dir}")
 
-    def synthesize_audio(self, outputs):
+    def synthesize_audio(self, outputs: dict[str, torch.Tensor | None]):
         from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
             synthesize_data,
         )
 
         sr: int
         wavs: np.ndarray
-        output_value = outputs[self.output_key].transpose(1, 2)
-        if output_value is not None:
-            wavs, sr = synthesize_data(
-                output_value, self.vocoder_model, self.vocoder_config
-            )
-        else:
+        output_value = outputs[self.output_key]
+        if output_value is None:
             raise ValueError(
                 f"{self.output_key} does not exist in the output of your model"
             )
+
+        wavs, sr = synthesize_data(
+            output_value.transpose(1, 2), self.vocoder_model, self.vocoder_config
+        )
 
         # wavs: [B (batch_size), C (channels), T (samples)]
         assert (
             wavs.ndim == 3
         ), f"The generated audio did not contain 3 dimensions. First dimension should be B(atch) and the second dimension should be C(hannels) and third dimension should be T(ime) in samples. Got {wavs.shape} instead."
-        assert self.output_key in outputs and outputs[self.output_key] is not None
-        assert wavs.shape[0] == outputs[self.output_key].size(
+        assert wavs.shape[0] == output_value.size(
             0
-        ), f"You provided {outputs[self.output_key].size(0)} utterances, but {wavs.shape[0]} audio files were synthesized instead."
+        ), f"You provided {output_value.size(0)} utterances, but {wavs.shape[0]} audio files were synthesized instead."
 
         return wavs, sr
 
