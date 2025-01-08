@@ -238,16 +238,18 @@ def synthesize_helper(
         accelerator=accelerator,
         devices=devices,
         max_epochs=model.config.training.max_epochs,
-        callbacks=get_synthesis_output_callbacks(
-            output_type=output_type,
-            output_dir=output_dir,
-            config=model.config,
-            output_key=model.output_key,
-            device=device,
-            global_step=global_step,
-            vocoder_model=vocoder_model,
-            vocoder_config=vocoder_config,
-            vocoder_global_step=vocoder_global_step,
+        callbacks=list(
+            get_synthesis_output_callbacks(
+                output_type=output_type,
+                output_dir=output_dir,
+                config=model.config,
+                output_key=model.output_key,
+                device=device,
+                global_step=global_step,
+                vocoder_model=vocoder_model,
+                vocoder_config=vocoder_config,
+                vocoder_global_step=vocoder_global_step,
+            ).values()
         ),
     )
     if teacher_forcing_directory is not None:

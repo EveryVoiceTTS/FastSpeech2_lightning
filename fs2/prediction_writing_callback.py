@@ -32,39 +32,12 @@ def get_synthesis_output_callbacks(
     vocoder_model: Optional[HiFiGAN] = None,
     vocoder_config: Optional[HiFiGANConfig] = None,
     vocoder_global_step: Optional[int] = None,
-) -> list[Callback]:
+) -> dict[SynthesizeOutputFormats, Callback]:
     """
     Given a list of desired output file formats, return the proper callbacks
     that will generate those files.
     """
-    callbacks: list[Callback] = []
-    if SynthesizeOutputFormats.spec in output_type:
-        callbacks.append(
-            PredictionWritingSpecCallback(
-                config=config,
-                global_step=global_step,
-                output_dir=output_dir,
-                output_key=output_key,
-            )
-        )
-    if SynthesizeOutputFormats.textgrid in output_type:
-        callbacks.append(
-            PredictionWritingTextGridCallback(
-                config=config,
-                global_step=global_step,
-                output_dir=output_dir,
-                output_key=output_key,
-            )
-        )
-    if SynthesizeOutputFormats.readalong_xml in output_type:
-        callbacks.append(
-            PredictionWritingReadAlongCallback(
-                config=config,
-                global_step=global_step,
-                output_dir=output_dir,
-                output_key=output_key,
-            )
-        )
+    callbacks: dict[SynthesizeOutputFormats, Callback] = {}
     if (
         SynthesizeOutputFormats.wav in output_type
         or SynthesizeOutputFormats.readalong_html in output_type
@@ -77,22 +50,43 @@ def get_synthesis_output_callbacks(
             raise ValueError(
                 "We cannot synthesize waveforms without a vocoder. Please ensure that a vocoder is specified."
             )
-        callbacks.append(
-            PredictionWritingWavCallback(
+        callbacks[SynthesizeOutputFormats.wav] = PredictionWritingWavCallback(
+            config=config,
+            device=device,
+            global_step=global_step,
+            output_dir=output_dir,
+            output_key=output_key,
+            vocoder_model=vocoder_model,
+            vocoder_config=vocoder_config,
+            vocoder_global_step=vocoder_global_step,
+        )
+    if SynthesizeOutputFormats.spec in output_type:
+        callbacks[SynthesizeOutputFormats.spec] = PredictionWritingSpecCallback(
+            config=config,
+            global_step=global_step,
+            output_dir=output_dir,
+            output_key=output_key,
+        )
+    if SynthesizeOutputFormats.textgrid in output_type:
+        callbacks[SynthesizeOutputFormats.textgrid] = PredictionWritingTextGridCallback(
+            config=config,
+            global_step=global_step,
+            output_dir=output_dir,
+            output_key=output_key,
+        )
+    if SynthesizeOutputFormats.readalong_xml in output_type:
+        callbacks[SynthesizeOutputFormats.readalong_xml] = (
+            PredictionWritingReadAlongCallback(
                 config=config,
-                device=device,
                 global_step=global_step,
                 output_dir=output_dir,
                 output_key=output_key,
-                vocoder_model=vocoder_model,
-                vocoder_config=vocoder_config,
-                vocoder_global_step=vocoder_global_step,
             )
         )
     if SynthesizeOutputFormats.readalong_html in output_type:
-        wav_callback = callbacks[-1]
+        wav_callback = callbacks[SynthesizeOutputFormats.wav]
         assert isinstance(wav_callback, PredictionWritingWavCallback)
-        callbacks.append(
+        callbacks[SynthesizeOutputFormats.readalong_html] = (
             PredictionWritingOfflineRASCallback(
                 config=config,
                 global_step=global_step,
