@@ -60,11 +60,11 @@ class TestLoadingModel(TestCase):
             trainer.strategy.connect(model)
             ckpt_fn = tmpdir_str + "/checkpoint.ckpt"
             trainer.save_checkpoint(ckpt_fn)
-            m = torch.load(ckpt_fn)
+            m = torch.load(ckpt_fn, weights_only=True)
             self.assertIn("model_info", m.keys())
             m["model_info"]["name"] = "BAD_TYPE"
             torch.save(m, ckpt_fn)
-            m = torch.load(ckpt_fn)
+            m = torch.load(ckpt_fn, weights_only=True)
             self.assertIn("model_info", m.keys())
             self.assertEqual(m["model_info"]["name"], "BAD_TYPE")
             # self.assertEqual(m["model_info"]["version"], "1.0")
@@ -118,7 +118,7 @@ class TestLoadingModel(TestCase):
             trainer.strategy.connect(model)
             ckpt_fn = tmpdir_str + "/checkpoint.ckpt"
             trainer.save_checkpoint(ckpt_fn)
-            m = torch.load(ckpt_fn)
+            m = torch.load(ckpt_fn, weights_only=True)
             self.assertIn("model_info", m.keys())
             self.assertEqual(m["model_info"]["name"], FastSpeech2.__name__)
             self.assertEqual(m["model_info"]["version"], BAD_VERSION)
@@ -170,7 +170,7 @@ class TestLoadingModel(TestCase):
             trainer.strategy.connect(model)
             ckpt_fn = tmpdir_str + "/checkpoint.ckpt"
             trainer.save_checkpoint(ckpt_fn)
-            m = torch.load(ckpt_fn)
+            m = torch.load(ckpt_fn, weights_only=True)
             self.assertIn("model_info", m.keys())
             self.assertEqual(m["model_info"]["name"], FastSpeech2.__name__)
             self.assertEqual(m["model_info"]["version"], BAD_VERSION)

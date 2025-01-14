@@ -346,7 +346,7 @@ class FastSpeech2(pl.LightningModule):
 
         audio = audio.squeeze()
         # Log ground truth audio
-        self.logger.experiment.add_audio(
+        self.logger.experiment.add_audio(  # type: ignore[attr-defined]
             f"gt/wav_{batch['basename'][0]}",
             audio,
             self.global_step,
@@ -355,14 +355,16 @@ class FastSpeech2(pl.LightningModule):
         if self.config.training.vocoder_path:
             input_ = batch["mel"].transpose(1, 2)
             vocoder_ckpt = torch.load(
-                self.config.training.vocoder_path, map_location=input_.device
+                self.config.training.vocoder_path,
+                map_location=input_.device,
+                weights_only=True,
             )
             vocoder_model, vocoder_config = load_hifigan_from_checkpoint(
                 vocoder_ckpt, input_.device
             )
             wav, sr = synthesize_data(input_, vocoder_model, vocoder_config)
 
-            self.logger.experiment.add_audio(
+            self.logger.experiment.add_audio(  # type: ignore[attr-defined]
                 f"copy-synthesis/wav_{batch['basename'][0]}",
                 wav,
                 self.global_step,
@@ -385,7 +387,7 @@ class FastSpeech2(pl.LightningModule):
                 n=1,
             )
             for i, fig in enumerate(figs):
-                self.logger.experiment.add_figure(
+                self.logger.experiment.add_figure(  # type: ignore[attr-defined]
                     f"attention/{batch['basename'][i]}", fig, self.global_step
                 )
 
@@ -407,7 +409,7 @@ class FastSpeech2(pl.LightningModule):
                 # energy targets are frame-wise if alignment is learned
                 gt_energy_for_plotting = expand(gt_energy_for_plotting, duration_np)
         if self.stats is not None:
-            self.logger.experiment.add_figure(
+            self.logger.experiment.add_figure(  # type: ignore[attr-defined]
                 f"pred/spec_{batch['basename'][0]}",
                 plot_mel(
                     [
@@ -433,13 +435,15 @@ class FastSpeech2(pl.LightningModule):
         if self.config.training.vocoder_path:
             input_ = output[self.output_key].transpose(1, 2)
             vocoder_ckpt = torch.load(
-                self.config.training.vocoder_path, map_location=input_.device
+                self.config.training.vocoder_path,
+                map_location=input_.device,
+                weights_only=True,
             )
             vocoder_model, vocoder_config = load_hifigan_from_checkpoint(
                 vocoder_ckpt, input_.device
             )
             wav, sr = synthesize_data(input_, vocoder_model, vocoder_config)
-            self.logger.experiment.add_audio(
+            self.logger.experiment.add_audio(  # type: ignore[attr-defined]
                 f"pred/wav_{batch['basename'][0]}", wav, self.global_step, sr
             )
 
