@@ -119,6 +119,7 @@ class PrepareSynthesizeDataTest(TestCase):
             language="foo",
             speaker="bar",
             duration_control=1.0,
+            style_reference=None,
             filelist=Path(__file__).parent / "data/filelist.psv",
             model=MockModelForPrepare(
                 lang2id={"foo": 1},
@@ -142,6 +143,7 @@ class PrepareSynthesizeDataTest(TestCase):
             language="foo",
             speaker="bar",
             duration_control=1.0,
+            style_reference=None,
             filelist=Path(__file__).parent / "data/filelist.psv",
             model=MockModelForPrepare(
                 lang2id={"foo": 1},
@@ -168,6 +170,7 @@ class PrepareSynthesizeDataTest(TestCase):
                 language=None,
                 speaker=None,
                 duration_control=1.0,
+                style_reference=None,
                 filelist=Path(__file__).parent / "data/filelist.txt",
                 model=MockModelForPrepare(
                     lang2id={"foo": 1},
