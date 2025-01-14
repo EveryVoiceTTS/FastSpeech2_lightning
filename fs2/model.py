@@ -35,7 +35,7 @@ DEFAULT_SPEAKER2ID: LookupTable = {}
 
 
 class FastSpeech2(pl.LightningModule):
-    _VERSION: str = "1.0"
+    _VERSION: str = "1.1"
 
     def __init__(
         self,

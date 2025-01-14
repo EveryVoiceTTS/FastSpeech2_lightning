@@ -25,7 +25,7 @@ from pydantic import (
 )
 
 # FastSpeech2Config's latest version number
-LATEST_VERSION: str = "1.0"
+LATEST_VERSION: str = "1.1"
 
 
 class ConformerConfig(ConfigModel):
