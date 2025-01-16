@@ -49,7 +49,8 @@ class FastSpeechDataset(Dataset):
 
     def _load_file(self, bn, spk, lang, dir, fn):
         return torch.load(
-            self.preprocessed_dir / dir / self.sep.join([bn, spk, lang, fn])
+            self.preprocessed_dir / dir / self.sep.join([bn, spk, lang, fn]),
+            weights_only=True,
         )
 
     def __getitem__(self, index):
@@ -115,7 +116,10 @@ class FastSpeechDataset(Dataset):
                         "attn",
                         f"{DatasetTextRepresentation.characters.value}-attn-prior.pt",
                     )
-                case TargetTrainingTextRepresentationLevel.ipa_phones | TargetTrainingTextRepresentationLevel.phonological_features:
+                case (
+                    TargetTrainingTextRepresentationLevel.ipa_phones
+                    | TargetTrainingTextRepresentationLevel.phonological_features
+                ):
                     duration = self._load_file(
                         basename,
                         speaker,
@@ -140,7 +144,10 @@ class FastSpeechDataset(Dataset):
                         item["character_tokens"]
                     )
                 )
-            case TargetTrainingTextRepresentationLevel.ipa_phones | TargetTrainingTextRepresentationLevel.phonological_features:
+            case (
+                TargetTrainingTextRepresentationLevel.ipa_phones
+                | TargetTrainingTextRepresentationLevel.phonological_features
+            ):
                 text = torch.IntTensor(
                     self.text_processor.encode_escaped_string_sequence(
                         item["phone_tokens"]

@@ -168,7 +168,7 @@ def get_global_step(model_path: Path) -> int:
     """
     import torch
 
-    m = torch.load(model_path, map_location=torch.device("cpu"))
+    m = torch.load(model_path, map_location=torch.device("cpu"), weights_only=True)
     return m["global_step"]
 
 
@@ -454,7 +454,7 @@ def synthesize(  # noqa: C901
     # load vocoder
     if vocoder_path is not None:
         logger.info(f"Loading Vocoder from {vocoder_path}")
-        vocoder_ckpt = torch.load(vocoder_path, map_location=device)
+        vocoder_ckpt = torch.load(vocoder_path, map_location=device, weights_only=True)
         try:
             vocoder_model, vocoder_config = load_hifigan_from_checkpoint(
                 vocoder_ckpt, device
