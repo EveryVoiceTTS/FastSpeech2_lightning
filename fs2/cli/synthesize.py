@@ -1,5 +1,6 @@
 import sys
 import textwrap
+from collections import Counter
 from pathlib import Path
 from typing import Any, Optional
 
@@ -11,6 +12,7 @@ from everyvoice.config.type_definitions import (
 )
 from everyvoice.utils import spinner
 from loguru import logger
+from tqdm import tqdm
 
 from ..type_definitions import SynthesizeOutputFormats
 from ..utils import truncate_basename
@@ -63,8 +65,75 @@ def validate_data_keys_with_model_keys(
             sys.exit(1)
 
 
+def load_data_from_filelist(
+    filelist: Path,
+    # model is of type ..model.FastSpeech2, but we make it Any to keep the CLI
+    # fast and enable mocking in unit testing.
+    model: Any,
+    text_representation: DatasetTextRepresentation,
+    language: str | None = None,
+    speaker: str | None = None,
+    default_language: str | None = None,
+    default_speaker: str | None = None,
+):
+
+    if default_language is None:
+        default_language = next(iter(model.lang2id.keys()), None)
+    if default_speaker is None:
+        default_speaker = next(iter(model.speaker2id.keys()), None)
+
+    from everyvoice.utils import slugify
+
+    data = model.config.training.filelist_loader(filelist)
+    try:
+        data = [
+            d
+            | {
+                "basename": d.get(
+                    "basename",
+                    truncate_basename(slugify(d[text_representation.value])),
+                ),  # Only truncate the basename if the basename doesn't already exist in the filelist.
+                "language": language or d.get("language", default_language),
+                "speaker": speaker or d.get("speaker", default_speaker),
+            }
+            for d in data
+        ]
+    except KeyError:
+        # TODO: Errors should have better formatting:
+        #       https://github.com/EveryVoiceTTS/FastSpeech2_lightning/issues/26
+        logger.info(
+            textwrap.dedent(
+                """
+            EveryVoice only accepts filelists in PSV format as in:
+
+                basename|characters|language|speaker
+                LJ0001|Hello|eng|LJ
+
+            Or in a format where each new line is an utterance:
+
+                This is a sentence.
+                Here is another sentence.
+
+            Your filelist did not contain the correct keys so we will assume it is in the plain text format.
+            Text can either be defined as 'characters' or 'phones'.
+                    """
+            )
+        )
+        with open(filelist, encoding="utf8") as f:
+            data = [
+                {
+                    "basename": truncate_basename(slugify(line.strip())),
+                    text_representation.value: line.strip(),
+                    "language": language or default_language,
+                    "speaker": speaker or default_speaker,
+                }
+                for line in f
+            ]
+    return data
+
+
 def prepare_data(
-    texts: list[str],
+    texts: Optional[list[str]],
     language: str | None,
     speaker: str | None,
     filelist: Path,
@@ -96,51 +165,15 @@ def prepare_data(
             for text in texts
         ]
     else:
-        data = model.config.training.filelist_loader(filelist)
-        try:
-            data = [
-                d
-                | {
-                    "basename": d.get(
-                        "basename",
-                        truncate_basename(slugify(d[text_representation.value])),
-                    ),  # Only truncate the basename if the basename doesn't already exist in the filelist.
-                    "language": language or d.get("language", DEFAULT_LANGUAGE),
-                    "speaker": speaker or d.get("speaker", DEFAULT_SPEAKER),
-                }
-                for d in data
-            ]
-        except KeyError:
-            # TODO: Errors should have better formatting:
-            #       https://github.com/EveryVoiceTTS/FastSpeech2_lightning/issues/26
-            logger.info(
-                textwrap.dedent(
-                    """
-                EveryVoice only accepts filelists in PSV format as in:
-
-                    basename|characters|language|speaker
-                    LJ0001|Hello|eng|LJ
-
-                Or in a format where each new line is an utterance:
-
-                    This is a sentence.
-                    Here is another sentence.
-
-                Your filelist did not contain the correct keys so we will assume it is in the plain text format.
-                Text can either be defined as 'characters' or 'phones'.
-                        """
-                )
-            )
-            with open(filelist, encoding="utf8") as f:
-                data = [
-                    {
-                        "basename": truncate_basename(slugify(line.strip())),
-                        text_representation.value: line.strip(),
-                        "language": language or DEFAULT_LANGUAGE,
-                        "speaker": speaker or DEFAULT_SPEAKER,
-                    }
-                    for line in f
-                ]
+        data = load_data_from_filelist(
+            filelist,
+            model,
+            text_representation,
+            language,
+            speaker,
+            DEFAULT_LANGUAGE,
+            DEFAULT_SPEAKER,
+        )
 
     validate_data_keys_with_model_keys(
         data_keys=set(d["language"] for d in data),
@@ -202,7 +235,7 @@ def get_global_step(model_path: Path) -> int:
 
 def synthesize_helper(
     model,
-    texts: list[str],
+    texts: Optional[list[str]],
     style_reference: Optional[Path],
     language: Optional[str],
     speaker: Optional[str],
@@ -216,17 +249,18 @@ def synthesize_helper(
     batch_size: int,
     num_workers: int,
     filelist: Path,
+    filelist_data: Optional[list[dict]],
     output_dir: Path,
     teacher_forcing_directory: Path,
     vocoder_global_step: Optional[int] = None,
     vocoder_model=None,
     vocoder_config=None,
+    return_scores=False,
 ):
     """This is a helper to perform synthesis once the model has been loaded.
     It allows us to use the same command for synthesis via the CLI and
     via the gradio demo.
     """
-    from everyvoice.text.phonemizer import AVAILABLE_G2P_ENGINES
 
     from ..dataset import FastSpeech2SynthesisDataModule
 
@@ -238,26 +272,42 @@ def synthesize_helper(
         raise ValueError(
             f"Your model was trained on {model.config.model.target_text_representation_level} but you provided {text_representation.value} which is incompatible."
         )
-    if (
-        model.config.model.target_text_representation_level
-        != TargetTrainingTextRepresentationLevel.characters
-        and text_representation == DatasetTextRepresentation.characters
-        and language not in AVAILABLE_G2P_ENGINES
-    ):
-        raise ValueError(
-            f"Your model was trained on {model.config.model.target_text_representation_level} but you provided {text_representation.value} and there is no available grapheme-to-phoneme engine available for {language}. Please see <TODO: Docs!> for more information on how to add one."
-        )
 
-    data = prepare_data(
-        texts=texts,
-        language=language,
-        speaker=speaker,
-        duration_control=duration_control if duration_control else 1.0,
-        filelist=filelist,
-        model=model,
-        text_representation=text_representation,
-        style_reference=style_reference,
-    )
+    if filelist_data is None:
+        data: list[dict[Any, Any]] = prepare_data(
+            texts=texts,
+            language=language,
+            speaker=speaker,
+            duration_control=duration_control if duration_control else 1.0,
+            filelist=filelist,
+            model=model,
+            text_representation=text_representation,
+            style_reference=style_reference,
+        )
+    else:
+        data = filelist_data
+    if return_scores:
+        from nltk.util import ngrams
+
+        token_counter: Counter = Counter()
+        trigram_counter: Counter = Counter()
+        for line in tqdm(
+            data, desc="calculating filelist statistics for score calculation"
+        ):
+            tokens = line[f"{text_representation.value[:-1]}_tokens"].split("/")
+            for t in tokens:
+                token_counter[t] += 1
+            tokens.insert(0, "<BOS>")
+            tokens.append("<EOS>")
+            for trigram in ngrams(tokens, 3):
+                trigram_counter[trigram] += 1
+        for line in tqdm(data, desc="scoring utterances"):
+            tokens = line[f"{text_representation.value[:-1]}_tokens"].split("/")
+            line["phone_coverage_score"] = sum((1 / token_counter[t]) for t in tokens)
+            line["trigram_coverage_score"] = sum(
+                (1 / trigram_counter[n]) for n in ngrams(tokens, 3)
+            )
+
     from pytorch_lightning import Trainer
 
     from ..prediction_writing_callback import get_synthesis_output_callbacks
@@ -272,6 +322,7 @@ def synthesize_helper(
         vocoder_model=vocoder_model,
         vocoder_config=vocoder_config,
         vocoder_global_step=vocoder_global_step,
+        return_scores=return_scores,
     )
     trainer = Trainer(
         logger=False,  # We don't need to log things to tensorboard during inference
@@ -284,6 +335,10 @@ def synthesize_helper(
         teacher_forcing = True
         model.config.preprocessing.save_dir = teacher_forcing_directory
     else:
+        if return_scores:
+            raise ValueError(
+                "In order to return the scores, we also need access to the directory containing your ground truth audio and preprocessed data. Please pass this in using the --teacher-forcing-directory option. e.g. --teacher-forcing-directory ./preprocessed"
+            )
         teacher_forcing = False
     # overwrite batch_size and num_workers
     model.config.training.batch_size = batch_size
@@ -525,6 +580,7 @@ def synthesize(  # noqa: C901
         batch_size=batch_size,
         num_workers=num_workers,
         filelist=filelist,
+        filelist_data=None,
         teacher_forcing_directory=teacher_forcing_directory,
         output_dir=output_dir,
         vocoder_model=vocoder_model,

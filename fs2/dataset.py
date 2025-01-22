@@ -185,7 +185,8 @@ class FastSpeechDataset(Dataset):
         else:
             energy = None
             pitch = None
-        return {
+
+        loaded_data = {
             "mel": mel,
             "mel_style_reference": mel_style_reference,
             "duration": duration,
@@ -202,6 +203,15 @@ class FastSpeechDataset(Dataset):
             "energy": energy,
             "pitch": pitch,
         }
+
+        # used when returning scores
+        if "phone_coverage_score" in item:
+            loaded_data['phone_coverage_score'] = item['phone_coverage_score']
+
+        if "trigram_coverage_score" in item:
+            loaded_data['trigram_coverage_score'] = item['trigram_coverage_score']
+
+        return loaded_data
 
     def __len__(self):
         return len(self.dataset)
