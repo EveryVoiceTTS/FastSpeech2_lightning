@@ -14,10 +14,12 @@ from everyvoice.config.type_definitions import (
     DatasetTextRepresentation,
     TargetTrainingTextRepresentationLevel,
 )
-from everyvoice.tests.stubs import silence_c_stderr
+from everyvoice.tests.basic_test_case import BasicTestCase
+from everyvoice.tests.stubs import capture_stderr, silence_c_stderr
 from everyvoice.utils import generic_psv_filelist_reader
 from typer.testing import CliRunner
 
+from ..cli.check_data_heavy import check_data_from_filelist
 from ..cli.cli import app
 from ..cli.synthesize import prepare_data as prepare_synthesize_data
 from ..cli.synthesize import validate_data_keys_with_model_keys
@@ -307,6 +309,34 @@ class CLITest(TestCase):
             "synthesize",
             "train",
         )
+
+    def test_check_data(self):
+        filelist = generic_psv_filelist_reader(BasicTestCase.data_dir / "metadata.psv")
+        with capture_stderr():
+            checked_data = check_data_from_filelist(
+                filelist, heavy_objective_evaluation=True
+            )
+        self.assertIn("pesq", checked_data[0])
+        self.assertIn("stoi", checked_data[0])
+        self.assertIn("si_sdr", checked_data[0])
+        self.assertGreater(checked_data[0]["pesq"], 3.0)
+        self.assertLess(checked_data[0]["pesq"], 5.0)
+        self.assertAlmostEqual(checked_data[0]["duration"], 5.17, 2)
+
+    # def test_compute_stats(self):
+    #     feat_prediction_config = EveryVoiceConfig.load_config_from_path().feature_prediction
+    #     preprocessor = Preprocessor(feat_prediction_config)
+    #     preprocessor.compute_stats()
+    # self.assertEqual(
+    #     self.preprocessor.config["preprocessing"]["audio"]["mel_mean"],
+    #     -4.018,
+    #     places=3,
+    # )
+    # self.assertEqual(
+    #     self.preprocessor.config["preprocessing"]["audio"]["mel_std"],
+    #     4.017,
+    #     places=3,
+    # )
 
     def test_commands_present(self):
         """
