@@ -15,6 +15,7 @@ from everyvoice.config.type_definitions import (
     TargetTrainingTextRepresentationLevel,
 )
 from everyvoice.tests.basic_test_case import BasicTestCase
+from everyvoice.tests.preprocessed_audio_fixture import PreprocessedAudioFixture
 from everyvoice.tests.stubs import capture_stderr, silence_c_stderr
 from everyvoice.utils import generic_psv_filelist_reader
 from typer.testing import CliRunner
@@ -296,12 +297,13 @@ class ValidateDataWithModelTest(TestCase):
         )
 
 
-class CLITest(TestCase):
+class CLITest(PreprocessedAudioFixture, BasicTestCase):
     """
     Validate that all subcommands are accessible.
     """
 
     def setUp(self) -> None:
+        super().setUp()
         self.runner = CliRunner()
         self.subcommands = (
             "benchmark",
@@ -314,7 +316,7 @@ class CLITest(TestCase):
         filelist = generic_psv_filelist_reader(BasicTestCase.data_dir / "metadata.psv")
         with capture_stderr():
             checked_data = check_data_from_filelist(
-                filelist, heavy_objective_evaluation=True
+                self.preprocessor, filelist, heavy_objective_evaluation=True
             )
         self.assertIn("pesq", checked_data[0])
         self.assertIn("stoi", checked_data[0])
