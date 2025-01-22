@@ -34,19 +34,19 @@ def get_synthesis_output_callbacks(
     vocoder_config: Optional[HiFiGANConfig] = None,
     vocoder_global_step: Optional[int] = None,
     return_scores=False,
-) -> dict[SynthesizeOutputFormats, Callback]:
+) -> dict[SynthesizeOutputFormats | str, Callback]:
     """
     Given a list of desired output file formats, return the proper callbacks
     that will generate those files.
     """
-    callbacks: dict[SynthesizeOutputFormats, Callback] = {}
+    callbacks: dict[SynthesizeOutputFormats | str, Callback] = {}
     if return_scores:
-        callbacks['score'] = ScorerCallback(
-                config=config,
-                global_step=global_step,
-                output_dir=output_dir,
-                output_key=output_key,
-            )
+        callbacks["score"] = ScorerCallback(
+            config=config,
+            global_step=global_step,
+            output_dir=output_dir,
+            output_key=output_key,
+        )
     if (
         SynthesizeOutputFormats.wav in output_type
         or SynthesizeOutputFormats.readalong_html in output_type
@@ -84,25 +84,25 @@ def get_synthesis_output_callbacks(
             output_key=output_key,
         )
     if SynthesizeOutputFormats.readalong_xml in output_type:
-        callbacks[SynthesizeOutputFormats.readalong_xml] = (
-            PredictionWritingReadAlongCallback(
-                config=config,
-                global_step=global_step,
-                output_dir=output_dir,
-                output_key=output_key,
-            )
+        callbacks[
+            SynthesizeOutputFormats.readalong_xml
+        ] = PredictionWritingReadAlongCallback(
+            config=config,
+            global_step=global_step,
+            output_dir=output_dir,
+            output_key=output_key,
         )
     if SynthesizeOutputFormats.readalong_html in output_type:
         wav_callback = callbacks[SynthesizeOutputFormats.wav]
         assert isinstance(wav_callback, PredictionWritingWavCallback)
-        callbacks[SynthesizeOutputFormats.readalong_html] = (
-            PredictionWritingOfflineRASCallback(
-                config=config,
-                global_step=global_step,
-                output_dir=output_dir,
-                output_key=output_key,
-                wav_callback=wav_callback,
-            )
+        callbacks[
+            SynthesizeOutputFormats.readalong_html
+        ] = PredictionWritingOfflineRASCallback(
+            config=config,
+            global_step=global_step,
+            output_dir=output_dir,
+            output_key=output_key,
+            wav_callback=wav_callback,
         )
 
     return callbacks
@@ -161,7 +161,7 @@ class ScorerCallback(Callback):
         self.output_key = output_key
         self.config = config
         logger.info(f"Saving pytorch output to {self.save_dir}")
-        self.scores = []
+        self.scores: list[dict] = []
 
     def _get_filename(self) -> Path:
         path = self.save_dir / f"scores-{self.global_step}.psv"
