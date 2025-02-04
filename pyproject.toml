@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "fs2l"
+dynamic = ["version"]
+description = "Text-to-Speech Synthesis for the Speech Generation for Indigenous Language Education Small Teams Project"
+license = "MIT"
+readme = "readme.md"
+requires-python = ">=3.10"
+authors = [
+    { name = "Aidan Pine", email = "hello@aidanpine.ca" },
+    { name = "Samuel Larkin", email = "Samuel.Larkin@nrc-cnrc.gc.ca" },
+    { name = "Eric Joanis", email = "Eric.Joanis@nrc-cnrc.gc.ca" },
+    { name = "Mengzhe Geng", email = "Mengzhe.Geng@nrc-cnrc.gc.ca" },
+]
+maintainers = [
+    { name = "Aidan Pine", email = "Aidan.Pine@nrc-cnrc.gc.ca" },
+    { name = "Samuel Larkin", email = "Samuel.Larkin@nrc-cnrc.gc.ca" },
+    { name = "Eric Joanis", email = "Eric.Joanis@nrc-cnrc.gc.ca" },
+]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Development Status :: 3 - Alpha",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+dependencies = ["everyvoice==0.3.*"]
+
+[project.scripts]
+fs2l = "fs2.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/EveryVoiceTTS/FastSpeech2_lightning"
+
+[tool.hatch.version]
+path = "fs2/_version.py"
+
+[tool.hatch.build.targets.sdist]
+include = ["/fs2"]
+
+[tool.hatch.build.targets.wheel]
+include = ["/fs2"]
+
+[project.optional-dependencies]
+dev = ["everyvoice[dev]"]
