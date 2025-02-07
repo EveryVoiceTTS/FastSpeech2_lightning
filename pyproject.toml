@@ -37,6 +37,8 @@ fs2l = "fs2.cli:app"
 
 [project.urls]
 Homepage = "https://github.com/EveryVoiceTTS/FastSpeech2_lightning"
+Repository = "https://github.com/EveryVoiceTTS/FastSpeech2_lightning"
+Issues = "https://github.com/EveryVoiceTTS/FastSpeech2_lightning/issues"
 
 [tool.hatch.version]
 path = "fs2/_version.py"
