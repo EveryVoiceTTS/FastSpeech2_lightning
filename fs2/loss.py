@@ -37,39 +37,45 @@ class FastSpeech2Loss(nn.Module):
 
         # Don't calculate grad on target
         duration_target.requires_grad = False
-        energy_target.requires_grad = False
         spec_target.requires_grad = False
-        pitch_target.requires_grad = False
 
         losses = {}
 
         # Calculate pitch loss
-        if self.config.model.variance_predictors.pitch.level == "phone":
-            pitch_mask = src_mask
-        else:
-            pitch_mask = tgt_mask
+        if pitch_target is not None:
 
-        pitch_prediction = pitch_prediction * pitch_mask
-        pitch_target = pitch_target * pitch_mask
-        pitch_loss_fn = self.config.model.variance_predictors.pitch.loss
-        losses["pitch"] = (
-            self.loss_fns[pitch_loss_fn](pitch_prediction, pitch_target)
-            * self.config.training.pitch_loss_weight
-        )
+            pitch_target.requires_grad = False
+
+            if self.config.model.variance_predictors.pitch.level == "phone":
+                pitch_mask = src_mask
+            else:
+                pitch_mask = tgt_mask
+
+            pitch_prediction = pitch_prediction * pitch_mask
+            pitch_target = pitch_target * pitch_mask
+            pitch_loss_fn = self.config.model.variance_predictors.pitch.loss
+            losses["pitch"] = (
+                self.loss_fns[pitch_loss_fn](pitch_prediction, pitch_target)
+                * self.config.training.pitch_loss_weight
+            )
 
         # Calculate energy loss
-        if self.config.model.variance_predictors.energy.level == "phone":
-            energy_mask = src_mask
-        else:
-            energy_mask = tgt_mask
+        if energy_target is not None:
 
-        energy_prediction = energy_prediction * energy_mask
-        energy_target = energy_target * energy_mask
-        energy_loss_fn = self.config.model.variance_predictors.energy.loss
-        losses["energy"] = (
-            self.loss_fns[energy_loss_fn](energy_prediction, energy_target)
-            * self.config.training.energy_loss_weight
-        )
+            energy_target.requires_grad = False
+
+            if self.config.model.variance_predictors.energy.level == "phone":
+                energy_mask = src_mask
+            else:
+                energy_mask = tgt_mask
+
+            energy_prediction = energy_prediction * energy_mask
+            energy_target = energy_target * energy_mask
+            energy_loss_fn = self.config.model.variance_predictors.energy.loss
+            losses["energy"] = (
+                self.loss_fns[energy_loss_fn](energy_prediction, energy_target)
+                * self.config.training.energy_loss_weight
+            )
 
         # Calculate duration loss
         log_duration_target = torch.log(duration_target.float() + 1) * src_mask
