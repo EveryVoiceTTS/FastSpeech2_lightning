@@ -15,6 +15,16 @@ from ..prediction_writing_callback import get_synthesis_output_callbacks
 from ..type_definitions import SynthesizeOutputFormats
 from ..utils import BASENAME_MAX_LENGTH, truncate_basename
 
+try:
+    # Accelerate the failing for fetching bundles online, since we don't
+    # care about them here in unit testing. This only works since late
+    # April 2025, though, so silently ignore if it fails.
+    import readalongs.text.make_package as make_package
+
+    make_package.FETCH_BUNDLE_TIMEOUT_SECONDS = 1
+except Exception:
+    pass
+
 
 class TestTruncateBasename(TestCase):
     """
@@ -246,7 +256,7 @@ class TestWritingReadAlong(WritingTestBase):
                     with open(output_file, "r", encoding="utf8") as f:
                         readalong = f.read()
                     # print(readalong)
-                    self.assertIn("<read-along ", readalong)
+                    self.assertIn("<read-along", readalong)
                     self.assertIn('<w time="0.0" dur=', readalong)
 
 
@@ -274,16 +284,17 @@ class TestWritingOfflineRAS(WritingTestBase):
                     vocoder_config=vocoder.config,
                     vocoder_global_step=10,
                 )
-            for writer in writers.values():
-                writer.on_predict_batch_end(
-                    _trainer=None,
-                    _pl_module=None,
-                    outputs=self.outputs,
-                    batch=self.batch,
-                    _batch_idx=0,
-                    _dataloader_idx=0,
-                )
-                output_dir = writer.save_dir
+            with silence_c_stderr():
+                for writer in writers.values():
+                    writer.on_predict_batch_end(
+                        _trainer=None,
+                        _pl_module=None,
+                        outputs=self.outputs,
+                        batch=self.batch,
+                        _batch_idx=0,
+                        _dataloader_idx=0,
+                    )
+                    output_dir = writer.save_dir
 
             # print(output_dir, *output_dir.glob("**/*"))  # For debugging
             output_files = (
@@ -297,7 +308,7 @@ class TestWritingOfflineRAS(WritingTestBase):
                     with open(output_file, "r", encoding="utf8") as f:
                         readalong = f.read()
                     # print(readalong)
-                    self.assertIn("<read-along ", readalong)
+                    self.assertIn("<read-along", readalong)
                     self.assertIn("<span slot", readalong)
 
 
