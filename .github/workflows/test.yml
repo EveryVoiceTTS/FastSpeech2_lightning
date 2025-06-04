@@ -19,9 +19,8 @@ jobs:
           python-version: "3.10"
           cache: "pip"
 
-      - uses: FedericoCarboni/setup-ffmpeg@v2
-
-      - run: sudo apt-get install sox
+      - run: sudo apt-get update
+      - run: sudo apt-get install --fix-missing sox libsox-dev ffmpeg
 
       - name: Fetch everyvoice
         run: |
