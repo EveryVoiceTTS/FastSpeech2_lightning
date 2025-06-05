@@ -201,6 +201,7 @@ class FastSpeechDataset(Dataset):
             # "label": item.get("label", "default"), # TODO: determine proper label
             "energy": energy,
             "pitch": pitch,
+            "end_flag": item["end_flag"],
         }
 
     def __len__(self):

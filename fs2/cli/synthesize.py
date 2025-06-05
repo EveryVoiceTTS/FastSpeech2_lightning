@@ -9,6 +9,7 @@ from everyvoice.config.type_definitions import (
     DatasetTextRepresentation,
     TargetTrainingTextRepresentationLevel,
 )
+from everyvoice.text.textsplit import txtsplit
 from everyvoice.utils import spinner
 from loguru import logger
 
@@ -86,15 +87,25 @@ def prepare_data(
     DEFAULT_SPEAKER = next(iter(model.speaker2id.keys()), None)
     if texts:
         print(f"Processing text {texts}", file=sys.stderr)
-        data = [
-            {
-                "basename": truncate_basename(slugify(text)),
-                text_representation.value: text,
-                "language": language or DEFAULT_LANGUAGE,
-                "speaker": speaker or DEFAULT_SPEAKER,
-            }
-            for text in texts
-        ]
+
+        data = []
+        for text_input in texts:
+            chunks = txtsplit(
+                text_input, 20, 100
+            )  # Chunk longer texts, for better longform audio synthesis
+            for i, chunk in enumerate(chunks):
+                data.append(
+                    {
+                        "basename": truncate_basename(slugify(chunk)),
+                        text_representation.value: chunk,
+                        "language": language or DEFAULT_LANGUAGE,
+                        "speaker": speaker or DEFAULT_SPEAKER,
+                        "end_flag": (
+                            i == len(chunks) - 1
+                        ),  # True if end of a text_input, False otherwise
+                    }
+                )
+        print(data)
     else:
         data = model.config.training.filelist_loader(filelist)
         try:
