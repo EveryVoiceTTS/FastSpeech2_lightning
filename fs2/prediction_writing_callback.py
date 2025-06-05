@@ -542,25 +542,32 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
 
         wavs, sr = self.synthesize_audio(outputs)
 
-        full_wav = torch.tensor(())  # Accumulates one full text input before saving
         assert "tgt_lens" in outputs and outputs["tgt_lens"] is not None
-        for basename, speaker, language, flag, wav, unmasked_len in zip(
-            batch["basename"],
-            batch["speaker"],
-            batch["language"],
-            batch["end_flag"],
-            wavs,
-            outputs["tgt_lens"],
-        ):
-            # The vocoder output includes padding, so we have to remove that
-            trimmed_wav = wav[:, : (unmasked_len * self.output_hop_size)]
 
+        basenames = batch["basename"]
+        speakers = batch["speaker"]
+        languages = batch["language"]
+        flags = batch["end_flag"]
+        unmasked_lens = outputs["tgt_lens"].tolist()
+
+        full_wav = torch.tensor(
+            ()
+        )  # Accumulates one full text input as a wav before saving
+        filename = self.get_filename(
+            batch["basename"][0], batch["speaker"][0], batch["language"][0]
+        )  # Filename for full_wav
+
+        for i, wav in enumerate(wavs):
+            # Concatenate the current chunk to the full wav
+            trimmed_wav = wav[
+                :, : (unmasked_lens[i] * self.output_hop_size)
+            ]  # The vocoder output includes padding, so we have to remove that
             full_wav = torch.cat((full_wav, trimmed_wav), -1)
 
-            # If we have reached the end of one full text input, save it as a .wav
-            if flag:
+            # If we have reached the end of one full wav, save it
+            if flags[i]:
                 torchaudio.save(
-                    self.get_filename(basename, speaker, language),
+                    filename,
                     full_wav,
                     sr,
                     format="wav",
@@ -568,3 +575,9 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
                     bits_per_sample=16,
                 )
                 full_wav = torch.tensor(())
+                try:
+                    filename = self.get_filename(
+                        basenames[i + 1], speakers[i + 1], languages[i + 1]
+                    )
+                except IndexError:
+                    pass  # End of synthesis

@@ -86,8 +86,6 @@ def prepare_data(
     DEFAULT_LANGUAGE = next(iter(model.lang2id.keys()), None)
     DEFAULT_SPEAKER = next(iter(model.speaker2id.keys()), None)
     if texts:
-        print(f"Processing text {texts}", file=sys.stderr)
-
         data = []
         for text_input in texts:
             chunks = txtsplit(
@@ -105,7 +103,7 @@ def prepare_data(
                         ),  # True if end of a text_input, False otherwise
                     }
                 )
-        print(data)
+            print(f"Processing text: {chunks}", file=sys.stderr)
     else:
         data = model.config.training.filelist_loader(filelist)
         try:
