@@ -483,6 +483,7 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
             include_global_step_in_filename=True,
         )
 
+        self.last_file_written = ""
         self.output_key = output_key
         self.device = device
         self.vocoder_model = vocoder_model
@@ -547,25 +548,21 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
         basenames = batch["basename"]
         speakers = batch["speaker"]
         languages = batch["language"]
-        flags = batch["end_flag"]
+        last_input_chunk = batch["last_input_chunk"]
         unmasked_lens = outputs["tgt_lens"].tolist()
-
-        full_wav = torch.tensor(
-            ()
-        )  # Accumulates one full text input as a wav before saving
-        filename = self.get_filename(
-            batch["basename"][0], batch["speaker"][0], batch["language"][0]
-        )  # Filename for full_wav
+        # Accumulates one full text input as a wav before saving
+        full_wav = torch.tensor(())
+        # Filename for full_wav
+        filename = self.get_filename(basenames[0], speakers[0], languages[0])
 
         for i, wav in enumerate(wavs):
+            # The vocoder output includes padding, so we have to remove that
+            trimmed_wav = wav[:, : (unmasked_lens[i] * self.output_hop_size)]
             # Concatenate the current chunk to the full wav
-            trimmed_wav = wav[
-                :, : (unmasked_lens[i] * self.output_hop_size)
-            ]  # The vocoder output includes padding, so we have to remove that
             full_wav = torch.cat((full_wav, trimmed_wav), -1)
 
             # If we have reached the end of one full wav, save it
-            if flags[i]:
+            if last_input_chunk[i]:
                 torchaudio.save(
                     filename,
                     full_wav,
@@ -575,9 +572,10 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
                     bits_per_sample=16,
                 )
                 full_wav = torch.tensor(())
-                try:
+                if i + 1 < len(wavs):
                     filename = self.get_filename(
                         basenames[i + 1], speakers[i + 1], languages[i + 1]
                     )
-                except IndexError:
-                    pass  # End of synthesis
+                else:
+                    # End of synthesis
+                    self.last_file_written = filename

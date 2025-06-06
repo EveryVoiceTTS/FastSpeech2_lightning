@@ -88,9 +88,8 @@ def prepare_data(
     if texts:
         data = []
         for text_input in texts:
-            chunks = txtsplit(
-                text_input, 20, 100
-            )  # Chunk longer texts, for better longform audio synthesis
+            # Chunk longer texts, for better longform audio synthesis
+            chunks = txtsplit(text_input, 20, 100)
             for i, chunk in enumerate(chunks):
                 data.append(
                     {
@@ -98,7 +97,7 @@ def prepare_data(
                         text_representation.value: chunk,
                         "language": language or DEFAULT_LANGUAGE,
                         "speaker": speaker or DEFAULT_SPEAKER,
-                        "end_flag": (
+                        "last_input_chunk": (
                             i == len(chunks) - 1
                         ),  # True if end of a text_input, False otherwise
                     }
