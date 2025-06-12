@@ -9,7 +9,7 @@ from everyvoice.config.type_definitions import (
     DatasetTextRepresentation,
     TargetTrainingTextRepresentationLevel,
 )
-from everyvoice.text.textsplit import txtsplit
+from everyvoice.text.textsplit import chunk_text
 from everyvoice.utils import spinner
 from loguru import logger
 
@@ -89,7 +89,7 @@ def prepare_data(
         data = []
         for text_input in texts:
             # Chunk longer texts, for better longform audio synthesis
-            chunks = txtsplit(text_input, 20, 100)
+            chunks = chunk_text(text_input)
             for i, chunk in enumerate(chunks):
                 data.append(
                     {
