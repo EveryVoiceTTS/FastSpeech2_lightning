@@ -127,7 +127,7 @@ def check_data_command(  # noqa: C901
         training_filelist = generic_psv_filelist_reader(
             config.training.training_filelist
         )
-        val_filelist = generic_psv_filelist_reader(config.training.training_filelist)
+        val_filelist = generic_psv_filelist_reader(config.training.validation_filelist)
         combined_filelist_data = training_filelist + val_filelist
     else:
         combined_filelist_data = generic_psv_filelist_reader(filelist)
