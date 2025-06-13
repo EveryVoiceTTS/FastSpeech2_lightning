@@ -111,6 +111,7 @@ class WritingTestBase(TestCase):
                 "lngA",
                 "lngB",
             ],
+            "last_input_chunk": [1, 1],
         }
 
 
