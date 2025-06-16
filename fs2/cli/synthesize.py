@@ -10,6 +10,7 @@ from everyvoice.config.type_definitions import (
     DatasetTextRepresentation,
     TargetTrainingTextRepresentationLevel,
 )
+from everyvoice.text.textsplit import chunk_text
 from everyvoice.utils import spinner
 from loguru import logger
 from tqdm import tqdm
@@ -154,16 +155,23 @@ def prepare_data(
     DEFAULT_LANGUAGE = next(iter(model.lang2id.keys()), None)
     DEFAULT_SPEAKER = next(iter(model.speaker2id.keys()), None)
     if texts:
-        print(f"Processing text {texts}", file=sys.stderr)
-        data = [
-            {
-                "basename": truncate_basename(slugify(text)),
-                text_representation.value: text,
-                "language": language or DEFAULT_LANGUAGE,
-                "speaker": speaker or DEFAULT_SPEAKER,
-            }
-            for text in texts
-        ]
+        data = []
+        for text_input in texts:
+            # Chunk longer texts, for better longform audio synthesis
+            chunks = chunk_text(text_input)
+            for i, chunk in enumerate(chunks):
+                data.append(
+                    {
+                        "basename": truncate_basename(slugify(chunk)),
+                        text_representation.value: chunk,
+                        "language": language or DEFAULT_LANGUAGE,
+                        "speaker": speaker or DEFAULT_SPEAKER,
+                        "last_input_chunk": (
+                            i == len(chunks) - 1
+                        ),  # True if end of a text_input, False otherwise
+                    }
+                )
+            print(f"Processing text: {chunks}", file=sys.stderr)
     else:
         data = load_data_from_filelist(
             filelist,

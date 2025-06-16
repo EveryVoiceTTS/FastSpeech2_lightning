@@ -202,14 +202,15 @@ class FastSpeechDataset(Dataset):
             # "label": item.get("label", "default"), # TODO: determine proper label
             "energy": energy,
             "pitch": pitch,
+            "last_input_chunk": item["last_input_chunk"],
         }
 
         # used when returning scores
         if "phone_coverage_score" in item:
-            loaded_data['phone_coverage_score'] = item['phone_coverage_score']
+            loaded_data["phone_coverage_score"] = item["phone_coverage_score"]
 
         if "trigram_coverage_score" in item:
-            loaded_data['trigram_coverage_score'] = item['trigram_coverage_score']
+            loaded_data["trigram_coverage_score"] = item["trigram_coverage_score"]
 
         return loaded_data
 
