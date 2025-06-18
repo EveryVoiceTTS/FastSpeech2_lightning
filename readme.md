@@ -25,7 +25,6 @@ This repo has been separated in case you would like to use it separately from th
 
 See also:
   - [SGILE HiFiGAN](https://github.com/EveryVoiceTTS/HiFiGAN_iSTFT_lightning)
-  - [SGILE DeepForcedAligner](https://github.com/EveryVoiceTTS/DeepForcedAligner_lightning)
   - [Requirements and Motivations of Low-Resource Speech Synthesis for Language Revitalization](https://aclanthology.org/2022.acl-long.507/)
 
 ## Background
