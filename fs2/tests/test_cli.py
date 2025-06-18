@@ -229,7 +229,7 @@ class ValidateDataWithModelTest(TestCase):
                 multi=bool(model_languages),
             )
         self.assertIn(
-            f"You provided {set((language,language_two))} which are not languages that are supported by the model {model_languages}.",
+            f"You provided {set((language, language_two))} which are not languages that are supported by the model {model_languages}.",
             f.getvalue(),
         )
 
@@ -359,3 +359,19 @@ class CLITest(PreprocessedAudioFixture, BasicTestCase):
                 self.assertEqual(result.exit_code, 0)
                 result = self.runner.invoke(app, [subcommand, "-h"])
                 self.assertEqual(result.exit_code, 0)
+
+
+class MiscTests(TestCase):
+    def test_version_sync(self):
+        """
+        Ensure fs2 and everyvoice versions are in sync.
+        """
+        from everyvoice._version import VERSION as ev_version
+
+        from .._version import VERSION as fs2_version
+
+        self.assertEqual(
+            ev_version,
+            fs2_version,
+            "Version mismatch between EveryVoice and FastSpeech2_lightning",
+        )
