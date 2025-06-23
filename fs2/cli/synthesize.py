@@ -85,20 +85,25 @@ def load_data_from_filelist(
 
     from everyvoice.utils import slugify
 
-    data = model.config.training.filelist_loader(filelist)
     try:
-        data = [
-            d
-            | {
-                "basename": d.get(
-                    "basename",
-                    truncate_basename(slugify(d[text_representation.value])),
-                ),  # Only truncate the basename if the basename doesn't already exist in the filelist.
-                "language": language or d.get("language", default_language),
-                "speaker": speaker or d.get("speaker", default_speaker),
-            }
-            for d in data
-        ]
+        data = []
+        for d in model.config.training.filelist_loader(filelist):
+            # Chunk longer texts, for better longform audio synthesis
+            text_line = d[text_representation.value]
+            chunks = chunk_text(text_line)
+            for i, chunk in enumerate(chunks):
+                data.append(
+                    {
+                        "basename": d.get(
+                            "basename",
+                            truncate_basename(slugify(text_line)),
+                        ),  # Only truncate the basename if the basename doesn't already exist in the filelist.
+                        text_representation.value: chunk,
+                        "language": language or d.get("language", default_language),
+                        "speaker": speaker or d.get("speaker", default_speaker),
+                        "last_input_chunk": (i == len(chunks) - 1),
+                    }
+                )
     except KeyError:
         # TODO: Errors should have better formatting:
         #       https://github.com/EveryVoiceTTS/FastSpeech2_lightning/issues/26
@@ -120,16 +125,21 @@ def load_data_from_filelist(
                     """
             )
         )
-        with open(filelist, encoding="utf8") as f:
-            data = [
-                {
-                    "basename": truncate_basename(slugify(line.strip())),
-                    text_representation.value: line.strip(),
-                    "language": language or default_language,
-                    "speaker": speaker or default_speaker,
-                }
-                for line in f
-            ]
+        data = []
+        with open(filelist, encoding="utf8") as file:
+            for line in file:
+                # Chunk longer texts, for better longform audio synthesis
+                chunks = chunk_text(line)
+                for i, chunk in enumerate(chunks):
+                    data.append(
+                        {
+                            "basename": truncate_basename(slugify(chunk.strip())),
+                            text_representation.value: chunk.strip(),
+                            "language": language or default_language,
+                            "speaker": speaker or default_speaker,
+                            "last_input_chunk": (i == len(chunks) - 1),
+                        }
+                    )
     return data
 
 
