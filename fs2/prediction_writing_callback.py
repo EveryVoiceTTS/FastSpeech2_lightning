@@ -7,6 +7,7 @@ from typing import Any, Optional, Sequence
 import numpy as np
 import numpy.typing as npt
 import torch
+import torchaudio
 from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import HiFiGANConfig
 from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.model import HiFiGAN
 from everyvoice.text.text_processor import TextProcessor
@@ -84,25 +85,25 @@ def get_synthesis_output_callbacks(
             output_key=output_key,
         )
     if SynthesizeOutputFormats.readalong_xml in output_type:
-        callbacks[
-            SynthesizeOutputFormats.readalong_xml
-        ] = PredictionWritingReadAlongCallback(
-            config=config,
-            global_step=global_step,
-            output_dir=output_dir,
-            output_key=output_key,
+        callbacks[SynthesizeOutputFormats.readalong_xml] = (
+            PredictionWritingReadAlongCallback(
+                config=config,
+                global_step=global_step,
+                output_dir=output_dir,
+                output_key=output_key,
+            )
         )
     if SynthesizeOutputFormats.readalong_html in output_type:
         wav_callback = callbacks[SynthesizeOutputFormats.wav]
         assert isinstance(wav_callback, PredictionWritingWavCallback)
-        callbacks[
-            SynthesizeOutputFormats.readalong_html
-        ] = PredictionWritingOfflineRASCallback(
-            config=config,
-            global_step=global_step,
-            output_dir=output_dir,
-            output_key=output_key,
-            wav_callback=wav_callback,
+        callbacks[SynthesizeOutputFormats.readalong_html] = (
+            PredictionWritingOfflineRASCallback(
+                config=config,
+                global_step=global_step,
+                output_dir=output_dir,
+                output_key=output_key,
+                wav_callback=wav_callback,
+            )
         )
 
     return callbacks
@@ -568,6 +569,9 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
             include_global_step_in_filename=True,
         )
 
+        self.last_file_written: Optional[str] = None
+        self.current_filename: Optional[str] = None  # Filename for full_wav
+        self.full_wav = torch.tensor(())  # Accumulates full input before saving as wav
         self.output_key = output_key
         self.device = device
         self.vocoder_model = vocoder_model
@@ -621,26 +625,44 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
         _batch_idx: int,
         _dataloader_idx: int = 0,
     ):
-        import torchaudio
-
         logger.trace("Generating waveform...")
 
         wavs, sr = self.synthesize_audio(outputs)
 
         assert "tgt_lens" in outputs and outputs["tgt_lens"] is not None
-        for basename, speaker, language, wav, unmasked_len in zip(
-            batch["basename"],
-            batch["speaker"],
-            batch["language"],
-            wavs,
-            outputs["tgt_lens"],
-        ):
-            torchaudio.save(
-                self.get_filename(basename, speaker, language),
-                # the vocoder output includes padding so we have to remove that
-                wav[:, : (unmasked_len * self.output_hop_size)],
-                sr,
-                format="wav",
-                encoding="PCM_S",
-                bits_per_sample=16,
+
+        basenames = batch["basename"]
+        speakers = batch["speaker"]
+        languages = batch["language"]
+        last_input_chunk = batch["last_input_chunk"]
+        unmasked_lens = list(outputs["tgt_lens"])
+
+        if not self.current_filename:
+            self.current_filename = self.get_filename(
+                basenames[0], speakers[0], languages[0]
             )
+
+        for i, wav in enumerate(wavs):
+            # The vocoder output includes padding, so we have to remove that
+            trimmed_wav = wav[:, : (unmasked_lens[i] * self.output_hop_size)]
+            # Concatenate the current chunk to the full wav
+            self.full_wav = torch.cat((self.full_wav, trimmed_wav), -1)
+
+            # If we have reached the end of one full wav, save it
+            if last_input_chunk[i]:
+                torchaudio.save(
+                    self.current_filename,
+                    self.full_wav,
+                    sr,
+                    format="wav",
+                    encoding="PCM_S",
+                    bits_per_sample=16,
+                )
+                self.full_wav = torch.tensor(())
+                if i + 1 < len(wavs):
+                    self.current_filename = self.get_filename(
+                        basenames[i + 1], speakers[i + 1], languages[i + 1]
+                    )
+                else:
+                    self.last_file_written = self.current_filename
+                    self.current_filename = None
