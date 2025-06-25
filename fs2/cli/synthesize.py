@@ -5,7 +5,10 @@ from pathlib import Path
 from typing import Any, Optional
 
 import typer
-from everyvoice.base_cli.interfaces import complete_path
+from everyvoice.base_cli.interfaces import (
+    complete_path,
+    inference_base_command_interface,
+)
 from everyvoice.config.type_definitions import (
     DatasetTextRepresentation,
     TargetTrainingTextRepresentationLevel,
@@ -13,6 +16,7 @@ from everyvoice.config.type_definitions import (
 from everyvoice.text.textsplit import chunk_text
 from everyvoice.utils import spinner
 from loguru import logger
+from merge_args import merge_args
 from tqdm import tqdm
 
 from ..type_definitions import SynthesizeOutputFormats
@@ -380,6 +384,7 @@ def synthesize_helper(
     )
 
 
+@merge_args(inference_base_command_interface)
 def synthesize(  # noqa: C901
     model_path: Path = typer.Argument(
         ...,
@@ -504,6 +509,7 @@ def synthesize(  # noqa: C901
         "-n",
         help="Number of workers to process the data.",
     ),
+    **kwargs,
 ):
     """Given some text and a trained model, generate some audio. i.e. perform typical speech synthesis"""
     # TODO: allow for changing of language/speaker and variance control
@@ -551,6 +557,7 @@ def synthesize(  # noqa: C901
     # Load checkpoints
     print(f"Loading checkpoint from {model_path}", file=sys.stderr)
 
+    from everyvoice.base_cli.helpers import inference_base_command
     from pydantic import ValidationError
 
     try:
@@ -559,6 +566,8 @@ def synthesize(  # noqa: C901
         logger.error(f"Unable to load {model_path}: {e}")
         sys.exit(1)
     model.eval()
+
+    inference_base_command(model, **kwargs)
 
     # get global step
     # We can't just use model.global_step because it gets reset by lightning
