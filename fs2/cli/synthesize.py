@@ -87,14 +87,18 @@ def load_data_from_filelist(
     if default_speaker is None:
         default_speaker = next(iter(model.speaker2id.keys()), None)
 
+    from everyvoice.config.text_config import TextConfig
     from everyvoice.utils import slugify
+
+    text_config: TextConfig = model.config.text
+    split_text: bool = text_config.split_text
 
     try:
         data = []
         for d in model.config.training.filelist_loader(filelist):
             # Chunk longer texts, for better longform audio synthesis
             text_line = d[text_representation.value]
-            chunks = chunk_text(text_line)
+            chunks = chunk_text(text_line) if split_text else [text_line]
             for i, chunk in enumerate(chunks):
                 data.append(
                     {
@@ -108,6 +112,7 @@ def load_data_from_filelist(
                         "last_input_chunk": (i == len(chunks) - 1),
                     }
                 )
+            print(f"Processing text: {chunks}", file=sys.stderr)
     except KeyError:
         # TODO: Errors should have better formatting:
         #       https://github.com/EveryVoiceTTS/FastSpeech2_lightning/issues/26
@@ -133,7 +138,7 @@ def load_data_from_filelist(
         with open(filelist, encoding="utf8") as file:
             for line in file:
                 # Chunk longer texts, for better longform audio synthesis
-                chunks = chunk_text(line)
+                chunks = chunk_text(line) if split_text else [line]
                 for i, chunk in enumerate(chunks):
                     data.append(
                         {
@@ -144,6 +149,7 @@ def load_data_from_filelist(
                             "last_input_chunk": (i == len(chunks) - 1),
                         }
                     )
+                print(f"Processing text: {chunks}", file=sys.stderr)
     return data
 
 
@@ -160,7 +166,11 @@ def prepare_data(
     style_reference: Path | None,
 ) -> list[dict[str, Any]]:
     """"""
+    from everyvoice.config.text_config import TextConfig
     from everyvoice.utils import slugify
+
+    text_config: TextConfig = model.config.text
+    split_text: bool = text_config.split_text
 
     data: list[dict[str, Any]]
     # NOTE: The wizard adds a default speaker=`default` to the data.
@@ -172,7 +182,7 @@ def prepare_data(
         data = []
         for text_input in texts:
             # Chunk longer texts, for better longform audio synthesis
-            chunks = chunk_text(text_input)
+            chunks = chunk_text(text_input) if split_text else [text_input]
             for i, chunk in enumerate(chunks):
                 data.append(
                     {
