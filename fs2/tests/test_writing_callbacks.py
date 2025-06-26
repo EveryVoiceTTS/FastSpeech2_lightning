@@ -4,16 +4,14 @@ from unittest import TestCase
 
 import torch
 from everyvoice.config.shared_types import ContactInformation
-from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import HiFiGANConfig
-from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import HiFiGAN
 from everyvoice.tests.stubs import silence_c_stderr
 from pympi import TextGrid
-from pytorch_lightning import Trainer
 
 from ..config import FastSpeech2Config, FastSpeech2TrainingConfig
 from ..prediction_writing_callback import get_synthesis_output_callbacks
 from ..type_definitions import SynthesizeOutputFormats
 from ..utils import BASENAME_MAX_LENGTH, truncate_basename
+from .dummy_vocoder import get_dummy_vocoder
 
 try:
     # Accelerate the failing for fetching bundles online, since we don't
@@ -111,6 +109,7 @@ class WritingTestBase(TestCase):
                 "lngA",
                 "lngB",
             ],
+            "last_input_chunk": [1, 1],
         }
 
 
@@ -310,19 +309,6 @@ class TestWritingOfflineRAS(WritingTestBase):
                     # print(readalong)
                     self.assertIn("<read-along", readalong)
                     self.assertIn("<span slot", readalong)
-
-
-def get_dummy_vocoder(tmp_dir: Path) -> tuple[HiFiGAN, Path]:
-    contact_info = ContactInformation(
-        contact_name="Test Runner", contact_email="info@everyvoice.ca"
-    )
-    vocoder = HiFiGAN(HiFiGANConfig(contact=contact_info))
-    with silence_c_stderr():
-        trainer = Trainer(default_root_dir=str(tmp_dir), barebones=True)
-    trainer.strategy.connect(vocoder)
-    vocoder_path = tmp_dir / "vocoder"
-    trainer.save_checkpoint(vocoder_path)
-    return vocoder, vocoder_path
 
 
 class TestWritingWav(WritingTestBase):
