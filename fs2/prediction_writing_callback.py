@@ -223,7 +223,7 @@ class ScorerCallback(Callback):
 
 class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
     """
-    This callback runs inference on a provided text-to-spec model and saves the resulting Mel spectrograms to disk as pytorch files. These can be used to fine-tune an EveryVoice spec-to-wav model.
+    This callback reassembles text chunks, runs inference on a provided text-to-spec model and saves the resulting Mel spectrograms to disk as pytorch files. These can be used to fine-tune an EveryVoice spec-to-wav model.
     """
 
     def __init__(
@@ -243,6 +243,10 @@ class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
         self.output_key = output_key
         logger.info(f"Saving pytorch output to {self.save_dir}")
 
+        self.last_file_written: Optional[str] = None
+        self.current_filename: Optional[str] = None  # Filename for full_spec
+        self.full_spec = torch.tensor(())  # Accumulates full input before saving
+
     def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
         self,
         _trainer,
@@ -254,19 +258,43 @@ class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
     ):
         assert self.output_key in outputs and outputs[self.output_key] is not None
         assert "tgt_lens" in outputs and outputs["tgt_lens"] is not None
-        for basename, speaker, language, data, unmasked_len in zip(
-            batch["basename"],
-            batch["speaker"],
-            batch["language"],
-            outputs[self.output_key],  # type: ignore
-            outputs["tgt_lens"],
-        ):
-            torch.save(
-                data[:unmasked_len]
-                .cpu()
-                .transpose(0, 1),  # save tensors as [K (bands), T (frames)]
-                self.get_filename(basename, speaker, language),
+
+        basenames = batch["basename"]
+        speakers = batch["speaker"]
+        languages = batch["language"]
+        last_input_chunk = batch["last_input_chunk"]
+        unmasked_lens = list(outputs["tgt_lens"])
+
+        if not self.current_filename:
+            self.current_filename = self.get_filename(
+                basenames[0], speakers[0], languages[0]
             )
+
+        for i, data in enumerate(outputs[self.output_key]):  # type: ignore
+            # save tensors as [K (bands), T (frames)]
+            spec = data[: unmasked_lens[i]].cpu().transpose(0, 1)
+            # Concatenate the current chunk to the full spec
+            self.full_spec = torch.cat((self.full_spec, spec), -1)
+
+            if last_input_chunk[i]:
+                torch.save(
+                    self.full_spec,
+                    self.current_filename,  # type: ignore
+                )
+
+                # Reset the full spec file
+                self.full_spec = torch.tensor(())
+
+                # Update current_filename
+                if i + 1 < len(  # If there is another filename in this batch
+                    outputs[self.output_key]  # type: ignore
+                ):
+                    self.current_filename = self.get_filename(
+                        basenames[i + 1], speakers[i + 1], languages[i + 1]
+                    )
+                else:  # If we have reached the end of this batch
+                    self.last_file_written = self.current_filename
+                    self.current_filename = None
 
 
 class PredictionWritingAlignedTextCallback(PredictionWritingCallbackBase):
