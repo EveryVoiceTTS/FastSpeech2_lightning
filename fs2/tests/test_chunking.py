@@ -4,13 +4,13 @@ from unittest import TestCase
 
 import torch
 from everyvoice.config.shared_types import ContactInformation
+from everyvoice.tests.model_stubs import get_stubbed_vocoder
 from everyvoice.tests.stubs import silence_c_stderr
 from pydub import AudioSegment
 
 from ..config import FastSpeech2Config, FastSpeech2TrainingConfig
 from ..prediction_writing_callback import get_synthesis_output_callbacks
 from ..type_definitions import SynthesizeOutputFormats
-from .dummy_vocoder import get_dummy_vocoder
 
 
 class ChunkingTestBase(TestCase):
@@ -72,7 +72,7 @@ class TestWritingWav(ChunkingTestBase):
         """
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
-            vocoder, vocoder_path = get_dummy_vocoder(tmp_dir)
+            vocoder, vocoder_path = get_stubbed_vocoder(tmp_dir)
 
             with silence_c_stderr():
                 writers = get_synthesis_output_callbacks(

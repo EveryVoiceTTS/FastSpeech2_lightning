@@ -4,6 +4,7 @@ from unittest import TestCase
 
 import torch
 from everyvoice.config.shared_types import ContactInformation
+from everyvoice.tests.model_stubs import get_stubbed_vocoder
 from everyvoice.tests.stubs import silence_c_stderr
 from pympi import TextGrid
 
@@ -11,7 +12,6 @@ from ..config import FastSpeech2Config, FastSpeech2TrainingConfig
 from ..prediction_writing_callback import get_synthesis_output_callbacks
 from ..type_definitions import SynthesizeOutputFormats
 from ..utils import BASENAME_MAX_LENGTH, truncate_basename
-from .dummy_vocoder import get_dummy_vocoder
 
 try:
     # Accelerate the failing for fetching bundles online, since we don't
@@ -267,7 +267,7 @@ class TestWritingOfflineRAS(WritingTestBase):
     def test_writing_offline_ras(self):
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
-            vocoder, vocoder_path = get_dummy_vocoder(tmp_dir)
+            vocoder, vocoder_path = get_stubbed_vocoder(tmp_dir)
             with silence_c_stderr():
                 writers = get_synthesis_output_callbacks(
                     [SynthesizeOutputFormats.readalong_html],
@@ -324,7 +324,7 @@ class TestWritingWav(WritingTestBase):
         """
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
-            vocoder, vocoder_path = get_dummy_vocoder(tmp_dir)
+            vocoder, vocoder_path = get_stubbed_vocoder(tmp_dir)
 
             with silence_c_stderr():
                 writers = get_synthesis_output_callbacks(
