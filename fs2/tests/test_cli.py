@@ -7,14 +7,16 @@ import io
 from contextlib import redirect_stderr
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest import TestCase
+from unittest import TestCase, mock
 
 from everyvoice.config.shared_types import ContactInformation
+from everyvoice.config.text_config import TextConfig
 from everyvoice.config.type_definitions import (
     DatasetTextRepresentation,
     TargetTrainingTextRepresentationLevel,
 )
 from everyvoice.tests.basic_test_case import BasicTestCase
+from everyvoice.tests.model_stubs import get_stubbed_model, get_stubbed_vocoder
 from everyvoice.tests.preprocessed_audio_fixture import PreprocessedAudioFixture
 from everyvoice.tests.stubs import capture_stderr, silence_c_stderr
 from everyvoice.utils import generic_psv_filelist_reader
@@ -83,6 +85,41 @@ class SynthesizeTest(TestCase):
             )
             self.assertIn("You must define either --text or --filelist", result.stdout)
 
+    def mock_synthesis(self, *_args, **_kwargs):
+        print(_kwargs["model"].config)
+
+    def test_config_args(self):
+        """
+        Tests the -c flag with 'everyvoice synthesize'
+        """
+        with TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            _, spec_model_path = get_stubbed_model(tmpdir)
+            _, vocoder_path = get_stubbed_vocoder(tmpdir)
+
+            with mock.patch(
+                "everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.cli.synthesize.synthesize_helper",
+                side_effect=self.mock_synthesis,
+            ):
+
+                result = self.runner.invoke(
+                    app,
+                    [
+                        "synthesize",
+                        str(spec_model_path),
+                        "-t",
+                        "hello world",
+                        "-c",
+                        "text.split_text=False",
+                        "--vocoder-path",
+                        str(vocoder_path),
+                        "--output-type",
+                        "wav",
+                    ],
+                )
+                self.assertEqual(result.exit_code, 0)
+                self.assertIn("split_text=False", result.stdout)
+
 
 class MockModelForPrepare:
     class Dummy:
@@ -96,10 +133,12 @@ class MockModelForPrepare:
         multilingual,
         multispeaker,
         target_text_representation_level,
+        text_config=TextConfig(),
     ):
         self.lang2id = lang2id
         self.speaker2id = speaker2id
         self.config = self.Dummy()
+        self.config.text = text_config
         self.config.training = self.Dummy()
         self.config.training.filelist_loader = filelist_loader
         self.config.model = self.Dummy()
@@ -227,6 +266,36 @@ class PrepareSynthesizeDataTest(TestCase):
         self.assertFalse(data[0]["last_input_chunk"])
         self.assertTrue(data[1]["last_input_chunk"])
 
+    def test_no_chunking(self):
+        """
+        Provide a long text and verify that it is not chunked when split_text = False.
+        """
+
+        a = "There are approximately 70 Indigenous languages spoken in Canada from 10 distinct language families."
+        b = "As a consequence of the residential school system and other policies of cultural suppression, the majority of these languages now have fewer than 500 fluent speakers remaining, most of them elderly."
+
+        data = prepare_synthesize_data(
+            texts=[a + " " + b],
+            language="foo",
+            speaker="bar",
+            duration_control=1.0,
+            style_reference=None,
+            filelist=Path(__file__).parent / "data/filelist.psv",
+            model=MockModelForPrepare(
+                lang2id={"foo": 1},
+                speaker2id={"bar": 2},
+                filelist_loader=generic_psv_filelist_reader,
+                multilingual=True,
+                multispeaker=True,
+                target_text_representation_level=TargetTrainingTextRepresentationLevel.characters,
+                text_config=TextConfig(split_text=False),
+            ),
+            text_representation=DatasetTextRepresentation.characters,
+        )
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["characters"], a + " " + b)
+        self.assertTrue(data[0]["last_input_chunk"])
+
 
 class ValidateDataWithModelTest(TestCase):
     """
@@ -262,7 +331,7 @@ class ValidateDataWithModelTest(TestCase):
                 multi=bool(model_languages),
             )
         self.assertIn(
-            f"You provided {set((language,language_two))} which are not languages that are supported by the model {model_languages}.",
+            f"You provided {set((language, language_two))} which are not languages that are supported by the model {model_languages}.",
             f.getvalue(),
         )
 
