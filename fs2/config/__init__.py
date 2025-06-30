@@ -136,7 +136,7 @@ class FastSpeech2ModelConfig(ConfigModel):
     )
     learn_alignment: bool = Field(
         True,
-        description="Whether to jointly learn alignments using monotonic alignment search module (See Badlani et. al. 2021: https://arxiv.org/abs/2108.10447). If set to False, you will have to provide text/audio alignments separately before training a text-to-spec (feature prediction) model.",
+        description="Advanced. Whether to jointly learn alignments using monotonic alignment search module (See Badlani et. al. 2021: https://arxiv.org/abs/2108.10447). If set to False, you will have to provide text/audio alignments separately in 'preprocessed/duration' before training a text-to-spec (feature prediction) model.",
     )
     use_global_style_token_module: bool = Field(
         False,

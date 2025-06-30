@@ -8,6 +8,7 @@ from everyvoice.config.type_definitions import (
     TargetTrainingTextRepresentationLevel,
 )
 from everyvoice.dataloader import BaseDataModule
+from everyvoice.exceptions import InvalidConfiguration
 from everyvoice.preprocessor import Preprocessor
 from everyvoice.text.lookups import LookupTable, lookuptables_from_config
 from everyvoice.text.text_processor import TextProcessor
@@ -141,9 +142,14 @@ class FastSpeechDataset(Dataset):
                         f"{self.config.model.target_text_representation_level} have not yet been implemented."
                     )
         elif self.teacher_forcing or not self.inference:
-            duration = self._load_file(
-                basename, speaker, language, "duration", "duration.pt"
-            )
+            try:
+                duration = self._load_file(
+                    basename, speaker, language, "duration", "duration.pt"
+                )
+            except FileNotFoundError as e:
+                raise InvalidConfiguration(
+                    "You set model.learn_alignment = false, an advanced configuration which requires providing text/audio alignments before training the text-to-spec model, but those alignments were not found."
+                ) from e
         else:
             duration = None
         match self.config.model.target_text_representation_level:
@@ -206,10 +212,10 @@ class FastSpeechDataset(Dataset):
 
         # used when returning scores
         if "phone_coverage_score" in item:
-            loaded_data['phone_coverage_score'] = item['phone_coverage_score']
+            loaded_data["phone_coverage_score"] = item["phone_coverage_score"]
 
         if "trigram_coverage_score" in item:
-            loaded_data['trigram_coverage_score'] = item['trigram_coverage_score']
+            loaded_data["trigram_coverage_score"] = item["trigram_coverage_score"]
 
         return loaded_data
 
