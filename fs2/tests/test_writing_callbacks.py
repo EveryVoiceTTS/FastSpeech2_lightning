@@ -98,6 +98,7 @@ class WritingTestBase(TestCase):
                 "short",
                 "This utterance is way too long",
             ],
+            "duration_control": [1.0, 1.0],
             "raw_text": ["test", "W̱SÁNEĆ"],
             "text": [
                 torch.IntTensor([2, 3, 4, 5, 6, 7, 8], device="cpu"),

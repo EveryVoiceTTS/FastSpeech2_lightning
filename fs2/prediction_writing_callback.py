@@ -84,25 +84,25 @@ def get_synthesis_output_callbacks(
             output_key=output_key,
         )
     if SynthesizeOutputFormats.readalong_xml in output_type:
-        callbacks[
-            SynthesizeOutputFormats.readalong_xml
-        ] = PredictionWritingReadAlongCallback(
-            config=config,
-            global_step=global_step,
-            output_dir=output_dir,
-            output_key=output_key,
+        callbacks[SynthesizeOutputFormats.readalong_xml] = (
+            PredictionWritingReadAlongCallback(
+                config=config,
+                global_step=global_step,
+                output_dir=output_dir,
+                output_key=output_key,
+            )
         )
     if SynthesizeOutputFormats.readalong_html in output_type:
         wav_callback = callbacks[SynthesizeOutputFormats.wav]
         assert isinstance(wav_callback, PredictionWritingWavCallback)
-        callbacks[
-            SynthesizeOutputFormats.readalong_html
-        ] = PredictionWritingOfflineRASCallback(
-            config=config,
-            global_step=global_step,
-            output_dir=output_dir,
-            output_key=output_key,
-            wav_callback=wav_callback,
+        callbacks[SynthesizeOutputFormats.readalong_html] = (
+            PredictionWritingOfflineRASCallback(
+                config=config,
+                global_step=global_step,
+                output_dir=output_dir,
+                output_key=output_key,
+                wav_callback=wav_callback,
+            )
         )
 
     return callbacks
@@ -313,13 +313,18 @@ class PredictionWritingAlignedTextCallback(PredictionWritingCallbackBase):
 
     def get_tokens_from_duration_and_labels(
         self,
-        duration_predictions: torch.Tensor,
+        log_duration_predictions: torch.Tensor,
+        duration_control: float,
         text: npt.NDArray[np.float32],
         raw_text: str,
     ):
         # Get all durations in frames
+        # Must be the same as duration_rounded in forward() in variance_adaptor.py
         duration_frames = (
-            torch.clamp(torch.round(torch.exp(duration_predictions) - 1), min=0)
+            torch.clamp(
+                torch.round(torch.exp(log_duration_predictions) - 1) * duration_control,
+                min=0,
+            )
             .int()
             .tolist()
         )
@@ -377,17 +382,26 @@ class PredictionWritingAlignedTextCallback(PredictionWritingCallbackBase):
             "duration_prediction" in outputs
             and outputs["duration_prediction"] is not None
         )
-        for basename, speaker, language, raw_text, text, duration in zip(
+        for (
+            basename,
+            speaker,
+            language,
+            raw_text,
+            text,
+            duration_control,
+            log_duration_predictions,
+        ) in zip(
             batch["basename"],
             batch["speaker"],
             batch["language"],
             batch["raw_text"],
             batch["text"],  # type: ignore
+            batch["duration_control"],
             outputs["duration_prediction"],
         ):
             # Get the phone/word alignment tokens
             xmax_seconds, phones, words = self.get_tokens_from_duration_and_labels(
-                duration, text, raw_text
+                log_duration_predictions, duration_control, text, raw_text
             )
 
             # Save the output (the subclass has to implement this)
