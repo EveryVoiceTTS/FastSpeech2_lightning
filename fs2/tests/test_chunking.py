@@ -148,3 +148,88 @@ class TestWritingWav(ChunkingTestBase):
             # There are four chunks but two outputs.
             # Output one contains only one chunk, so output_two should be 3 times longer
             self.assertEqual(len(output_one) * 3, len(output_two))
+
+
+class TestWritingSpec(ChunkingTestBase):
+    def test_spec_chunks(self):
+        """
+        Tests the correctness of the output of spectrograms for chunked text over multiple batches.
+        """
+        with TemporaryDirectory() as tmp_dir:
+            tmp_dir = Path(tmp_dir)
+            vocoder, vocoder_path = get_stubbed_vocoder(tmp_dir)
+
+            with silence_c_stderr():
+                writers = get_synthesis_output_callbacks(
+                    [SynthesizeOutputFormats.spec],
+                    config=FastSpeech2Config(
+                        contact=self.contact,
+                        training=FastSpeech2TrainingConfig(vocoder_path=vocoder_path),
+                    ),
+                    device=torch.device("cpu"),
+                    global_step=77,
+                    output_dir=tmp_dir,
+                    output_key=self.output_key,
+                    vocoder_model=vocoder,
+                    vocoder_config=vocoder.config,
+                    vocoder_global_step=10,
+                )
+
+            # Batch 1
+            writer = next(iter(writers.values()))
+            writer.on_predict_batch_end(
+                _trainer=None,
+                _pl_module=None,
+                outputs=self.outputs,
+                batch=self.batch1,
+                _batch_idx=0,
+                _dataloader_idx=0,
+            )
+            output_dir = writer.save_dir
+            # print(output_dir, *output_dir.glob("**"))  # For debugging
+            self.assertTrue(output_dir.exists())
+
+            # Batch 2
+            writer = next(iter(writers.values()))
+            writer.on_predict_batch_end(
+                _trainer=None,
+                _pl_module=None,
+                outputs=self.outputs,
+                batch=self.batch2,
+                _batch_idx=1,
+                _dataloader_idx=1,
+            )
+
+            # Test that the correctly named files were and weren't outputted
+            # The outputted files should be named after the first chunk from each text input
+            self.assertTrue(
+                (output_dir / "one--S1--L1--spec-pred-22050-mel-librosa.pt").exists()
+            )
+            self.assertTrue(
+                (output_dir / "two--S2--L2--spec-pred-22050-mel-librosa.pt").exists()
+            )
+            self.assertFalse(
+                (output_dir / "three--S1--L1--spec-pred-22050-mel-librosa.pt").exists()
+            )
+            self.assertFalse(
+                (output_dir / "four--S2--L2--spec-pred-22050-mel-librosa.pt").exists()
+            )
+
+            # Tests that last_file_written contains the correct most recent filename written
+            # This is important for the demo
+            self.assertEqual(
+                (output_dir / "two--S2--L2--spec-pred-22050-mel-librosa.pt"),
+                Path(writer.last_file_written),
+            )
+
+            # Checks that the files have reasonable lengths
+            output_one = torch.load(
+                output_dir / "one--S1--L1--spec-pred-22050-mel-librosa.pt"
+            )
+            output_two = torch.load(
+                output_dir / "two--S2--L2--spec-pred-22050-mel-librosa.pt"
+            )
+
+            # There are four chunks but two outputs.
+            # Output one contains only one chunk, so output_two should be 3 times longer
+            self.assertEqual(output_one.size(-1) * 3, output_two.size(-1))
