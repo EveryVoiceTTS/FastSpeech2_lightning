@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any, Optional
 
 import typer
-from everyvoice.base_cli.interfaces import complete_path
 from everyvoice.config.type_definitions import (
     DatasetTextRepresentation,
     TargetTrainingTextRepresentationLevel,
@@ -369,7 +368,6 @@ def synthesize(  # noqa: C901
         exists=True,
         dir_okay=False,
         help="The path to a trained text-to-spec (i.e., feature prediction) or e2e EveryVoice model.",
-        shell_complete=complete_path,
     ),
     output_dir: Path = typer.Option(
         "synthesis_output",
@@ -378,7 +376,6 @@ def synthesize(  # noqa: C901
         file_okay=False,
         dir_okay=True,
         help="The directory where your synthesized audio should be written",
-        shell_complete=complete_path,
     ),
     texts: list[str] = typer.Option(
         [],
@@ -407,7 +404,6 @@ def synthesize(  # noqa: C901
         file_okay=True,
         dir_okay=False,
         help="The path to an audio file containing a style reference. Your text-to-spec must have been trained with the global style token module to use this feature.",
-        shell_complete=complete_path,
     ),
     speaker: Optional[str] = typer.Option(
         None,
@@ -427,7 +423,6 @@ def synthesize(  # noqa: C901
         file_okay=True,
         dir_okay=False,
         help="The path to a file containing a list of utterances (a.k.a filelist). Use --text if you want to just synthesize one sample.",
-        shell_complete=complete_path,
     ),
     text_representation: DatasetTextRepresentation = typer.Option(
         DatasetTextRepresentation.characters,
@@ -463,7 +458,6 @@ def synthesize(  # noqa: C901
         help="ADVANCED. The path to preprocessed folder containing spec and duration folders to use for teacher-forcing the synthesized outputs.",
         dir_okay=True,
         file_okay=False,
-        shell_complete=complete_path,
     ),
     vocoder_path: Path = typer.Option(
         None,
@@ -472,7 +466,6 @@ def synthesize(  # noqa: C901
         help="The path to a trained vocoder (aka spec-to-wav model).",
         dir_okay=False,
         file_okay=True,
-        shell_complete=complete_path,
     ),
     batch_size: int = typer.Option(
         4,

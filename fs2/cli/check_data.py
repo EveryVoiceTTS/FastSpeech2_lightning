@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Optional
 
 import typer
-from everyvoice.base_cli.interfaces import complete_path
 from everyvoice.config.type_definitions import DatasetTextRepresentation
 from everyvoice.utils import generic_psv_filelist_reader, spinner
 from loguru import logger
@@ -19,7 +18,6 @@ def check_data_command(  # noqa: C901
         dir_okay=False,
         file_okay=True,
         help="The path to your text-to-spec model configuration file.",
-        shell_complete=complete_path,
     ),
     model_path: Optional[Path] = typer.Argument(
         ...,
@@ -27,7 +25,6 @@ def check_data_command(  # noqa: C901
         exists=True,
         dir_okay=False,
         help="The path to a trained text-to-spec (i.e., feature prediction) or e2e EveryVoice model.",
-        shell_complete=complete_path,
     ),
     output_dir: Path = typer.Option(
         "checked_data",
@@ -36,7 +33,6 @@ def check_data_command(  # noqa: C901
         file_okay=False,
         dir_okay=True,
         help="The directory where your synthesized audio should be written",
-        shell_complete=complete_path,
     ),
     style_reference: Optional[Path] = typer.Option(
         None,
@@ -46,7 +42,6 @@ def check_data_command(  # noqa: C901
         file_okay=True,
         dir_okay=False,
         help="The path to an audio file containing a style reference. Your text-to-spec must have been trained with the global style token module to use this feature.",
-        shell_complete=complete_path,
     ),
     accelerator: str = typer.Option("auto", "--accelerator", "-a"),
     devices: str = typer.Option(
@@ -60,7 +55,6 @@ def check_data_command(  # noqa: C901
         file_okay=True,
         dir_okay=False,
         help="The path to a file containing a list of utterances (a.k.a filelist). Use --text if you want to just synthesize one sample.",
-        shell_complete=complete_path,
     ),
     text_representation: DatasetTextRepresentation = typer.Option(
         DatasetTextRepresentation.characters,
@@ -73,7 +67,6 @@ def check_data_command(  # noqa: C901
         help="The path to the folder containing all of your preprocessed data.",
         dir_okay=True,
         file_okay=False,
-        shell_complete=complete_path,
     ),
     num_workers: int = typer.Option(
         4,
