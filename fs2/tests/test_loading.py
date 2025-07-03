@@ -244,41 +244,27 @@ class StubModelWithConfigOnly:
 
 class TestLoadingData(TestCase):
 
-    def test_load_oneline(self):
-        with tempfile.TemporaryDirectory() as tmpdir_str:
-            tmpdir = Path(tmpdir_str)
+    def write_and_load(self, file_contents: str):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            data_file = Path(tmpdir) / "data_file"
+            with open(data_file, "w") as f:
+                f.write(file_contents)
             with silence_c_stderr():
-                with open(tmpdir / "oneline.txt", "w") as f:
-                    f.write("this is a test\n")
                 data = load_data_from_filelist(
-                    tmpdir / "oneline.txt",
+                    data_file,
                     StubModelWithConfigOnly(),
                     DatasetTextRepresentation.characters,
                 )
-                self.assertEqual(len(data), 1)
+            return data
+
+    def test_load_oneline(self):
+        data = self.write_and_load("this is a test\n")
+        self.assertEqual(len(data), 1)
 
     def test_load_twolines(self):
-        with tempfile.TemporaryDirectory() as tmpdir_str:
-            tmpdir = Path(tmpdir_str)
-            with silence_c_stderr():
-                with open(tmpdir / "twolines.txt", "w") as f:
-                    f.write("test line 1\ntest line 2\n")
-                data = load_data_from_filelist(
-                    tmpdir / "twolines.txt",
-                    StubModelWithConfigOnly(),
-                    DatasetTextRepresentation.characters,
-                )
-                self.assertEqual(len(data), 2)
+        data = self.write_and_load("test line 1\ntest line 2\n")
+        self.assertEqual(len(data), 2)
 
     def test_load_psv(self):
-        with tempfile.TemporaryDirectory() as tmpdir_str:
-            tmpdir = Path(tmpdir_str)
-            with silence_c_stderr():
-                with open(tmpdir / "psv.psv", "w") as f:
-                    f.write("characters|language\nfoo|eng\nbar|eng\nbaz|fra\n")
-                data = load_data_from_filelist(
-                    tmpdir / "psv.psv",
-                    StubModelWithConfigOnly(),
-                    DatasetTextRepresentation.characters,
-                )
-                self.assertEqual(len(data), 3)
+        data = self.write_and_load("characters|language\nfoo|eng\nbar|eng\nbaz|fra\n")
+        self.assertEqual(len(data), 3)
