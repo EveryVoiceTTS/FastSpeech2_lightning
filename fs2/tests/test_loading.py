@@ -2,8 +2,12 @@ import tempfile
 from pathlib import Path
 from unittest import TestCase
 
+from everyvoice.config.shared_types import ContactInformation
+from everyvoice.config.type_definitions import DatasetTextRepresentation
 from everyvoice.tests.stubs import silence_c_stderr
+from everyvoice.text.lookups import LookupTable
 
+from ..cli.synthesize import load_data_from_filelist
 from ..config import FastSpeech2Config
 from ..model import FastSpeech2
 from ..type_definitions_heavy import Stats, StatsInfo
@@ -224,3 +228,57 @@ class TestLoadingConfig(TestCase):
             r"Your config was created with a newer version of EveryVoice, please update your software.",
         ):
             FastSpeech2Config(**reference.model_dump())
+
+
+class StubModelWithConfigOnly:
+    def __init__(self):
+        self.config = FastSpeech2Config(
+            contact=ContactInformation(
+                contact_name="Unit Testing Script",
+                contact_email="unit_tester@mail.com",
+            )
+        )
+        self.lang2id: LookupTable = {}
+        self.speaker2id: LookupTable = {}
+
+
+class TestLoadingData(TestCase):
+
+    def test_load_oneline(self):
+        with tempfile.TemporaryDirectory() as tmpdir_str:
+            tmpdir = Path(tmpdir_str)
+            with silence_c_stderr():
+                with open(tmpdir / "oneline.txt", "w") as f:
+                    f.write("this is a test\n")
+                data = load_data_from_filelist(
+                    tmpdir / "oneline.txt",
+                    StubModelWithConfigOnly(),
+                    DatasetTextRepresentation.characters,
+                )
+                self.assertEqual(len(data), 1)
+
+    def test_load_twolines(self):
+        with tempfile.TemporaryDirectory() as tmpdir_str:
+            tmpdir = Path(tmpdir_str)
+            with silence_c_stderr():
+                with open(tmpdir / "twolines.txt", "w") as f:
+                    f.write("test line 1\ntest line 2\n")
+                data = load_data_from_filelist(
+                    tmpdir / "twolines.txt",
+                    StubModelWithConfigOnly(),
+                    DatasetTextRepresentation.characters,
+                )
+                self.assertEqual(len(data), 2)
+
+    def test_load_psv(self):
+        with tempfile.TemporaryDirectory() as tmpdir_str:
+            tmpdir = Path(tmpdir_str)
+            with silence_c_stderr():
+                with open(tmpdir / "psv.psv", "w") as f:
+                    f.write("characters|language\nfoo|eng\nbar|eng\nbaz|fra\n")
+                data = load_data_from_filelist(
+                    tmpdir / "psv.psv",
+                    StubModelWithConfigOnly(),
+                    DatasetTextRepresentation.characters,
+                )
+                self.assertEqual(len(data), 3)
