@@ -13,6 +13,80 @@ from ..prediction_writing_callback import get_synthesis_output_callbacks
 from ..type_definitions import SynthesizeOutputFormats
 
 
+class TestDuplicateFilename(TestCase):
+    def setUp(self):
+        self.contact = ContactInformation(
+            contact_name="Test Runner", contact_email="info@everyvoice.ca"
+        )
+        self.output_key = "output"
+        self.outputs = {
+            self.output_key: torch.ones([3, 500, 80], device="cpu"),
+            "duration_prediction": torch.ones([3, 7], device="cpu"),
+            "tgt_lens": [490, 490, 490],
+        }
+        self.batch1 = {
+            "basename": ["This is a chunk", "This is another chunk", "This is a chunk"],
+            "raw_text": ["This is a chunk", "This is another chunk", "This is a chunk"],
+            "text": [
+                torch.IntTensor([2, 3, 4, 5, 6, 7, 8], device="cpu"),
+                torch.IntTensor([2, 3, 4, 5, 6, 7, 8], device="cpu"),
+                torch.IntTensor([2, 3, 4, 5, 6, 7, 8], device="cpu"),
+            ],
+            "speaker": ["S1", "S1", "S1"],
+            "language": ["L1", "L1", "L1"],
+            "is_last_input_chunk": [0, 1, 1],
+        }
+
+    def test_duplicate_filename(self):
+        """
+        Tests that the second file is not overwritten when the first chunk is the same for two files.
+        """
+        with TemporaryDirectory() as tmp_dir:
+            tmp_dir = Path(tmp_dir)
+            vocoder, vocoder_path = get_stubbed_vocoder(tmp_dir)
+
+            with silence_c_stderr():
+                writers = get_synthesis_output_callbacks(
+                    [SynthesizeOutputFormats.wav],
+                    config=FastSpeech2Config(
+                        contact=self.contact,
+                        training=FastSpeech2TrainingConfig(vocoder_path=vocoder_path),
+                    ),
+                    device=torch.device("cpu"),
+                    global_step=77,
+                    output_dir=tmp_dir,
+                    output_key=self.output_key,
+                    vocoder_model=vocoder,
+                    vocoder_config=vocoder.config,
+                    vocoder_global_step=10,
+                )
+
+            # Batch 1
+            writer = next(iter(writers.values()))
+            writer.on_predict_batch_end(
+                _trainer=None,
+                _pl_module=None,
+                outputs=self.outputs,
+                batch=self.batch1,
+                _batch_idx=0,
+                _dataloader_idx=0,
+            )
+            output_dir = writer.save_dir
+            # print(output_dir, *output_dir.glob("**"))  # For debugging
+            self.assertTrue(output_dir.exists())
+            self.assertTrue(
+                (
+                    output_dir
+                    / "This-is-a-chunkThis--9fc7184d--S1--L1--ckpt=77--v_ckpt=10--pred.wav"
+                ).exists()
+            )
+            self.assertTrue(
+                (
+                    output_dir / "This-is-a-chunk--S1--L1--ckpt=77--v_ckpt=10--pred.wav"
+                ).exists()
+            )
+
+
 class ChunkingTestBase(TestCase):
     @classmethod
     def setUpClass(cls):
@@ -27,7 +101,7 @@ class ChunkingTestBase(TestCase):
         }
         cls.batch1 = {
             "basename": ["one", "two"],
-            "raw_text": ["This is chunk one.", "This is chunk two."],
+            "raw_text": ["one", "two"],
             "text": [
                 torch.IntTensor([2, 3, 4, 5, 6, 7, 8], device="cpu"),
                 torch.IntTensor([2, 3, 4, 5, 6, 7, 8], device="cpu"),
@@ -44,7 +118,7 @@ class ChunkingTestBase(TestCase):
         }
         cls.batch2 = {
             "basename": ["three", "four"],
-            "raw_text": ["This is chunk three.", "This is chunk four."],
+            "raw_text": ["three", "four"],
             "text": [
                 torch.IntTensor([2, 3, 4, 5, 6, 7, 8], device="cpu"),
                 torch.IntTensor([2, 3, 4, 5, 6, 7, 8], device="cpu"),
@@ -121,19 +195,15 @@ class TestWritingWav(ChunkingTestBase):
                 (output_dir / "one--S1--L1--ckpt=77--v_ckpt=10--pred.wav").exists()
             )
             self.assertTrue(
-                (output_dir / "two--S2--L2--ckpt=77--v_ckpt=10--pred.wav").exists()
-            )
-            self.assertFalse(
-                (output_dir / "three--S1--L1--ckpt=77--v_ckpt=10--pred.wav").exists()
-            )
-            self.assertFalse(
-                (output_dir / "four--S2--L2--ckpt=77--v_ckpt=10--pred.wav").exists()
+                (
+                    output_dir / "twothreefour--S2--L2--ckpt=77--v_ckpt=10--pred.wav"
+                ).exists()
             )
 
             # Tests that last_file_written contains the correct most recent filename written
             # This is important for the demo
             self.assertEqual(
-                (output_dir / "two--S2--L2--ckpt=77--v_ckpt=10--pred.wav"),
+                (output_dir / "twothreefour--S2--L2--ckpt=77--v_ckpt=10--pred.wav"),
                 Path(writer.last_file_written),
             )
 
@@ -142,7 +212,7 @@ class TestWritingWav(ChunkingTestBase):
                 output_dir / "one--S1--L1--ckpt=77--v_ckpt=10--pred.wav"
             )
             output_two = AudioSegment.from_file(
-                output_dir / "two--S2--L2--ckpt=77--v_ckpt=10--pred.wav"
+                output_dir / "twothreefour--S2--L2--ckpt=77--v_ckpt=10--pred.wav"
             )
 
             # There are four chunks but two outputs.
@@ -206,20 +276,9 @@ class TestWritingSpec(ChunkingTestBase):
                 (output_dir / "one--S1--L1--spec-pred-22050-mel-librosa.pt").exists()
             )
             self.assertTrue(
-                (output_dir / "two--S2--L2--spec-pred-22050-mel-librosa.pt").exists()
-            )
-            self.assertFalse(
-                (output_dir / "three--S1--L1--spec-pred-22050-mel-librosa.pt").exists()
-            )
-            self.assertFalse(
-                (output_dir / "four--S2--L2--spec-pred-22050-mel-librosa.pt").exists()
-            )
-
-            # Tests that last_file_written contains the correct most recent filename written
-            # This is important for the demo
-            self.assertEqual(
-                (output_dir / "two--S2--L2--spec-pred-22050-mel-librosa.pt"),
-                Path(writer.last_file_written),
+                (
+                    output_dir / "twothreefour--S2--L2--spec-pred-22050-mel-librosa.pt"
+                ).exists()
             )
 
             # Checks that the files have reasonable lengths
@@ -227,7 +286,7 @@ class TestWritingSpec(ChunkingTestBase):
                 output_dir / "one--S1--L1--spec-pred-22050-mel-librosa.pt"
             )
             output_two = torch.load(
-                output_dir / "two--S2--L2--spec-pred-22050-mel-librosa.pt"
+                output_dir / "twothreefour--S2--L2--spec-pred-22050-mel-librosa.pt"
             )
 
             # There are four chunks but two outputs.

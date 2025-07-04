@@ -8,9 +8,13 @@ import numpy as np
 import numpy.typing as npt
 import torch
 import torchaudio
+from everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.utils import (
+    truncate_basename,
+)
 from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import HiFiGANConfig
 from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.model import HiFiGAN
 from everyvoice.text.text_processor import TextProcessor
+from everyvoice.utils import slugify
 from loguru import logger
 from pympi import TextGrid
 from pytorch_lightning.callbacks import Callback
@@ -243,9 +247,8 @@ class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
         self.output_key = output_key
         logger.info(f"Saving pytorch output to {self.save_dir}")
 
-        self.last_file_written: Optional[str] = None
-        self.current_filename: Optional[str] = None  # Filename for full_spec
-        self.full_spec = torch.tensor(())  # Accumulates full input before saving
+        self.full_text: str = ""  # Accumulates full text before saving file
+        self.full_spec = torch.tensor(())  # Accumulates full input before saving file
 
     def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
         self,
@@ -259,42 +262,37 @@ class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
         assert self.output_key in outputs and outputs[self.output_key] is not None
         assert "tgt_lens" in outputs and outputs["tgt_lens"] is not None
 
-        basenames = batch["basename"]
+        texts = batch["raw_text"]
         speakers = batch["speaker"]
         languages = batch["language"]
         is_last_input_chunk = batch["is_last_input_chunk"]
         unmasked_lens = list(outputs["tgt_lens"])
 
-        if not self.current_filename:
-            self.current_filename = self.get_filename(
-                basenames[0], speakers[0], languages[0]
-            )
-
         for i, data in enumerate(outputs[self.output_key]):  # type: ignore
             # save tensors as [K (bands), T (frames)]
             spec = data[: unmasked_lens[i]].cpu().transpose(0, 1)
+
             # Concatenate the current chunk to the full spec
             self.full_spec = torch.cat((self.full_spec, spec), -1)
 
+            # Concatenate the current text to the full text
+            self.full_text += texts[i]
+
             if is_last_input_chunk[i]:
+                # Generate filename
+                # Assumes that speakers will be the same across chunks in the same text input
+                basename = truncate_basename(slugify(self.full_text))
+                filename = self.get_filename(basename, speakers[i], languages[i])
+
+                # Save file
                 torch.save(
                     self.full_spec,
-                    self.current_filename,  # type: ignore
+                    filename,  # type: ignore
                 )
 
-                # Reset the full spec file
+                # Reset the accumulator variables
                 self.full_spec = torch.tensor(())
-
-                # Update current_filename
-                if i + 1 < len(  # If there is another filename in this batch
-                    outputs[self.output_key]  # type: ignore
-                ):
-                    self.current_filename = self.get_filename(
-                        basenames[i + 1], speakers[i + 1], languages[i + 1]
-                    )
-                else:  # If we have reached the end of this batch
-                    self.last_file_written = self.current_filename
-                    self.current_filename = None
+                self.full_text = ""
 
 
 class PredictionWritingAlignedTextCallback(PredictionWritingCallbackBase):
@@ -611,9 +609,9 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
             include_global_step_in_filename=True,
         )
 
-        self.last_file_written: Optional[str] = None
-        self.current_filename: Optional[str] = None  # Filename for full_wav
-        self.full_wav = torch.tensor(())  # Accumulates full input before saving as wav
+        self.last_file_written: Optional[str] = None  # Necessary for the demo
+        self.full_text: str = ""  # Accumulates full text before saving file
+        self.full_wav = torch.tensor(())  # Accumulates full wav before saving file
         self.output_key = output_key
         self.device = device
         self.vocoder_model = vocoder_model
@@ -673,27 +671,31 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
 
         assert "tgt_lens" in outputs and outputs["tgt_lens"] is not None
 
-        basenames = batch["basename"]
+        texts = batch["raw_text"]
         speakers = batch["speaker"]
         languages = batch["language"]
         is_last_input_chunk = batch["is_last_input_chunk"]
         unmasked_lens = list(outputs["tgt_lens"])
 
-        if not self.current_filename:
-            self.current_filename = self.get_filename(
-                basenames[0], speakers[0], languages[0]
-            )
-
         for i, wav in enumerate(wavs):
             # The vocoder output includes padding, so we have to remove that
             trimmed_wav = wav[:, : (unmasked_lens[i] * self.output_hop_size)]
+
             # Concatenate the current chunk to the full wav
             self.full_wav = torch.cat((self.full_wav, trimmed_wav), -1)
 
-            # If we have reached the end of one full wav, save it
+            # Concatenate the current text to the full text
+            self.full_text += texts[i]
+
             if is_last_input_chunk[i]:
+                # Generate filename
+                # Assumes that speakers will be the same across chunks in the same text input
+                basename = truncate_basename(slugify(self.full_text))
+                filename = self.get_filename(basename, speakers[i], languages[i])
+
+                # Save file
                 torchaudio.save(
-                    self.current_filename,
+                    filename,
                     self.full_wav,
                     sr,
                     format="wav",
@@ -701,14 +703,9 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
                     bits_per_sample=16,
                 )
 
-                # Reset the full spec file
+                # Reset the accumulator variables
                 self.full_wav = torch.tensor(())
+                self.full_text = ""
 
-                # Update current_filename
-                if i + 1 < len(wavs):  # If there is another filename in this batch
-                    self.current_filename = self.get_filename(
-                        basenames[i + 1], speakers[i + 1], languages[i + 1]
-                    )
-                else:  # If we have reached the end of this batch
-                    self.last_file_written = self.current_filename
-                    self.current_filename = None
+                # Update last_file_written (for demo)
+                self.last_file_written = filename
