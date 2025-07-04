@@ -5,13 +5,18 @@ from pathlib import Path
 from typing import Any, Optional
 
 import typer
-from everyvoice.base_cli.interfaces import complete_path
+from everyvoice.base_cli.interfaces import (
+    complete_path,
+    inference_base_command_interface,
+)
 from everyvoice.config.type_definitions import (
     DatasetTextRepresentation,
     TargetTrainingTextRepresentationLevel,
 )
+from everyvoice.text.textsplit import chunk_text
 from everyvoice.utils import spinner
 from loguru import logger
+from merge_args import merge_args
 from tqdm import tqdm
 
 from ..type_definitions import SynthesizeOutputFormats
@@ -75,6 +80,7 @@ def load_data_from_filelist(
     speaker: str | None = None,
     default_language: str | None = None,
     default_speaker: str | None = None,
+    output_type: list[SynthesizeOutputFormats] = [],
 ):
 
     if default_language is None:
@@ -82,22 +88,44 @@ def load_data_from_filelist(
     if default_speaker is None:
         default_speaker = next(iter(model.speaker2id.keys()), None)
 
+    from everyvoice.config.text_config import TextConfig
     from everyvoice.utils import slugify
 
-    data = model.config.training.filelist_loader(filelist)
+    # TODO: Implement Text Splitting for TextGrid and Readalong files
+    split_text: bool
+    if (
+        SynthesizeOutputFormats.textgrid in output_type
+        or SynthesizeOutputFormats.readalong_html in output_type
+        or SynthesizeOutputFormats.readalong_xml in output_type
+    ):
+        split_text = False
+        logger.warning(
+            "EveryVoice does not currently support text splitting for TextGrid or Readalong files. Config variable split_text has been set to False."
+        )
+    else:
+        text_config: TextConfig = model.config.text
+        split_text = text_config.split_text
+
     try:
-        data = [
-            d
-            | {
-                "basename": d.get(
-                    "basename",
-                    truncate_basename(slugify(d[text_representation.value])),
-                ),  # Only truncate the basename if the basename doesn't already exist in the filelist.
-                "language": language or d.get("language", default_language),
-                "speaker": speaker or d.get("speaker", default_speaker),
-            }
-            for d in data
-        ]
+        data = []
+        for d in model.config.training.filelist_loader(filelist):
+            # Chunk longer texts, for better longform audio synthesis
+            text_line = d[text_representation.value]
+            chunks = chunk_text(text_line) if split_text else [text_line]
+            for i, chunk in enumerate(chunks):
+                data.append(
+                    {
+                        "basename": d.get(
+                            "basename",
+                            truncate_basename(slugify(text_line)),
+                        ),  # Only truncate the basename if the basename doesn't already exist in the filelist.
+                        text_representation.value: chunk,
+                        "language": language or d.get("language", default_language),
+                        "speaker": speaker or d.get("speaker", default_speaker),
+                        "is_last_input_chunk": (i == len(chunks) - 1),
+                    }
+                )
+            print(f"Processing text: {chunks}", file=sys.stderr)
     except KeyError:
         # TODO: Errors should have better formatting:
         #       https://github.com/EveryVoiceTTS/FastSpeech2_lightning/issues/26
@@ -119,16 +147,22 @@ def load_data_from_filelist(
                     """
             )
         )
-        with open(filelist, encoding="utf8") as f:
-            data = [
-                {
-                    "basename": truncate_basename(slugify(line.strip())),
-                    text_representation.value: line.strip(),
-                    "language": language or default_language,
-                    "speaker": speaker or default_speaker,
-                }
-                for line in f
-            ]
+        data = []
+        with open(filelist, encoding="utf8") as file:
+            for line in file:
+                # Chunk longer texts, for better longform audio synthesis
+                chunks = chunk_text(line) if split_text else [line]
+                for i, chunk in enumerate(chunks):
+                    data.append(
+                        {
+                            "basename": truncate_basename(slugify(chunk.strip())),
+                            text_representation.value: chunk.strip(),
+                            "language": language or default_language,
+                            "speaker": speaker or default_speaker,
+                            "is_last_input_chunk": (i == len(chunks) - 1),
+                        }
+                    )
+                print(f"Processing text: {chunks}", file=sys.stderr)
     return data
 
 
@@ -143,9 +177,26 @@ def prepare_data(
     text_representation: DatasetTextRepresentation,
     duration_control: float,
     style_reference: Path | None,
+    output_type: list[SynthesizeOutputFormats] = [],
 ) -> list[dict[str, Any]]:
     """"""
+    from everyvoice.config.text_config import TextConfig
     from everyvoice.utils import slugify
+
+    # TODO: Implement Text Splitting for TextGrid and Readalong files
+    split_text: bool
+    if (
+        SynthesizeOutputFormats.textgrid in output_type
+        or SynthesizeOutputFormats.readalong_html in output_type
+        or SynthesizeOutputFormats.readalong_xml in output_type
+    ):
+        split_text = False
+        logger.warning(
+            "EveryVoice does not currently support text splitting for TextGrid or Readalong files. Config variable split_text has been set to False."
+        )
+    else:
+        text_config: TextConfig = model.config.text
+        split_text = text_config.split_text
 
     data: list[dict[str, Any]]
     # NOTE: The wizard adds a default speaker=`default` to the data.
@@ -154,16 +205,23 @@ def prepare_data(
     DEFAULT_LANGUAGE = next(iter(model.lang2id.keys()), None)
     DEFAULT_SPEAKER = next(iter(model.speaker2id.keys()), None)
     if texts:
-        print(f"Processing text {texts}", file=sys.stderr)
-        data = [
-            {
-                "basename": truncate_basename(slugify(text)),
-                text_representation.value: text,
-                "language": language or DEFAULT_LANGUAGE,
-                "speaker": speaker or DEFAULT_SPEAKER,
-            }
-            for text in texts
-        ]
+        data = []
+        for text_input in texts:
+            # Chunk longer texts, for better longform audio synthesis
+            chunks = chunk_text(text_input) if split_text else [text_input]
+            for i, chunk in enumerate(chunks):
+                data.append(
+                    {
+                        "basename": truncate_basename(slugify(chunk)),
+                        text_representation.value: chunk,
+                        "language": language or DEFAULT_LANGUAGE,
+                        "speaker": speaker or DEFAULT_SPEAKER,
+                        "is_last_input_chunk": (
+                            i == len(chunks) - 1
+                        ),  # True if end of a text_input, False otherwise
+                    }
+                )
+            print(f"Processing text: {chunks}", file=sys.stderr)
     else:
         data = load_data_from_filelist(
             filelist,
@@ -173,6 +231,7 @@ def prepare_data(
             speaker,
             DEFAULT_LANGUAGE,
             DEFAULT_SPEAKER,
+            output_type,
         )
 
     validate_data_keys_with_model_keys(
@@ -283,6 +342,7 @@ def synthesize_helper(
             model=model,
             text_representation=text_representation,
             style_reference=style_reference,
+            output_type=output_type,
         )
     else:
         data = filelist_data
@@ -362,6 +422,7 @@ def synthesize_helper(
     )
 
 
+@merge_args(inference_base_command_interface)
 def synthesize(  # noqa: C901
     model_path: Path = typer.Argument(
         ...,
@@ -486,6 +547,7 @@ def synthesize(  # noqa: C901
         "-n",
         help="Number of workers to process the data.",
     ),
+    **kwargs,
 ):
     """Given some text and a trained model, generate some audio. i.e. perform typical speech synthesis"""
     # TODO: allow for changing of language/speaker and variance control
@@ -533,6 +595,7 @@ def synthesize(  # noqa: C901
     # Load checkpoints
     print(f"Loading checkpoint from {model_path}", file=sys.stderr)
 
+    from everyvoice.base_cli.helpers import inference_base_command
     from pydantic import ValidationError
 
     try:
@@ -541,6 +604,8 @@ def synthesize(  # noqa: C901
         logger.error(f"Unable to load {model_path}: {e}")
         sys.exit(1)
     model.eval()
+
+    inference_base_command(model, **kwargs)
 
     # get global step
     # We can't just use model.global_step because it gets reset by lightning
