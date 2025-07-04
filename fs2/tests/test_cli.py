@@ -262,8 +262,8 @@ class PrepareSynthesizeDataTest(TestCase):
         self.assertEqual(len(data), 2)
         self.assertEqual(data[0]["characters"], a)
         self.assertEqual(data[1]["characters"], b)
-        self.assertFalse(data[0]["last_input_chunk"])
-        self.assertTrue(data[1]["last_input_chunk"])
+        self.assertFalse(data[0]["is_last_input_chunk"])
+        self.assertTrue(data[1]["is_last_input_chunk"])
 
     def test_no_chunking(self):
         """
@@ -293,7 +293,7 @@ class PrepareSynthesizeDataTest(TestCase):
         )
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]["characters"], a + " " + b)
-        self.assertTrue(data[0]["last_input_chunk"])
+        self.assertTrue(data[0]["is_last_input_chunk"])
 
 
 class ValidateDataWithModelTest(TestCase):

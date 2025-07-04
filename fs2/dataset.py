@@ -208,7 +208,9 @@ class FastSpeechDataset(Dataset):
             # "label": item.get("label", "default"), # TODO: determine proper label
             "energy": energy,
             "pitch": pitch,
-            "last_input_chunk": item["last_input_chunk"] if self.inference else None,
+            "is_last_input_chunk": (
+                item["is_last_input_chunk"] if self.inference else None
+            ),
         }
 
         # used when returning scores

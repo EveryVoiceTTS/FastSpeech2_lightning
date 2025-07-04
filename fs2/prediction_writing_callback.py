@@ -262,7 +262,7 @@ class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
         basenames = batch["basename"]
         speakers = batch["speaker"]
         languages = batch["language"]
-        last_input_chunk = batch["last_input_chunk"]
+        is_last_input_chunk = batch["is_last_input_chunk"]
         unmasked_lens = list(outputs["tgt_lens"])
 
         if not self.current_filename:
@@ -276,7 +276,7 @@ class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
             # Concatenate the current chunk to the full spec
             self.full_spec = torch.cat((self.full_spec, spec), -1)
 
-            if last_input_chunk[i]:
+            if is_last_input_chunk[i]:
                 torch.save(
                     self.full_spec,
                     self.current_filename,  # type: ignore
@@ -676,7 +676,7 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
         basenames = batch["basename"]
         speakers = batch["speaker"]
         languages = batch["language"]
-        last_input_chunk = batch["last_input_chunk"]
+        is_last_input_chunk = batch["is_last_input_chunk"]
         unmasked_lens = list(outputs["tgt_lens"])
 
         if not self.current_filename:
@@ -691,7 +691,7 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
             self.full_wav = torch.cat((self.full_wav, trimmed_wav), -1)
 
             # If we have reached the end of one full wav, save it
-            if last_input_chunk[i]:
+            if is_last_input_chunk[i]:
                 torchaudio.save(
                     self.current_filename,
                     self.full_wav,
@@ -700,11 +700,15 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
                     encoding="PCM_S",
                     bits_per_sample=16,
                 )
+
+                # Reset the full spec file
                 self.full_wav = torch.tensor(())
-                if i + 1 < len(wavs):
+
+                # Update current_filename
+                if i + 1 < len(wavs):  # If there is another filename in this batch
                     self.current_filename = self.get_filename(
                         basenames[i + 1], speakers[i + 1], languages[i + 1]
                     )
-                else:
+                else:  # If we have reached the end of this batch
                     self.last_file_written = self.current_filename
                     self.current_filename = None

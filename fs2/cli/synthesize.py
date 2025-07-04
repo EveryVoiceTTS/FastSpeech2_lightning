@@ -122,7 +122,7 @@ def load_data_from_filelist(
                         text_representation.value: chunk,
                         "language": language or d.get("language", default_language),
                         "speaker": speaker or d.get("speaker", default_speaker),
-                        "last_input_chunk": (i == len(chunks) - 1),
+                        "is_last_input_chunk": (i == len(chunks) - 1),
                     }
                 )
 
@@ -165,7 +165,7 @@ def load_data_from_filelist(
                             text_representation.value: chunk.strip(),
                             "language": language or default_language,
                             "speaker": speaker or default_speaker,
-                            "last_input_chunk": (i == len(chunks) - 1),
+                            "is_last_input_chunk": (i == len(chunks) - 1),
                         }
                     )
                 print(f"Processing text: {chunks}", file=sys.stderr)
@@ -222,7 +222,7 @@ def prepare_data(
                         text_representation.value: chunk,
                         "language": language or DEFAULT_LANGUAGE,
                         "speaker": speaker or DEFAULT_SPEAKER,
-                        "last_input_chunk": (
+                        "is_last_input_chunk": (
                             i == len(chunks) - 1
                         ),  # True if end of a text_input, False otherwise
                     }

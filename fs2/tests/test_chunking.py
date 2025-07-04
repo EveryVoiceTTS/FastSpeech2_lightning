@@ -40,7 +40,7 @@ class ChunkingTestBase(TestCase):
                 "L1",
                 "L2",
             ],
-            "last_input_chunk": [1, 0],
+            "is_last_input_chunk": [1, 0],
         }
         cls.batch2 = {
             "basename": ["three", "four"],
@@ -57,7 +57,7 @@ class ChunkingTestBase(TestCase):
                 "L1",
                 "L2",
             ],
-            "last_input_chunk": [0, 1],
+            "is_last_input_chunk": [0, 1],
         }
 
 
