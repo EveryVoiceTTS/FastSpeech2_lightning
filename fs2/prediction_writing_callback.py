@@ -7,9 +7,14 @@ from typing import Any, Optional, Sequence
 import numpy as np
 import numpy.typing as npt
 import torch
+import torchaudio
+from everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.utils import (
+    truncate_basename,
+)
 from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import HiFiGANConfig
 from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.model import HiFiGAN
 from everyvoice.text.text_processor import TextProcessor
+from everyvoice.utils import slugify
 from loguru import logger
 from pympi import TextGrid
 from pytorch_lightning.callbacks import Callback
@@ -222,7 +227,7 @@ class ScorerCallback(Callback):
 
 class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
     """
-    This callback runs inference on a provided text-to-spec model and saves the resulting Mel spectrograms to disk as pytorch files. These can be used to fine-tune an EveryVoice spec-to-wav model.
+    This callback reassembles text chunks, runs inference on a provided text-to-spec model and saves the resulting Mel spectrograms to disk as pytorch files. These can be used to fine-tune an EveryVoice spec-to-wav model.
     """
 
     def __init__(
@@ -242,6 +247,9 @@ class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
         self.output_key = output_key
         logger.info(f"Saving pytorch output to {self.save_dir}")
 
+        self.full_text: str = ""  # Accumulates full text before saving file
+        self.full_spec = torch.tensor(())  # Accumulates full input before saving file
+
     def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
         self,
         _trainer,
@@ -253,19 +261,38 @@ class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
     ):
         assert self.output_key in outputs and outputs[self.output_key] is not None
         assert "tgt_lens" in outputs and outputs["tgt_lens"] is not None
-        for basename, speaker, language, data, unmasked_len in zip(
-            batch["basename"],
-            batch["speaker"],
-            batch["language"],
-            outputs[self.output_key],  # type: ignore
-            outputs["tgt_lens"],
-        ):
-            torch.save(
-                data[:unmasked_len]
-                .cpu()
-                .transpose(0, 1),  # save tensors as [K (bands), T (frames)]
-                self.get_filename(basename, speaker, language),
-            )
+
+        texts = batch["raw_text"]
+        speakers = batch["speaker"]
+        languages = batch["language"]
+        is_last_input_chunk = batch["is_last_input_chunk"]
+        unmasked_lens = list(outputs["tgt_lens"])
+
+        for i, data in enumerate(outputs[self.output_key]):  # type: ignore
+            # save tensors as [K (bands), T (frames)]
+            spec = data[: unmasked_lens[i]].cpu().transpose(0, 1)
+
+            # Concatenate the current chunk to the full spec
+            self.full_spec = torch.cat((self.full_spec, spec), -1)
+
+            # Concatenate the current text to the full text
+            self.full_text += texts[i]
+
+            if is_last_input_chunk[i]:
+                # Generate filename
+                # Assumes that speakers will be the same across chunks in the same text input
+                basename = truncate_basename(slugify(self.full_text))
+                filename = self.get_filename(basename, speakers[i], languages[i])
+
+                # Save file
+                torch.save(
+                    self.full_spec,
+                    filename,  # type: ignore
+                )
+
+                # Reset the accumulator variables
+                self.full_spec = torch.tensor(())
+                self.full_text = ""
 
 
 class PredictionWritingAlignedTextCallback(PredictionWritingCallbackBase):
@@ -582,6 +609,9 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
             include_global_step_in_filename=True,
         )
 
+        self.last_file_written: Optional[str] = None  # Necessary for the demo
+        self.full_text: str = ""  # Accumulates full text before saving file
+        self.full_wav = torch.tensor(())  # Accumulates full wav before saving file
         self.output_key = output_key
         self.device = device
         self.vocoder_model = vocoder_model
@@ -635,26 +665,47 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
         _batch_idx: int,
         _dataloader_idx: int = 0,
     ):
-        import torchaudio
-
         logger.trace("Generating waveform...")
 
         wavs, sr = self.synthesize_audio(outputs)
 
         assert "tgt_lens" in outputs and outputs["tgt_lens"] is not None
-        for basename, speaker, language, wav, unmasked_len in zip(
-            batch["basename"],
-            batch["speaker"],
-            batch["language"],
-            wavs,
-            outputs["tgt_lens"],
-        ):
-            torchaudio.save(
-                self.get_filename(basename, speaker, language),
-                # the vocoder output includes padding so we have to remove that
-                wav[:, : (unmasked_len * self.output_hop_size)],
-                sr,
-                format="wav",
-                encoding="PCM_S",
-                bits_per_sample=16,
-            )
+
+        texts = batch["raw_text"]
+        speakers = batch["speaker"]
+        languages = batch["language"]
+        is_last_input_chunk = batch["is_last_input_chunk"]
+        unmasked_lens = list(outputs["tgt_lens"])
+
+        for i, wav in enumerate(wavs):
+            # The vocoder output includes padding, so we have to remove that
+            trimmed_wav = wav[:, : (unmasked_lens[i] * self.output_hop_size)]
+
+            # Concatenate the current chunk to the full wav
+            self.full_wav = torch.cat((self.full_wav, trimmed_wav), -1)
+
+            # Concatenate the current text to the full text
+            self.full_text += texts[i]
+
+            if is_last_input_chunk[i]:
+                # Generate filename
+                # Assumes that speakers will be the same across chunks in the same text input
+                basename = truncate_basename(slugify(self.full_text))
+                filename = self.get_filename(basename, speakers[i], languages[i])
+
+                # Save file
+                torchaudio.save(
+                    filename,
+                    self.full_wav,
+                    sr,
+                    format="wav",
+                    encoding="PCM_S",
+                    bits_per_sample=16,
+                )
+
+                # Reset the accumulator variables
+                self.full_wav = torch.tensor(())
+                self.full_text = ""
+
+                # Update last_file_written (for demo)
+                self.last_file_written = filename
