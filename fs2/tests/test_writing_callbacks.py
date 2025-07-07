@@ -284,17 +284,16 @@ class TestWritingOfflineRAS(WritingTestBase):
                     vocoder_config=vocoder.config,
                     vocoder_global_step=10,
                 )
-            with silence_c_stderr():
-                for writer in writers.values():
-                    writer.on_predict_batch_end(
-                        _trainer=None,
-                        _pl_module=None,
-                        outputs=self.outputs,
-                        batch=self.batch,
-                        _batch_idx=0,
-                        _dataloader_idx=0,
-                    )
-                    output_dir = writer.save_dir
+            for writer in writers.values():
+                writer.on_predict_batch_end(
+                    _trainer=None,
+                    _pl_module=None,
+                    outputs=self.outputs,
+                    batch=self.batch,
+                    _batch_idx=0,
+                    _dataloader_idx=0,
+                )
+                output_dir = writer.save_dir
 
             # print(output_dir, *output_dir.glob("**/*"))  # For debugging
             output_files = (
