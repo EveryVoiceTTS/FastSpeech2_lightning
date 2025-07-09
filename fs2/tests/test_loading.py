@@ -2,8 +2,12 @@ import tempfile
 from pathlib import Path
 from unittest import TestCase
 
+from everyvoice.config.shared_types import ContactInformation
+from everyvoice.config.type_definitions import DatasetTextRepresentation
 from everyvoice.tests.stubs import silence_c_stderr
+from everyvoice.text.lookups import LookupTable
 
+from ..cli.synthesize import load_data_from_filelist
 from ..config import FastSpeech2Config
 from ..model import FastSpeech2
 from ..type_definitions_heavy import Stats, StatsInfo
@@ -224,3 +228,43 @@ class TestLoadingConfig(TestCase):
             r"Your config was created with a newer version of EveryVoice, please update your software.",
         ):
             FastSpeech2Config(**reference.model_dump())
+
+
+class StubModelWithConfigOnly:
+    def __init__(self):
+        self.config = FastSpeech2Config(
+            contact=ContactInformation(
+                contact_name="Unit Testing Script",
+                contact_email="unit_tester@mail.com",
+            )
+        )
+        self.lang2id: LookupTable = {}
+        self.speaker2id: LookupTable = {}
+
+
+class TestLoadingData(TestCase):
+
+    def write_and_load(self, file_contents: str):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            data_file = Path(tmpdir) / "data_file"
+            with open(data_file, "w") as f:
+                f.write(file_contents)
+            with silence_c_stderr():
+                data = load_data_from_filelist(
+                    data_file,
+                    StubModelWithConfigOnly(),
+                    DatasetTextRepresentation.characters,
+                )
+            return data
+
+    def test_load_oneline(self):
+        data = self.write_and_load("this is a test\n")
+        self.assertEqual(len(data), 1)
+
+    def test_load_twolines(self):
+        data = self.write_and_load("test line 1\ntest line 2\n")
+        self.assertEqual(len(data), 2)
+
+    def test_load_psv(self):
+        data = self.write_and_load("characters|language\nfoo|eng\nbar|eng\nbaz|fra\n")
+        self.assertEqual(len(data), 3)
