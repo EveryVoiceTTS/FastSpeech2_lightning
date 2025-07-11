@@ -284,7 +284,7 @@ class FastSpeech2(pl.LightningModule):
         ckpt_model_type = model_info.get("name", "MISSING_TYPE")
         if ckpt_model_type != self.__class__.__name__:
             raise TypeError(
-                f"""Wrong model type ({ckpt_model_type}), we are expecting a '{ self.__class__.__name__ }' model"""
+                f"""Wrong model type ({ckpt_model_type}), we are expecting a '{self.__class__.__name__}' model"""
             )
 
         ckpt_version = Version(model_info.get("version", "0.0"))
@@ -427,7 +427,7 @@ class FastSpeech2(pl.LightningModule):
             vocoder_model, vocoder_config = load_hifigan_from_checkpoint(
                 vocoder_ckpt, input_.device
             )
-            wav, sr = synthesize_data(input_, vocoder_model, vocoder_config)
+            wav, sr = synthesize_data(input_, vocoder_model, vocoder_config)  # type: ignore[arg-type]
 
             self.logger.experiment.add_audio(  # type: ignore[attr-defined]
                 f"copy-synthesis/wav_{batch['basename'][0]}",
@@ -507,7 +507,7 @@ class FastSpeech2(pl.LightningModule):
             vocoder_model, vocoder_config = load_hifigan_from_checkpoint(
                 vocoder_ckpt, input_.device
             )
-            wav, sr = synthesize_data(input_, vocoder_model, vocoder_config)
+            wav, sr = synthesize_data(input_, vocoder_model, vocoder_config)  # type: ignore[arg-type]
             self.logger.experiment.add_audio(  # type: ignore[attr-defined]
                 f"pred/wav_{batch['basename'][0]}", wav, self.global_step, sr
             )
