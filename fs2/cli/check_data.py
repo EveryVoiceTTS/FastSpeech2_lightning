@@ -116,6 +116,7 @@ def check_data_command(  # noqa: C901
 
     output_dir.mkdir(exist_ok=True, parents=True)
 
+    combined_filelist_data: list[dict] | None
     if filelist is None:
         training_filelist = generic_psv_filelist_reader(
             config.training.training_filelist
