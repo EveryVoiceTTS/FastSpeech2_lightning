@@ -97,6 +97,10 @@ def load_data_from_filelist(
             }
             for d in data
         ]
+        if not data:
+            # If there is no data, it means we had a one-line input file. Raise KeyError
+            # so we enter the except block below and read it as a plain text file.
+            raise KeyError
     except KeyError:
         # TODO: Errors should have better formatting:
         #       https://github.com/EveryVoiceTTS/FastSpeech2_lightning/issues/26
