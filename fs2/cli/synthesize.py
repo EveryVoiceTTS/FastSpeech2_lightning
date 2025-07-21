@@ -5,10 +5,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import typer
-from everyvoice.base_cli.interfaces import (
-    complete_path,
-    inference_base_command_interface,
-)
+from everyvoice.base_cli.interfaces import inference_base_command_interface
 from everyvoice.config.type_definitions import (
     DatasetTextRepresentation,
     TargetTrainingTextRepresentationLevel,
