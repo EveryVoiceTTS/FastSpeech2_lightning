@@ -94,10 +94,13 @@ class WritingTestBase(TestCase):
         cls.batch = {
             "basename": [
                 "short",
-                "This utterance is way too long",
+                "This-utterance-is-wa-dcae74b8",
             ],
             "duration_control": [1.0, 1.0],
-            "raw_text": ["test", "W̱SÁNEĆ"],
+            "raw_text": [
+                "short",
+                "This utterance is way too long",
+            ],
             "text": [
                 torch.IntTensor([2, 3, 4, 5, 6, 7, 8], device="cpu"),
                 torch.IntTensor([2, 3, 4, 5, 6, 7, 8], device="cpu"),
@@ -145,7 +148,7 @@ class TestWritingSpec(WritingTestBase):
                 _dataloader_idx=0,
             )
             output_dir = writer.save_dir
-            # print(output_dir, *output_dir.glob("**"))  # For debugging
+            # print(output_dir, *output_dir.glob("**/*"))  # For debugging
             self.assertTrue(output_dir.exists())
             self.assertTrue(
                 (
@@ -155,7 +158,7 @@ class TestWritingSpec(WritingTestBase):
             self.assertTrue(
                 (
                     output_dir
-                    / "This utterance is way too long--spk2--lngB--spec-pred-22050-mel-librosa.pt"
+                    / "This-utterance-is-wa-dcae74b8--spk2--lngB--spec-pred-22050-mel-librosa.pt"
                 ).exists()
             )
 
@@ -199,13 +202,13 @@ class TestWritingTextGrid(WritingTestBase):
             self.assertTrue(
                 (
                     output_dir
-                    / "This utterance is way too long--spk2--lngB--22050-mel-librosa.TextGrid"
+                    / "This-utterance-is-wa-dcae74b8--spk2--lngB--22050-mel-librosa.TextGrid"
                 ).exists()
             )
             tg = TextGrid(
                 file_path=(
                     output_dir
-                    / "This utterance is way too long--spk2--lngB--22050-mel-librosa.TextGrid"
+                    / "This-utterance-is-wa-dcae74b8--spk2--lngB--22050-mel-librosa.TextGrid"
                 )
             )
             tiers = list(tg.get_tiers())
@@ -213,7 +216,7 @@ class TestWritingTextGrid(WritingTestBase):
             self.assertEqual(tiers[1].name, "phone annotations")
             self.assertEqual(tiers[2].name, "words")
             self.assertEqual(tiers[3].name, "word annotations")
-            self.assertEqual(tiers[2].intervals[0][2], "W̱SÁNEĆ")
+            self.assertEqual(tiers[2].intervals[0][2], "This")
 
 
 class TestWritingReadAlong(WritingTestBase):
@@ -248,7 +251,7 @@ class TestWritingReadAlong(WritingTestBase):
             output_files = (
                 output_dir / "short--spk1--lngA--22050-mel-librosa.readalong",
                 output_dir
-                / "This utterance is way too long--spk2--lngB--22050-mel-librosa.readalong",
+                / "This-utterance-is-wa-dcae74b8--spk2--lngB--22050-mel-librosa.readalong",
             )
             for output_file in output_files:
                 with self.subTest(output_file=output_file):
@@ -296,10 +299,12 @@ class TestWritingOfflineRAS(WritingTestBase):
                 output_dir = writer.save_dir
 
             # print(output_dir, *output_dir.glob("**/*"))  # For debugging
+
+            self.assertTrue(output_dir.exists())
             output_files = (
                 output_dir / "short--spk1--lngA--22050-mel-librosa.html",
                 output_dir
-                / "This utterance is way too long--spk2--lngB--22050-mel-librosa.html",
+                / "This-utterance-is-wa-dcae74b8--spk2--lngB--22050-mel-librosa.html",
             )
             for output_file in output_files:
                 with self.subTest(output_file=output_file):
@@ -351,7 +356,7 @@ class TestWritingWav(WritingTestBase):
                 _dataloader_idx=0,
             )
             output_dir = writer.save_dir
-            # print(output_dir, *output_dir.glob("**"))  # For debugging
+            # print(output_dir, *output_dir.glob("**/*"))  # For debugging
             self.assertTrue(output_dir.exists())
             self.assertTrue(
                 (
@@ -361,6 +366,6 @@ class TestWritingWav(WritingTestBase):
             self.assertTrue(
                 (
                     output_dir
-                    / "This utterance is way too long--spk2--lngB--ckpt=77--v_ckpt=10--pred.wav"
+                    / "This-utterance-is-wa-dcae74b8--spk2--lngB--ckpt=77--v_ckpt=10--pred.wav"
                 ).exists()
             )
