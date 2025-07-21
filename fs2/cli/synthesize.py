@@ -117,7 +117,7 @@ def load_data_from_filelist(
                     {
                         "basename": d.get(
                             "basename",
-                            truncate_basename(slugify(text_line)),
+                            truncate_basename(slugify(chunk)),
                         ),  # Only truncate the basename if the basename doesn't already exist in the filelist.
                         text_representation.value: chunk,
                         "language": language or d.get("language", default_language),
