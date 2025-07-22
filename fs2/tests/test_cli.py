@@ -7,14 +7,16 @@ import io
 from contextlib import redirect_stderr
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest import TestCase
+from unittest import TestCase, mock
 
 from everyvoice.config.shared_types import ContactInformation
+from everyvoice.config.text_config import TextConfig
 from everyvoice.config.type_definitions import (
     DatasetTextRepresentation,
     TargetTrainingTextRepresentationLevel,
 )
 from everyvoice.tests.basic_test_case import BasicTestCase
+from everyvoice.tests.model_stubs import get_stubbed_model
 from everyvoice.tests.preprocessed_audio_fixture import PreprocessedAudioFixture
 from everyvoice.tests.stubs import capture_stderr, silence_c_stderr
 from everyvoice.utils import generic_psv_filelist_reader
@@ -83,6 +85,40 @@ class SynthesizeTest(TestCase):
             )
             self.assertIn("You must define either --text or --filelist", result.stdout)
 
+    def mock_synthesis(self, *_args, **_kwargs):
+        print(_kwargs["model"].config)
+
+    def test_config_args(self):
+        """
+        Tests the -c flag with 'everyvoice synthesize'
+        """
+        with TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            _, spec_model_path = get_stubbed_model(tmpdir)
+
+            with mock.patch(
+                self.__module__.replace(
+                    "tests.test_cli", "cli.synthesize.synthesize_helper"
+                ),
+                side_effect=self.mock_synthesis,
+            ):
+
+                result = self.runner.invoke(
+                    app,
+                    [
+                        "synthesize",
+                        str(spec_model_path),
+                        "-t",
+                        "hello world",
+                        "-c",
+                        "text.split_text=False",
+                        "--output-type",
+                        "spec",
+                    ],
+                )
+                self.assertEqual(result.exit_code, 0)
+                self.assertIn("split_text=False", result.stdout)
+
 
 class MockModelForPrepare:
     class Dummy:
@@ -96,10 +132,12 @@ class MockModelForPrepare:
         multilingual,
         multispeaker,
         target_text_representation_level,
+        text_config=TextConfig(),
     ):
         self.lang2id = lang2id
         self.speaker2id = speaker2id
         self.config = self.Dummy()
+        self.config.text = text_config
         self.config.training = self.Dummy()
         self.config.training.filelist_loader = filelist_loader
         self.config.model = self.Dummy()
@@ -110,6 +148,8 @@ class MockModelForPrepare:
         )
 
 
+# TODO: Currently, an extra unwanted split occurs on the period in "Mr. Neild".
+# In future versions, we would like to prevent erroneous splitting on abbreviations.
 class PrepareSynthesizeDataTest(TestCase):
     """"""
 
@@ -134,7 +174,7 @@ class PrepareSynthesizeDataTest(TestCase):
             ),
             text_representation=DatasetTextRepresentation.characters,
         )
-        self.assertEqual(len(data), 10)
+        self.assertEqual(len(data), 11)
         self.assertTrue(all((d["language"] == "foo" for d in data)))
 
     def test_filelist_speaker(self):
@@ -163,7 +203,7 @@ class PrepareSynthesizeDataTest(TestCase):
             "LJ002 this is a really long basename",
             "Asserts that if a filelist provides a basename, it won't get slugified or truncated",
         )
-        self.assertEqual(len(data), 10)
+        self.assertEqual(len(data), 11)
         self.assertTrue(all((d["speaker"] == "bar" for d in data)))
 
     def test_plain_filelist(self):
@@ -187,12 +227,73 @@ class PrepareSynthesizeDataTest(TestCase):
             )
         self.assertEqual(
             data[-1]["basename"],
-            "Other-cases-are-reco-674e00ab",
+            "Neild-found-a-man-na-80dfa7e5",
             "Asserts that basenames are truncated and slugified",
         )
-        self.assertEqual(len(data), 9)
+        self.assertEqual(len(data), 10)
         self.assertTrue(all((d["language"] == "foo" for d in data)))
         self.assertTrue(all((d["speaker"] == "bar" for d in data)))
+
+    def test_chunking(self):
+        """
+        Provide a long text and verify that it is being chunked properly.
+        """
+
+        a = "There are approximately 70 Indigenous languages spoken in Canada from 10 distinct language families."
+        b = "As a consequence of the residential school system and other policies of cultural suppression, the majority of these languages now have fewer than 500 fluent speakers remaining, most of them elderly."
+
+        data = prepare_synthesize_data(
+            texts=[a + " " + b],
+            language="foo",
+            speaker="bar",
+            duration_control=1.0,
+            style_reference=None,
+            filelist=Path(),  # Does not get used in this test
+            model=MockModelForPrepare(
+                lang2id={"foo": 1},
+                speaker2id={"bar": 2},
+                filelist_loader=generic_psv_filelist_reader,
+                multilingual=True,
+                multispeaker=True,
+                target_text_representation_level=TargetTrainingTextRepresentationLevel.characters,
+            ),
+            text_representation=DatasetTextRepresentation.characters,
+        )
+        self.assertEqual(len(data), 2)
+        self.assertEqual(data[0]["characters"], a)
+        self.assertEqual(data[1]["characters"], b)
+        self.assertFalse(data[0]["is_last_input_chunk"])
+        self.assertTrue(data[1]["is_last_input_chunk"])
+
+    def test_no_chunking(self):
+        """
+        Provide a long text and verify that it is not chunked when split_text = False.
+        """
+
+        a = "There are approximately 70 Indigenous languages spoken in Canada from 10 distinct language families."
+        b = "As a consequence of the residential school system and other policies of cultural suppression, the majority of these languages now have fewer than 500 fluent speakers remaining, most of them elderly."
+
+        data = prepare_synthesize_data(
+            texts=[a + " " + b],
+            language="foo",
+            speaker="bar",
+            duration_control=1.0,
+            style_reference=None,
+            filelist=Path(__file__).parent / "data/filelist.psv",
+            model=MockModelForPrepare(
+                lang2id={"foo": 1},
+                speaker2id={"bar": 2},
+                filelist_loader=generic_psv_filelist_reader,
+                multilingual=True,
+                multispeaker=True,
+                target_text_representation_level=TargetTrainingTextRepresentationLevel.characters,
+                text_config=TextConfig(split_text=False),
+            ),
+            text_representation=DatasetTextRepresentation.characters,
+        )
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["characters"], a + " " + b)
+        self.assertTrue(data[0]["is_last_input_chunk"])
 
 
 class ValidateDataWithModelTest(TestCase):

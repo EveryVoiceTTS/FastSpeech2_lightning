@@ -4,11 +4,9 @@ from unittest import TestCase
 
 import torch
 from everyvoice.config.shared_types import ContactInformation
-from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import HiFiGANConfig
-from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import HiFiGAN
+from everyvoice.tests.model_stubs import get_stubbed_vocoder
 from everyvoice.tests.stubs import silence_c_stderr
 from pympi import TextGrid
-from pytorch_lightning import Trainer
 
 from ..config import FastSpeech2Config, FastSpeech2TrainingConfig
 from ..prediction_writing_callback import get_synthesis_output_callbacks
@@ -96,10 +94,13 @@ class WritingTestBase(TestCase):
         cls.batch = {
             "basename": [
                 "short",
-                "This utterance is way too long",
+                "This-utterance-is-wa-dcae74b8",
             ],
             "duration_control": [1.0, 1.0],
-            "raw_text": ["test", "W̱SÁNEĆ"],
+            "raw_text": [
+                "short",
+                "This utterance is way too long",
+            ],
             "text": [
                 torch.IntTensor([2, 3, 4, 5, 6, 7, 8], device="cpu"),
                 torch.IntTensor([2, 3, 4, 5, 6, 7, 8], device="cpu"),
@@ -112,6 +113,7 @@ class WritingTestBase(TestCase):
                 "lngA",
                 "lngB",
             ],
+            "is_last_input_chunk": [1, 1],
         }
 
 
@@ -146,7 +148,7 @@ class TestWritingSpec(WritingTestBase):
                 _dataloader_idx=0,
             )
             output_dir = writer.save_dir
-            # print(output_dir, *output_dir.glob("**"))  # For debugging
+            # print(output_dir, *output_dir.glob("**/*"))  # For debugging
             self.assertTrue(output_dir.exists())
             self.assertTrue(
                 (
@@ -156,7 +158,7 @@ class TestWritingSpec(WritingTestBase):
             self.assertTrue(
                 (
                     output_dir
-                    / "This utterance is way too long--spk2--lngB--spec-pred-22050-mel-librosa.pt"
+                    / "This-utterance-is-wa-dcae74b8--spk2--lngB--spec-pred-22050-mel-librosa.pt"
                 ).exists()
             )
 
@@ -200,13 +202,13 @@ class TestWritingTextGrid(WritingTestBase):
             self.assertTrue(
                 (
                     output_dir
-                    / "This utterance is way too long--spk2--lngB--22050-mel-librosa.TextGrid"
+                    / "This-utterance-is-wa-dcae74b8--spk2--lngB--22050-mel-librosa.TextGrid"
                 ).exists()
             )
             tg = TextGrid(
                 file_path=(
                     output_dir
-                    / "This utterance is way too long--spk2--lngB--22050-mel-librosa.TextGrid"
+                    / "This-utterance-is-wa-dcae74b8--spk2--lngB--22050-mel-librosa.TextGrid"
                 )
             )
             tiers = list(tg.get_tiers())
@@ -214,7 +216,7 @@ class TestWritingTextGrid(WritingTestBase):
             self.assertEqual(tiers[1].name, "phone annotations")
             self.assertEqual(tiers[2].name, "words")
             self.assertEqual(tiers[3].name, "word annotations")
-            self.assertEqual(tiers[2].intervals[0][2], "W̱SÁNEĆ")
+            self.assertEqual(tiers[2].intervals[0][2], "This")
 
 
 class TestWritingReadAlong(WritingTestBase):
@@ -249,7 +251,7 @@ class TestWritingReadAlong(WritingTestBase):
             output_files = (
                 output_dir / "short--spk1--lngA--22050-mel-librosa.readalong",
                 output_dir
-                / "This utterance is way too long--spk2--lngB--22050-mel-librosa.readalong",
+                / "This-utterance-is-wa-dcae74b8--spk2--lngB--22050-mel-librosa.readalong",
             )
             for output_file in output_files:
                 with self.subTest(output_file=output_file):
@@ -269,7 +271,7 @@ class TestWritingOfflineRAS(WritingTestBase):
     def test_writing_offline_ras(self):
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
-            vocoder, vocoder_path = get_dummy_vocoder(tmp_dir)
+            vocoder, vocoder_path = get_stubbed_vocoder(tmp_dir)
             with silence_c_stderr():
                 writers = get_synthesis_output_callbacks(
                     [SynthesizeOutputFormats.readalong_html],
@@ -285,23 +287,24 @@ class TestWritingOfflineRAS(WritingTestBase):
                     vocoder_config=vocoder.config,
                     vocoder_global_step=10,
                 )
-            with silence_c_stderr():
-                for writer in writers.values():
-                    writer.on_predict_batch_end(
-                        _trainer=None,
-                        _pl_module=None,
-                        outputs=self.outputs,
-                        batch=self.batch,
-                        _batch_idx=0,
-                        _dataloader_idx=0,
-                    )
-                    output_dir = writer.save_dir
+            for writer in writers.values():
+                writer.on_predict_batch_end(
+                    _trainer=None,
+                    _pl_module=None,
+                    outputs=self.outputs,
+                    batch=self.batch,
+                    _batch_idx=0,
+                    _dataloader_idx=0,
+                )
+                output_dir = writer.save_dir
 
             # print(output_dir, *output_dir.glob("**/*"))  # For debugging
+
+            self.assertTrue(output_dir.exists())
             output_files = (
                 output_dir / "short--spk1--lngA--22050-mel-librosa.html",
                 output_dir
-                / "This utterance is way too long--spk2--lngB--22050-mel-librosa.html",
+                / "This-utterance-is-wa-dcae74b8--spk2--lngB--22050-mel-librosa.html",
             )
             for output_file in output_files:
                 with self.subTest(output_file=output_file):
@@ -311,19 +314,6 @@ class TestWritingOfflineRAS(WritingTestBase):
                     # print(readalong)
                     self.assertIn("<read-along", readalong)
                     self.assertIn("<span slot", readalong)
-
-
-def get_dummy_vocoder(tmp_dir: Path) -> tuple[HiFiGAN, Path]:
-    contact_info = ContactInformation(
-        contact_name="Test Runner", contact_email="info@everyvoice.ca"
-    )
-    vocoder = HiFiGAN(HiFiGANConfig(contact=contact_info))
-    with silence_c_stderr():
-        trainer = Trainer(default_root_dir=str(tmp_dir), barebones=True)
-    trainer.strategy.connect(vocoder)
-    vocoder_path = tmp_dir / "vocoder"
-    trainer.save_checkpoint(vocoder_path)
-    return vocoder, vocoder_path
 
 
 class TestWritingWav(WritingTestBase):
@@ -339,7 +329,7 @@ class TestWritingWav(WritingTestBase):
         """
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
-            vocoder, vocoder_path = get_dummy_vocoder(tmp_dir)
+            vocoder, vocoder_path = get_stubbed_vocoder(tmp_dir)
 
             with silence_c_stderr():
                 writers = get_synthesis_output_callbacks(
@@ -366,7 +356,7 @@ class TestWritingWav(WritingTestBase):
                 _dataloader_idx=0,
             )
             output_dir = writer.save_dir
-            # print(output_dir, *output_dir.glob("**"))  # For debugging
+            # print(output_dir, *output_dir.glob("**/*"))  # For debugging
             self.assertTrue(output_dir.exists())
             self.assertTrue(
                 (
@@ -376,6 +366,6 @@ class TestWritingWav(WritingTestBase):
             self.assertTrue(
                 (
                     output_dir
-                    / "This utterance is way too long--spk2--lngB--ckpt=77--v_ckpt=10--pred.wav"
+                    / "This-utterance-is-wa-dcae74b8--spk2--lngB--ckpt=77--v_ckpt=10--pred.wav"
                 ).exists()
             )
