@@ -88,20 +88,8 @@ def load_data_from_filelist(
     from everyvoice.config.text_config import TextConfig
     from everyvoice.utils import slugify
 
-    # TODO: Implement Text Splitting for TextGrid and Readalong files
-    split_text: bool
-    if (
-        SynthesizeOutputFormats.textgrid in output_type
-        or SynthesizeOutputFormats.readalong_html in output_type
-        or SynthesizeOutputFormats.readalong_xml in output_type
-    ):
-        split_text = False
-        logger.warning(
-            "EveryVoice does not currently support text splitting for TextGrid or Readalong files. Config variable split_text has been set to False."
-        )
-    else:
-        text_config: TextConfig = model.config.text
-        split_text = text_config.split_text
+    text_config: TextConfig = model.config.text
+    split_text: bool = text_config.split_text
 
     try:
         data = []
@@ -186,20 +174,8 @@ def prepare_data(
     from everyvoice.config.text_config import TextConfig
     from everyvoice.utils import slugify
 
-    # TODO: Implement Text Splitting for TextGrid and Readalong files
-    split_text: bool
-    if (
-        SynthesizeOutputFormats.textgrid in output_type
-        or SynthesizeOutputFormats.readalong_html in output_type
-        or SynthesizeOutputFormats.readalong_xml in output_type
-    ):
-        split_text = False
-        logger.warning(
-            "EveryVoice does not currently support text splitting for TextGrid or Readalong files. Config variable split_text has been set to False."
-        )
-    else:
-        text_config: TextConfig = model.config.text
-        split_text = text_config.split_text
+    text_config: TextConfig = model.config.text
+    split_text: bool = text_config.split_text
 
     data: list[dict[str, Any]]
     # NOTE: The wizard adds a default speaker=`default` to the data.
