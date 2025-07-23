@@ -316,6 +316,10 @@ class PredictionWritingAlignedTextCallback(PredictionWritingCallbackBase):
             file_extension=file_extension,
             save_dir=save_dir,
         )
+        self.full_text: str = ""  # Accumulates full text before saving file
+        self.xmax: float = 0
+        self.phones: list[tuple[float, float, str]] = []
+        self.words: list[tuple[float, float, str]] = []
         self.text_processor = TextProcessor(config.text)
         self.output_key = output_key
         logger.info(f"Saving text output to {self.save_dir}")
@@ -409,32 +413,46 @@ class PredictionWritingAlignedTextCallback(PredictionWritingCallbackBase):
             "duration_prediction" in outputs
             and outputs["duration_prediction"] is not None
         )
-        for (
-            basename,
-            speaker,
-            language,
-            raw_text,
-            text,
-            duration_control,
-            log_duration_predictions,
-        ) in zip(
-            batch["basename"],
-            batch["speaker"],
-            batch["language"],
-            batch["raw_text"],
-            batch["text"],  # type: ignore
-            batch["duration_control"],
-            outputs["duration_prediction"],
-        ):
+
+        speakers = batch["speaker"]
+        languages = batch["language"]
+        texts = batch["text"]  # type: ignore
+        raw_texts = batch["raw_text"]
+        duration_controls = batch["duration_control"]
+        is_last_input_chunk = batch["is_last_input_chunk"]
+
+        for i, log_duration_predictions in enumerate(outputs["duration_prediction"]):
             # Get the phone/word alignment tokens
             xmax_seconds, phones, words = self.get_tokens_from_duration_and_labels(
-                log_duration_predictions, duration_control, text, raw_text
+                log_duration_predictions, duration_controls[i], texts[i], raw_texts[i]
             )
 
-            # Save the output (the subclass has to implement this)
-            self.save_aligned_text_to_file(
-                xmax_seconds, phones, words, basename, speaker, language
-            )
+            # Concatenate
+            self.full_text += raw_texts[i]
+            for phone in phones:
+                self.phones.append(
+                    (phone[0] + self.xmax, phone[1] + self.xmax, phone[2])
+                )
+            for word in words:
+                self.words.append((word[0] + self.xmax, word[1] + self.xmax, word[2]))
+            self.xmax += xmax_seconds
+
+            if is_last_input_chunk[i]:
+                # Save the output to file (the subclass has to implement this)
+                self.save_aligned_text_to_file(
+                    self.xmax,
+                    self.phones,
+                    self.words,
+                    self.full_text,
+                    speakers[i],
+                    languages[i],
+                )
+
+                # Reset the accumulator variables
+                self.full_text = ""
+                self.xmax = 0
+                self.phones = []
+                self.words = []
 
 
 class PredictionWritingTextGridCallback(PredictionWritingAlignedTextCallback):
@@ -462,11 +480,15 @@ class PredictionWritingTextGridCallback(PredictionWritingAlignedTextCallback):
         max_seconds: float,
         phones: list[tuple[float, float, str]],
         words: list[tuple[float, float, str]],
-        basename: str,
+        full_text: str,
         speaker: str,
         language: str,
     ):
         """Save the aligned text as a TextGrid with phones and words layers"""
+
+        # Find basename from full text
+        basename = truncate_basename(slugify(full_text))
+
         new_tg = TextGrid(xmax=max_seconds)
         phone_tier = new_tg.add_tier("phones")
         phone_annotation_tier = new_tg.add_tier("phone annotations")
@@ -511,11 +533,14 @@ class PredictionWritingReadAlongCallback(PredictionWritingAlignedTextCallback):
         max_seconds: float,
         phones: list[tuple[float, float, str]],
         words: list[tuple[float, float, str]],
-        basename: str,
+        full_text: str,
         speaker: str,
         language: str,
     ):
         """Save the aligned text as a .readalong file"""
+
+        # Find basename from full text
+        basename = truncate_basename(slugify(full_text))
 
         ras_tokens: list[Token] = []
         for start, end, label in words:
@@ -561,11 +586,14 @@ class PredictionWritingOfflineRASCallback(PredictionWritingAlignedTextCallback):
         max_seconds: float,
         phones: list[tuple[float, float, str]],
         words: list[tuple[float, float, str]],
-        basename: str,
+        full_text: str,
         speaker: str,
         language: str,
     ):
         """Save the aligned text as an Offline HTML readalong file"""
+
+        # Find basename from full text
+        basename = truncate_basename(slugify(full_text))
 
         ras_tokens: list[Token] = []
         for start, end, label in words:
