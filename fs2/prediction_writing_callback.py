@@ -492,13 +492,23 @@ class PredictionWritingTextGridCallback(PredictionWritingAlignedTextCallback):
         new_tg = TextGrid(xmax=max_seconds)
         phone_tier = new_tg.add_tier("phones")
         phone_annotation_tier = new_tg.add_tier("phone annotations")
-        for interval in phones:
+        for i in range(len(phones)):
+            interval = (
+                phones[i - 1][1] if i > 0 else 0,
+                phones[i][1] if i < len(phones) - 1 else max_seconds,
+                phones[i][2],
+            )
             phone_annotation_tier.add_interval(interval[0], interval[1], "")
             phone_tier.add_interval(*interval)
 
         word_tier = new_tg.add_tier("words")
         word_annotation_tier = new_tg.add_tier("word annotations")
-        for interval in words:
+        for i in range(len(words)):
+            interval = (
+                words[i - 1][1] if i > 0 else 0,
+                words[i][1] if i < len(words) - 1 else max_seconds,
+                words[i][2],
+            )
             word_tier.add_interval(*interval)
             word_annotation_tier.add_interval(interval[0], interval[1], "")
 
