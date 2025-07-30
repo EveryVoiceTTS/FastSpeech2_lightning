@@ -11,6 +11,7 @@ from everyvoice.tests.model_stubs import get_stubbed_vocoder
 from everyvoice.tests.stubs import silence_c_stderr
 from everyvoice.text.text_processor import TextProcessor
 from pydub import AudioSegment
+from pympi import TextGrid
 
 from ..config import FastSpeech2Config, FastSpeech2TrainingConfig
 from ..prediction_writing_callback import get_synthesis_output_callbacks
@@ -279,3 +280,73 @@ class TestWritingSpec(ChunkingTestBase):
         # There are four chunks but two outputs.
         # Output one contains only one chunk, so output_two should be 3 times longer
         self.assertEqual(output_one.size(-1) * 3, output_two.size(-1))
+
+
+class TestWritingTextGrid(ChunkingTestBase):
+    def test_textgrid_chunks(self):
+        """
+        Tests the correctness of the output of TextGrid files for chunked text over multiple batches.
+        """
+        writers = self.get_test_callback([SynthesizeOutputFormats.textgrid])
+
+        # Batch 1
+        writer = next(iter(writers.values()))
+        writer.on_predict_batch_end(
+            _trainer=None,
+            _pl_module=None,
+            outputs=self.outputs,
+            batch=self.batch1,
+            _batch_idx=0,
+            _dataloader_idx=0,
+        )
+        output_dir = writer.save_dir
+        # print(output_dir, *output_dir.glob("**/*"))  # For debugging
+        self.assertTrue(output_dir.exists())
+
+        # Batch 2
+        writer = next(iter(writers.values()))
+        writer.on_predict_batch_end(
+            _trainer=None,
+            _pl_module=None,
+            outputs=self.outputs,
+            batch=self.batch2,
+            _batch_idx=1,
+            _dataloader_idx=1,
+        )
+        # Test that the correctly named files were outputted
+        self.assertTrue(
+            (output_dir / "one--S1--L1--22050-mel-librosa.TextGrid").exists()
+        )
+        self.assertTrue(
+            (output_dir / "twothreefour--S2--L2--22050-mel-librosa.TextGrid").exists()
+        )
+
+        # Check that the correct words were added to the first TextGrid
+        tg = TextGrid(
+            file_path=(output_dir / "one--S1--L1--22050-mel-librosa.TextGrid")
+        )
+        tiers = list(tg.get_tiers())
+
+        phones = [interval[2] for interval in tiers[0].get_all_intervals()]
+        for phone, char in zip(list(phones), list("one")):
+            self.assertEqual(phone, char)
+
+        words = tiers[2].get_all_intervals()
+        self.assertEqual(len(words), 1)
+        self.assertEqual(words[0][2], "one")
+
+        # Check that the correct words were added to the second TextGrid
+        tg = TextGrid(
+            file_path=(output_dir / "twothreefour--S2--L2--22050-mel-librosa.TextGrid")
+        )
+        tiers = list(tg.get_tiers())
+
+        phones = [interval[2] for interval in tiers[0].get_all_intervals()]
+        for phone, char in zip(list(phones), list("twothreefour")):
+            self.assertEqual(phone, char)
+
+        words = tiers[2].get_all_intervals()
+        self.assertEqual(len(words), 3)
+        self.assertEqual(words[0][2], "two")
+        self.assertEqual(words[1][2], "three")
+        self.assertEqual(words[2][2], "four")
