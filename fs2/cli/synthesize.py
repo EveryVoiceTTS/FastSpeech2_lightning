@@ -90,13 +90,15 @@ def load_data_from_filelist(
 
     text_config: TextConfig = model.config.text
     split_text: bool = text_config.split_text
+    strong = text_config.strong_boundaries
+    weak = text_config.weak_boundaries
 
     try:
         data = []
         for d in model.config.training.filelist_loader(filelist):
             # Chunk longer texts, for better longform audio synthesis
-            text_line = d[text_representation.value]
-            chunks = chunk_text(text_line) if split_text else [text_line]
+            line = d[text_representation.value]
+            chunks = chunk_text(line, strong, weak) if split_text else [line]
             for i, chunk in enumerate(chunks):
                 data.append(
                     {
@@ -142,7 +144,7 @@ def load_data_from_filelist(
         with open(filelist, encoding="utf8") as file:
             for line in file:
                 # Chunk longer texts, for better longform audio synthesis
-                chunks = chunk_text(line) if split_text else [line]
+                chunks = chunk_text(line, strong, weak) if split_text else [line]
                 for i, chunk in enumerate(chunks):
                     data.append(
                         {
@@ -176,6 +178,8 @@ def prepare_data(
 
     text_config: TextConfig = model.config.text
     split_text: bool = text_config.split_text
+    strong = text_config.strong_boundaries
+    weak = text_config.weak_boundaries
 
     data: list[dict[str, Any]]
     # NOTE: The wizard adds a default speaker=`default` to the data.
@@ -185,9 +189,9 @@ def prepare_data(
     DEFAULT_SPEAKER = next(iter(model.speaker2id.keys()), None)
     if texts:
         data = []
-        for text_input in texts:
+        for text in texts:
             # Chunk longer texts, for better longform audio synthesis
-            chunks = chunk_text(text_input) if split_text else [text_input]
+            chunks = chunk_text(text, strong, weak) if split_text else [text]
             for i, chunk in enumerate(chunks):
                 data.append(
                     {
