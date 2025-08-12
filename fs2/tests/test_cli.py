@@ -132,7 +132,7 @@ class MockModelForPrepare:
         multilingual,
         multispeaker,
         target_text_representation_level,
-        text_config=TextConfig(),
+        text_config=TextConfig(boundaries={"foo": {"strong": ".!?", "weak": ",;:"}}),
     ):
         self.lang2id = lang2id
         self.speaker2id = speaker2id
@@ -287,7 +287,10 @@ class PrepareSynthesizeDataTest(TestCase):
                 multilingual=True,
                 multispeaker=True,
                 target_text_representation_level=TargetTrainingTextRepresentationLevel.characters,
-                text_config=TextConfig(split_text=False),
+                text_config=TextConfig(
+                    split_text=False,
+                    boundaries={"foo": {"strong": ".!?", "weak": ",;:"}},
+                ),
             ),
             text_representation=DatasetTextRepresentation.characters,
         )
