@@ -90,13 +90,35 @@ def load_data_from_filelist(
 
     text_config: TextConfig = model.config.text
     split_text: bool = text_config.split_text
+    strong_boundaries: str = ""
+    weak_boundaries: str = ""
+
+    try:
+        if language:
+            strong_boundaries = text_config.boundaries[language].strong
+            weak_boundaries = text_config.boundaries[language].weak
+        else:
+            strong_boundaries = text_config.boundaries[default_language].strong
+            weak_boundaries = text_config.boundaries[default_language].weak
+    except KeyError:
+        logger.warning(
+            f"Boundaries for language {language if language else default_language} could not be found in TextConfig. Splitting will not be performed."
+        )
 
     try:
         data = []
         for d in model.config.training.filelist_loader(filelist):
             # Chunk longer texts, for better longform audio synthesis
-            text_line = d[text_representation.value]
-            chunks = chunk_text(text_line) if split_text else [text_line]
+            line = d[text_representation.value]
+            chunks = (
+                chunk_text(
+                    line,
+                    strong_boundaries=strong_boundaries,
+                    weak_boundaries=weak_boundaries,
+                )
+                if split_text
+                else [line]
+            )
             for i, chunk in enumerate(chunks):
                 data.append(
                     {
@@ -142,7 +164,15 @@ def load_data_from_filelist(
         with open(filelist, encoding="utf8") as file:
             for line in file:
                 # Chunk longer texts, for better longform audio synthesis
-                chunks = chunk_text(line) if split_text else [line]
+                chunks = (
+                    chunk_text(
+                        line,
+                        strong_boundaries=strong_boundaries,
+                        weak_boundaries=weak_boundaries,
+                    )
+                    if split_text
+                    else [line]
+                )
                 for i, chunk in enumerate(chunks):
                     data.append(
                         {
@@ -176,6 +206,8 @@ def prepare_data(
 
     text_config: TextConfig = model.config.text
     split_text: bool = text_config.split_text
+    strong_boundaries: str = ""
+    weak_boundaries: str = ""
 
     data: list[dict[str, Any]]
     # NOTE: The wizard adds a default speaker=`default` to the data.
@@ -183,11 +215,32 @@ def prepare_data(
     # Knowing this, model.*2id should always have a default value thus DEFAULT_* should never be `None`.
     DEFAULT_LANGUAGE = next(iter(model.lang2id.keys()), None)
     DEFAULT_SPEAKER = next(iter(model.speaker2id.keys()), None)
+
+    try:
+        if language:
+            strong_boundaries = text_config.boundaries[language].strong
+            weak_boundaries = text_config.boundaries[language].weak
+        else:
+            strong_boundaries = text_config.boundaries[DEFAULT_LANGUAGE].strong
+            weak_boundaries = text_config.boundaries[DEFAULT_LANGUAGE].weak
+    except KeyError:
+        logger.warning(
+            f"Boundaries for language {language if language else DEFAULT_LANGUAGE} could not be found in TextConfig. Splitting will not be performed."
+        )
+
     if texts:
         data = []
-        for text_input in texts:
+        for text in texts:
             # Chunk longer texts, for better longform audio synthesis
-            chunks = chunk_text(text_input) if split_text else [text_input]
+            chunks = (
+                chunk_text(
+                    text,
+                    strong_boundaries=strong_boundaries,
+                    weak_boundaries=weak_boundaries,
+                )
+                if split_text
+                else [text]
+            )
             for i, chunk in enumerate(chunks):
                 data.append(
                     {
