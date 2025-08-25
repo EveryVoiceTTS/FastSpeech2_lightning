@@ -79,7 +79,6 @@ def load_data_from_filelist(
     default_speaker: str | None = None,
     output_type: list[SynthesizeOutputFormats] = [],
 ):
-
     if default_language is None:
         default_language = next(iter(model.lang2id.keys()), None)
     if default_speaker is None:
@@ -94,15 +93,12 @@ def load_data_from_filelist(
     weak_boundaries: str = ""
 
     try:
-        if language:
-            strong_boundaries = text_config.boundaries[language].strong
-            weak_boundaries = text_config.boundaries[language].weak
-        else:
-            strong_boundaries = text_config.boundaries[default_language].strong
-            weak_boundaries = text_config.boundaries[default_language].weak
+        effective_language = language or default_language or ""
+        strong_boundaries = text_config.boundaries[effective_language].strong
+        weak_boundaries = text_config.boundaries[effective_language].weak
     except KeyError:
         logger.warning(
-            f"Boundaries for language {language if language else default_language} could not be found in TextConfig. Splitting will not be performed."
+            f"Boundaries for language '{language if language else default_language}' could not be found in TextConfig. Splitting will not be performed."
         )
 
     try:
@@ -217,15 +213,12 @@ def prepare_data(
     DEFAULT_SPEAKER = next(iter(model.speaker2id.keys()), None)
 
     try:
-        if language:
-            strong_boundaries = text_config.boundaries[language].strong
-            weak_boundaries = text_config.boundaries[language].weak
-        else:
-            strong_boundaries = text_config.boundaries[DEFAULT_LANGUAGE].strong
-            weak_boundaries = text_config.boundaries[DEFAULT_LANGUAGE].weak
+        effective_language = language or DEFAULT_LANGUAGE or ""
+        strong_boundaries = text_config.boundaries[effective_language].strong
+        weak_boundaries = text_config.boundaries[effective_language].weak
     except KeyError:
         logger.warning(
-            f"Boundaries for language {language if language else DEFAULT_LANGUAGE} could not be found in TextConfig. Splitting will not be performed."
+            f"Boundaries for language '{language if language else DEFAULT_LANGUAGE}' could not be found in TextConfig. Splitting will not be performed."
         )
 
     if texts:
