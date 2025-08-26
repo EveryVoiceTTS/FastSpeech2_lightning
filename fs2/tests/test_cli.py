@@ -429,21 +429,6 @@ class CLITest(PreprocessedAudioFixture, BasicTestCase):
         self.assertLess(checked_data[0]["pesq"], 5.0)
         self.assertAlmostEqual(checked_data[0]["duration"], 5.17, 2)
 
-    # def test_compute_stats(self):
-    #     feat_prediction_config = EveryVoiceConfig.load_config_from_path().feature_prediction
-    #     preprocessor = Preprocessor(feat_prediction_config)
-    #     preprocessor.compute_stats()
-    # self.assertEqual(
-    #     self.preprocessor.config["preprocessing"]["audio"]["mel_mean"],
-    #     -4.018,
-    #     places=3,
-    # )
-    # self.assertEqual(
-    #     self.preprocessor.config["preprocessing"]["audio"]["mel_std"],
-    #     4.017,
-    #     places=3,
-    # )
-
     def test_commands_present(self):
         """
         Each subcommand is present in the the command's help message.
