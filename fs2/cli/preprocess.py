@@ -41,9 +41,13 @@ def preprocess(
     )
 
     if compute_stats:
+        # NOTE that these stats are computed over all datasets in a project, regardless of whether they are all the same language
         stats_path = config.preprocessing.save_dir / "stats.json"
-        e_scaler, p_scaler = preprocessor.compute_stats(
-            energy="energy" in processed, pitch="pitch" in processed
+        e_scaler, p_scaler, cl_scaler, pl_scaler = preprocessor.compute_stats(
+            energy="energy" in processed,
+            pitch="pitch" in processed,
+            char_length="text" in processed,
+            phone_length="text" in processed,
         )
         stats = {}
         if e_scaler:
@@ -52,7 +56,15 @@ def preprocess(
         if p_scaler:
             p_stats = p_scaler.calculate_stats()
             stats["pitch"] = p_stats
+        if cl_scaler:
+            cl_stats = cl_scaler.calculate_stats()
+            stats["character_length"] = cl_stats
+        if pl_scaler:
+            pl_stats = pl_scaler.calculate_stats()
+            stats["phone_length"] = pl_stats
+
         preprocessor.normalize_stats(e_scaler, p_scaler)
+
         # Merge with existing stats
         if stats_path.exists():
             with open(stats_path, "r", encoding="utf8") as f:
@@ -60,7 +72,5 @@ def preprocess(
         else:
             previous_stats = {}
         stats = {**previous_stats, **stats}
-        with open(
-            config.preprocessing.save_dir / "stats.json", "w", encoding="utf8"
-        ) as f:
+        with open(stats_path, "w", encoding="utf8") as f:
             json.dump(stats, f)

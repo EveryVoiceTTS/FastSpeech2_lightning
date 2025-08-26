@@ -7,6 +7,8 @@ Be careful not to cause this file to be imported when the CLI is launched, so th
 everyvoice -h and command line completion can remain fast.
 """
 
+from typing import Optional
+
 from pydantic import BaseModel, ConfigDict
 
 
@@ -30,3 +32,6 @@ class StatsInfo(BaseModel):
 class Stats(BaseModel):
     pitch: StatsInfo
     energy: StatsInfo
+    character_length: Optional[StatsInfo] = None
+    phone_length: Optional[StatsInfo] = None
+    arpabet_length: Optional[StatsInfo] = None
