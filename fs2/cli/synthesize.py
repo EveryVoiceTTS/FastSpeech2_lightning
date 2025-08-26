@@ -11,7 +11,7 @@ from everyvoice.config.type_definitions import (
     TargetTrainingTextRepresentationLevel,
 )
 from everyvoice.text.textsplit import chunk_text
-from everyvoice.utils import spinner
+from everyvoice.utils import slugify, spinner
 from loguru import logger
 from merge_args import merge_args
 from tqdm import tqdm
@@ -85,7 +85,9 @@ def load_data_from_filelist(
         default_speaker = next(iter(model.speaker2id.keys()), None)
 
     from everyvoice.config.text_config import TextConfig
-    from everyvoice.utils import slugify
+    from everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.type_definitions_heavy import (
+        Stats,
+    )
 
     text_config: TextConfig = model.config.text
     split_text: bool = text_config.split_text
@@ -100,6 +102,22 @@ def load_data_from_filelist(
         logger.warning(
             f"Boundaries for language '{language if language else default_language}' could not be found in TextConfig. Splitting will not be performed."
         )
+    try:
+        stats: Stats = model.stats
+        desired_length = (
+            stats.character_length.mean
+            if text_representation == DatasetTextRepresentation.characters
+            else stats.phone_length.mean
+        )
+        max_length = (
+            stats.character_length.max
+            if text_representation == DatasetTextRepresentation.characters
+            else stats.phone_length.max
+        )
+    except AttributeError:
+        # This is for unit testing or older models
+        desired_length = 100
+        max_length = 200
 
     try:
         data = []
@@ -109,6 +127,8 @@ def load_data_from_filelist(
             chunks = (
                 chunk_text(
                     line,
+                    desired_length=desired_length,
+                    max_length=max_length,
                     strong_boundaries=strong_boundaries,
                     weak_boundaries=weak_boundaries,
                 )
@@ -163,6 +183,8 @@ def load_data_from_filelist(
                 chunks = (
                     chunk_text(
                         line,
+                        desired_length=desired_length,
+                        max_length=max_length,
                         strong_boundaries=strong_boundaries,
                         weak_boundaries=weak_boundaries,
                     )
@@ -198,7 +220,9 @@ def prepare_data(
 ) -> list[dict[str, Any]]:
     """"""
     from everyvoice.config.text_config import TextConfig
-    from everyvoice.utils import slugify
+    from everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.type_definitions_heavy import (
+        Stats,
+    )
 
     text_config: TextConfig = model.config.text
     split_text: bool = text_config.split_text
@@ -220,6 +244,22 @@ def prepare_data(
         logger.warning(
             f"Boundaries for language '{language if language else DEFAULT_LANGUAGE}' could not be found in TextConfig. Splitting will not be performed."
         )
+    try:
+        stats: Stats = model.stats
+        desired_length = (
+            stats.character_length.mean
+            if text_representation == DatasetTextRepresentation.characters
+            else stats.phone_length.mean
+        )
+        max_length = (
+            stats.character_length.max
+            if text_representation == DatasetTextRepresentation.characters
+            else stats.phone_length.max
+        )
+    except AttributeError:
+        # This is for unit testing or older models
+        desired_length = 100
+        max_length = 200
 
     if texts:
         data = []
@@ -228,6 +268,8 @@ def prepare_data(
             chunks = (
                 chunk_text(
                     text,
+                    desired_length=desired_length,
+                    max_length=max_length,
                     strong_boundaries=strong_boundaries,
                     weak_boundaries=weak_boundaries,
                 )
