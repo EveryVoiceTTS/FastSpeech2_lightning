@@ -67,6 +67,57 @@ def validate_data_keys_with_model_keys(
             sys.exit(1)
 
 
+def get_text_split_params(
+    model: Any, language: str | None, text_representation: DatasetTextRepresentation
+) -> tuple[bool, tuple[float, float, str, str]]:
+    """
+    Calculates the parameters for text splitting (desired_length, max_length, strong_boundaries, weak_boundaries)
+    """
+    from everyvoice.config.text_config import TextConfig
+
+    from ..type_definitions_heavy import Stats
+
+    text_config: TextConfig = model.config.text
+    split_text: bool = text_config.split_text
+
+    strong_boundaries: str = ""
+    weak_boundaries: str = ""
+    desired_length: float = 100
+    max_length: float = 200
+
+    if split_text:
+        # Get splitting boundaries from Text Config
+        try:
+            effective_language = language or ""
+            strong_boundaries = text_config.boundaries[effective_language].strong
+            weak_boundaries = text_config.boundaries[effective_language].weak
+        except KeyError:
+            logger.warning(
+                f"Boundaries for language '{language}' could not be found in TextConfig. Chunking will not be performed."
+            )
+        # Get desired and max length from Stats
+        try:
+            stats: Stats = model.stats
+            match text_representation:
+                case DatasetTextRepresentation.characters:
+                    desired_length = stats.character_length.mean
+                    max_length = stats.character_length.max
+                case DatasetTextRepresentation.ipa_phones:
+                    desired_length = stats.phone_length.mean
+                    max_length = stats.phone_length.max
+                case DatasetTextRepresentation.arpabet:
+                    logger.warning(
+                        "Arpabet stats are not yet supported. Chunking with default lengths."
+                    )
+        except AttributeError:
+            # This is for unit testing or older models
+            logger.warning(
+                f"Length stats for {text_representation} could not be found. Chunking with default lengths."
+            )
+
+    return split_text, (desired_length, max_length, strong_boundaries, weak_boundaries)
+
+
 def load_data_from_filelist(
     filelist: Path,
     # model is of type ..model.FastSpeech2, but we make it Any to keep the CLI
@@ -84,57 +135,16 @@ def load_data_from_filelist(
     if default_speaker is None:
         default_speaker = next(iter(model.speaker2id.keys()), None)
 
-    from everyvoice.config.text_config import TextConfig
-    from everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.type_definitions_heavy import (
-        Stats,
+    split_text, split_params = get_text_split_params(
+        model, language or default_language, text_representation
     )
-
-    text_config: TextConfig = model.config.text
-    split_text: bool = text_config.split_text
-    strong_boundaries: str = ""
-    weak_boundaries: str = ""
-
-    try:
-        effective_language = language or default_language or ""
-        strong_boundaries = text_config.boundaries[effective_language].strong
-        weak_boundaries = text_config.boundaries[effective_language].weak
-    except KeyError:
-        logger.warning(
-            f"Boundaries for language '{language if language else default_language}' could not be found in TextConfig. Splitting will not be performed."
-        )
-    try:
-        stats: Stats = model.stats
-        desired_length = (
-            stats.character_length.mean
-            if text_representation == DatasetTextRepresentation.characters
-            else stats.phone_length.mean
-        )
-        max_length = (
-            stats.character_length.max
-            if text_representation == DatasetTextRepresentation.characters
-            else stats.phone_length.max
-        )
-    except AttributeError:
-        # This is for unit testing or older models
-        desired_length = 100
-        max_length = 200
 
     try:
         data = []
         for d in model.config.training.filelist_loader(filelist):
             # Chunk longer texts, for better longform audio synthesis
             line = d[text_representation.value]
-            chunks = (
-                chunk_text(
-                    line,
-                    desired_length=desired_length,
-                    max_length=max_length,
-                    strong_boundaries=strong_boundaries,
-                    weak_boundaries=weak_boundaries,
-                )
-                if split_text
-                else [line]
-            )
+            chunks = chunk_text(line, *split_params) if split_text else [line]
             for i, chunk in enumerate(chunks):
                 data.append(
                     {
@@ -180,17 +190,7 @@ def load_data_from_filelist(
         with open(filelist, encoding="utf8") as file:
             for line in file:
                 # Chunk longer texts, for better longform audio synthesis
-                chunks = (
-                    chunk_text(
-                        line,
-                        desired_length=desired_length,
-                        max_length=max_length,
-                        strong_boundaries=strong_boundaries,
-                        weak_boundaries=weak_boundaries,
-                    )
-                    if split_text
-                    else [line]
-                )
+                chunks = chunk_text(line, *split_params) if split_text else [line]
                 for i, chunk in enumerate(chunks):
                     data.append(
                         {
@@ -219,16 +219,6 @@ def prepare_data(
     output_type: list[SynthesizeOutputFormats] = [],
 ) -> list[dict[str, Any]]:
     """"""
-    from everyvoice.config.text_config import TextConfig
-    from everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.type_definitions_heavy import (
-        Stats,
-    )
-
-    text_config: TextConfig = model.config.text
-    split_text: bool = text_config.split_text
-    strong_boundaries: str = ""
-    weak_boundaries: str = ""
-
     data: list[dict[str, Any]]
     # NOTE: The wizard adds a default speaker=`default` to the data.
     # It also asks for a language that the user choses from a list which then becomes the default lanaguage, like `und`.
@@ -236,46 +226,15 @@ def prepare_data(
     DEFAULT_LANGUAGE = next(iter(model.lang2id.keys()), None)
     DEFAULT_SPEAKER = next(iter(model.speaker2id.keys()), None)
 
-    try:
-        effective_language = language or DEFAULT_LANGUAGE or ""
-        strong_boundaries = text_config.boundaries[effective_language].strong
-        weak_boundaries = text_config.boundaries[effective_language].weak
-    except KeyError:
-        logger.warning(
-            f"Boundaries for language '{language if language else DEFAULT_LANGUAGE}' could not be found in TextConfig. Splitting will not be performed."
-        )
-    try:
-        stats: Stats = model.stats
-        desired_length = (
-            stats.character_length.mean
-            if text_representation == DatasetTextRepresentation.characters
-            else stats.phone_length.mean
-        )
-        max_length = (
-            stats.character_length.max
-            if text_representation == DatasetTextRepresentation.characters
-            else stats.phone_length.max
-        )
-    except AttributeError:
-        # This is for unit testing or older models
-        desired_length = 100
-        max_length = 200
+    split_text, split_params = get_text_split_params(
+        model, language or DEFAULT_LANGUAGE, text_representation
+    )
 
     if texts:
         data = []
         for text in texts:
             # Chunk longer texts, for better longform audio synthesis
-            chunks = (
-                chunk_text(
-                    text,
-                    desired_length=desired_length,
-                    max_length=max_length,
-                    strong_boundaries=strong_boundaries,
-                    weak_boundaries=weak_boundaries,
-                )
-                if split_text
-                else [text]
-            )
+            chunks = chunk_text(text, *split_params) if split_text else [text]
             for i, chunk in enumerate(chunks):
                 data.append(
                     {
