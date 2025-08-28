@@ -24,9 +24,12 @@ from typer.testing import CliRunner
 
 from ..cli.check_data_heavy import check_data_from_filelist
 from ..cli.cli import app
+from ..cli.synthesize import get_text_split_params
 from ..cli.synthesize import prepare_data as prepare_synthesize_data
 from ..cli.synthesize import validate_data_keys_with_model_keys
 from ..config import FastSpeech2Config
+from ..model import FastSpeech2
+from ..type_definitions_heavy import Stats, StatsInfo
 
 DEFAULT_LANG2ID: set = set()
 DEFAULT_SPEAKER2ID: set = set()
@@ -297,6 +300,55 @@ class PrepareSynthesizeDataTest(TestCase):
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]["characters"], a + " " + b)
         self.assertTrue(data[0]["is_last_input_chunk"])
+
+    def test_get_text_split_params(self):
+        """
+        Tests the helper function get_text_split_params()
+        """
+
+        contact_info = ContactInformation(
+            contact_name="Test Runner", contact_email="info@everyvoice.ca"
+        )
+
+        text_config = TextConfig(
+            boundaries={
+                "eng": {"strong": "‽", "weak": ":?"},
+                "default": {"strong": "!?", "weak": ",;"},
+            }
+        )
+
+        stats = Stats(
+            pitch=StatsInfo(
+                min=150, max=300, std=2.0, mean=0.5, norm_max=1.0, norm_min=0.1
+            ),
+            energy=StatsInfo(
+                min=0.1, max=10.0, std=2.0, mean=0.5, norm_max=1.0, norm_min=0.1
+            ),
+            character_length=StatsInfo(
+                min=1, max=2, std=3, mean=4, norm_max=5, norm_min=6
+            ),
+            phone_length=StatsInfo(min=6, max=5, std=4, mean=3, norm_max=2, norm_min=1),
+        )
+
+        fs2_config = FastSpeech2Config(contact=contact_info, text=text_config)
+
+        model = FastSpeech2(
+            config=fs2_config,
+            lang2id={"default": 0},
+            speaker2id={"default": 0},
+            stats=stats,
+        )
+
+        split_text, split_params = get_text_split_params(
+            model, language="eng", text_representation="phones"
+        )
+        desired_length, max_length, strong_boundaries, weak_boundaries = split_params
+
+        self.assertTrue(split_text)
+        self.assertEqual(desired_length, 3)
+        self.assertEqual(max_length, 5)
+        self.assertEqual(strong_boundaries, "‽")
+        self.assertEqual(weak_boundaries, ":?")
 
 
 class ValidateDataWithModelTest(TestCase):
