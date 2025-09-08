@@ -69,7 +69,7 @@ def validate_data_keys_with_model_keys(
 
 def get_text_split_params(
     model: Any, language: str | None, text_representation: DatasetTextRepresentation
-) -> tuple[bool, tuple[float, float, str, str]]:
+) -> tuple[bool, tuple[int, int, str, str]]:
     """
     Calculates the parameters for text splitting (desired_length, max_length, strong_boundaries, weak_boundaries)
     """
@@ -100,11 +100,11 @@ def get_text_split_params(
             stats: Stats = model.stats
             match text_representation:
                 case DatasetTextRepresentation.characters:
-                    desired_length = stats.character_length.mean
-                    max_length = stats.character_length.max
+                    desired_length = stats.character_length.mean  # type: ignore[union-attr]
+                    max_length = stats.character_length.max  # type: ignore[union-attr]
                 case DatasetTextRepresentation.ipa_phones:
-                    desired_length = stats.phone_length.mean
-                    max_length = stats.phone_length.max
+                    desired_length = stats.phone_length.mean  # type: ignore[union-attr]
+                    max_length = stats.phone_length.max  # type: ignore[union-attr]
                 case DatasetTextRepresentation.arpabet:
                     logger.warning(
                         "Arpabet stats are not yet supported. Chunking with default lengths."
@@ -115,7 +115,12 @@ def get_text_split_params(
                 f"Length stats for {text_representation} could not be found. Chunking with default lengths."
             )
 
-    return split_text, (desired_length, max_length, strong_boundaries, weak_boundaries)
+    return split_text, (
+        int(desired_length),
+        int(max_length),
+        strong_boundaries,
+        weak_boundaries,
+    )
 
 
 def load_data_from_filelist(
