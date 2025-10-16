@@ -172,7 +172,8 @@ class TestWritingWav(ChunkingTestBase):
         """
         Tests the correctness of the output of .wavs for chunked text over multiple batches.
         """
-        writers = self.get_test_callback([SynthesizeOutputFormats.wav])
+        with silence_c_stderr():
+            writers = self.get_test_callback([SynthesizeOutputFormats.wav])
 
         # Batch 1
         writer = next(iter(writers.values()))
@@ -232,7 +233,8 @@ class TestWritingSpec(ChunkingTestBase):
         """
         Tests the correctness of the output of spectrograms for chunked text over multiple batches.
         """
-        writers = self.get_test_callback([SynthesizeOutputFormats.spec])
+        with silence_c_stderr():
+            writers = self.get_test_callback([SynthesizeOutputFormats.spec])
 
         # Batch 1
         writer = next(iter(writers.values()))
@@ -287,7 +289,8 @@ class TestWritingTextGrid(ChunkingTestBase):
         """
         Tests the correctness of the output of TextGrid files for chunked text over multiple batches.
         """
-        writers = self.get_test_callback([SynthesizeOutputFormats.textgrid])
+        with silence_c_stderr():
+            writers = self.get_test_callback([SynthesizeOutputFormats.textgrid])
 
         # Batch 1
         writer = next(iter(writers.values()))
@@ -354,7 +357,8 @@ class TestWritingTextGrid(ChunkingTestBase):
 
 class TestWritingReadAlongXML(ChunkingTestBase):
     def test_writing_readalong(self):
-        writers = self.get_test_callback([SynthesizeOutputFormats.readalong_xml])
+        with silence_c_stderr():
+            writers = self.get_test_callback([SynthesizeOutputFormats.readalong_xml])
 
         # Batch 1
         writer = next(iter(writers.values()))
@@ -399,7 +403,8 @@ class TestWritingReadAlongXML(ChunkingTestBase):
 
 class TestWritingReadAlongHTML:
     def test_writing_readalong(self):
-        writers = self.get_test_callback([SynthesizeOutputFormats.readalong_html])
+        with silence_c_stderr():
+            writers = self.get_test_callback([SynthesizeOutputFormats.readalong_html])
 
         # Batch 1
         writer = next(iter(writers.values()))
