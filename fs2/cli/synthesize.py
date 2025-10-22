@@ -2,7 +2,7 @@ import sys
 import textwrap
 from collections import Counter
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 import typer
 from everyvoice.base_cli.interfaces import inference_base_command_interface
@@ -133,7 +133,7 @@ def load_data_from_filelist(
     speaker: str | None = None,
     default_language: str | None = None,
     default_speaker: str | None = None,
-    output_type: list[SynthesizeOutputFormats] = [],
+    output_type: Sequence[SynthesizeOutputFormats] = [],
 ):
     if default_language is None:
         default_language = next(iter(model.lang2id.keys()), None)
@@ -214,14 +214,14 @@ def prepare_data(
     texts: Optional[list[str]],
     language: str | None,
     speaker: str | None,
-    filelist: Path,
+    filelist: Optional[Path],
     # model is of type ..model.FastSpeech2, but we make it Any to keep the CLI
     # fast and enable mocking in unit testing.
     model: Any,
     text_representation: DatasetTextRepresentation,
     duration_control: float,
     style_reference: Path | None,
-    output_type: list[SynthesizeOutputFormats] = [],
+    output_type: Sequence[SynthesizeOutputFormats] = [],
 ) -> list[dict[str, Any]]:
     """"""
     data: list[dict[str, Any]]
@@ -254,6 +254,8 @@ def prepare_data(
                 )
             print(f"Processing text: {chunks}", file=sys.stderr)
     else:
+        if filelist is None:
+            raise ValueError("Filelist must be provided when texts is empty or None")
         data = load_data_from_filelist(
             filelist,
             model,
@@ -331,17 +333,17 @@ def synthesize_helper(
     speaker: Optional[str],
     duration_control: Optional[float],
     global_step: int,
-    output_type: list[SynthesizeOutputFormats],
+    output_type: Sequence[SynthesizeOutputFormats],
     text_representation: DatasetTextRepresentation,
     accelerator: str,
     devices: str,
     device,
     batch_size: int,
     num_workers: int,
-    filelist: Path,
+    filelist: Optional[Path],
     filelist_data: Optional[list[dict]],
     output_dir: Path,
-    teacher_forcing_directory: Path,
+    teacher_forcing_directory: Optional[Path],
     vocoder_global_step: Optional[int] = None,
     vocoder_model=None,
     vocoder_config=None,
