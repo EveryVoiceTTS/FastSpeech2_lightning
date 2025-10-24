@@ -10,17 +10,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      pull-requests: write
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.10"
           cache: "pip"
 
-      - run: sudo apt-get update
-      - run: sudo apt-get install --fix-missing sox libsox-dev ffmpeg
+      - uses: awalsh128/cache-apt-pkgs-action@2c09a5e66da6c8016428a2172bd76e5e4f14bb17 # v1.5.3
+        with:
+          packages: sox libsox-dev ffmpeg
 
       - name: Fetch everyvoice
         run: |
