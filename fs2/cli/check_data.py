@@ -1,7 +1,7 @@
 import json
 import sys
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from everyvoice.config.type_definitions import DatasetTextRepresentation
@@ -41,7 +41,7 @@ def check_data_command(  # noqa: C901
         ),
     ] = Path("checked_data"),
     style_reference: Annotated[
-        Optional[Path],
+        Path | None,
         typer.Option(
             "--style-reference",
             "-S",
@@ -55,48 +55,62 @@ def check_data_command(  # noqa: C901
     devices: str = typer.Option(
         "auto", "--devices", "-d", help="The number of GPUs to use"
     ),
-    filelist: Path = typer.Option(
-        None,
-        "--filelist",
-        "-f",
-        exists=True,
-        file_okay=True,
-        dir_okay=False,
-        help="The path to a file containing a list of utterances (a.k.a filelist). Use --text if you want to just synthesize one sample.",
-    ),
-    text_representation: DatasetTextRepresentation = typer.Option(
-        DatasetTextRepresentation.characters,
-        help="The representation of the text you are synthesizing. Can be either 'characters', 'phones', or 'arpabet'. The input type must be compatible with your model.",
-    ),
-    teacher_forcing_directory: Path = typer.Option(
-        "preprocessed",
-        "--preprocessed-directory",
-        "-p",
-        help="The path to the folder containing all of your preprocessed data.",
-        dir_okay=True,
-        file_okay=False,
-    ),
-    num_workers: int = typer.Option(
-        4,
-        "--num-workers",
-        "-n",
-        help="Number of workers to process the data.",
-    ),
-    calculate_stats: bool = typer.Option(
-        True,
-        "--calculate-stats/--no-calculate-stats",
-        help="Whether to calculate basic statistics on your dataset.",
-    ),
-    objective_evaluation: bool = typer.Option(
-        True,
-        "--objective-evaluation/--no-objective-evaluation",
-        help="Whether to perform objective evaluation on your dataset using TorchSquim. This is time-consuming.",
-    ),
-    clip_detection: bool = typer.Option(
-        False,
-        "--clip-detection/--no-clip-detection",
-        help="Whether to detect clipping in your audio. This is expensive so we do not do this by default.",
-    ),
+    filelist: Annotated[
+        Path | None,
+        typer.Option(
+            "--filelist",
+            "-f",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            help="The path to a file containing a list of utterances (a.k.a filelist). Use --text if you want to just synthesize one sample.",
+        ),
+    ] = None,
+    text_representation: Annotated[
+        DatasetTextRepresentation,
+        typer.Option(
+            help="The representation of the text you are synthesizing. Can be either 'characters', 'phones', or 'arpabet'. The input type must be compatible with your model.",
+        ),
+    ] = DatasetTextRepresentation.characters,
+    teacher_forcing_directory: Annotated[
+        Path,
+        typer.Option(
+            "--preprocessed-directory",
+            "-p",
+            help="The path to the folder containing all of your preprocessed data.",
+            dir_okay=True,
+            file_okay=False,
+        ),
+    ] = Path("preprocessed"),
+    num_workers: Annotated[
+        int,
+        typer.Option(
+            "--num-workers",
+            "-n",
+            help="Number of workers to process the data.",
+        ),
+    ] = 4,
+    calculate_stats: Annotated[
+        bool,
+        typer.Option(
+            "--calculate-stats/--no-calculate-stats",
+            help="Whether to calculate basic statistics on your dataset.",
+        ),
+    ] = True,
+    objective_evaluation: Annotated[
+        bool,
+        typer.Option(
+            "--objective-evaluation/--no-objective-evaluation",
+            help="Whether to perform objective evaluation on your dataset using TorchSquim. This is time-consuming.",
+        ),
+    ] = True,
+    clip_detection: Annotated[
+        bool,
+        typer.Option(
+            "--clip-detection/--no-clip-detection",
+            help="Whether to detect clipping in your audio. This is expensive so we do not do this by default.",
+        ),
+    ] = False,
 ):
     """
     Given a filelist and some preprocessed data, check some basic statistics on the data.
