@@ -4,6 +4,11 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+from everyvoice.base_cli.interfaces import (
+    typer_directory_option,
+    typer_file_argument,
+    typer_file_option,
+)
 from everyvoice.config.type_definitions import DatasetTextRepresentation
 from everyvoice.utils import generic_psv_filelist_reader, spinner
 from loguru import logger
@@ -14,40 +19,30 @@ from .synthesize import get_global_step, synthesize_helper
 def check_data_command(  # noqa: C901
     config_file: Annotated[
         Path,
-        typer.Argument(
-            exists=True,
-            dir_okay=False,
-            file_okay=True,
+        typer_file_argument(
             help="The path to your text-to-spec model configuration file.",
         ),
     ],
     model_path: Annotated[
         Path,
-        typer.Argument(
-            file_okay=True,
-            exists=True,
-            dir_okay=False,
+        typer_file_argument(
             help="The path to a trained text-to-spec (i.e., feature prediction) or e2e EveryVoice model.",
         ),
     ],
     output_dir: Annotated[
         Path,
-        typer.Option(
+        typer_directory_option(
             "--output-dir",
             "-o",
-            file_okay=False,
-            dir_okay=True,
+            exists=False,
             help="The directory where your synthesized audio should be written",
         ),
     ] = Path("checked_data"),
     style_reference: Annotated[
         Path | None,
-        typer.Option(
+        typer_file_option(
             "--style-reference",
             "-S",
-            exists=True,
-            file_okay=True,
-            dir_okay=False,
             help="The path to an audio file containing a style reference. Your text-to-spec must have been trained with the global style token module to use this feature.",
         ),
     ] = None,
@@ -57,12 +52,9 @@ def check_data_command(  # noqa: C901
     ),
     filelist: Annotated[
         Path | None,
-        typer.Option(
+        typer_file_option(
             "--filelist",
             "-f",
-            exists=True,
-            file_okay=True,
-            dir_okay=False,
             help="The path to a file containing a list of utterances (a.k.a filelist). Use --text if you want to just synthesize one sample.",
         ),
     ] = None,
@@ -74,12 +66,10 @@ def check_data_command(  # noqa: C901
     ] = DatasetTextRepresentation.characters,
     teacher_forcing_directory: Annotated[
         Path,
-        typer.Option(
+        typer_directory_option(
             "--preprocessed-directory",
             "-p",
             help="The path to the folder containing all of your preprocessed data.",
-            dir_okay=True,
-            file_okay=False,
         ),
     ] = Path("preprocessed"),
     num_workers: Annotated[

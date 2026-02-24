@@ -5,7 +5,12 @@ from pathlib import Path
 from typing import Annotated, Any, Optional, Sequence
 
 import typer
-from everyvoice.base_cli.interfaces import inference_base_command_interface
+from everyvoice.base_cli.interfaces import (
+    inference_base_command_interface,
+    typer_directory_option,
+    typer_file_argument,
+    typer_file_option,
+)
 from everyvoice.config.type_definitions import (
     DatasetTextRepresentation,
     TargetTrainingTextRepresentationLevel,
@@ -459,20 +464,16 @@ def synthesize_helper(
 def synthesize(  # noqa: C901
     model_path: Annotated[
         Path,
-        typer.Argument(
-            file_okay=True,
-            exists=True,
-            dir_okay=False,
+        typer_file_argument(
             help="The path to a trained text-to-spec (i.e., feature prediction) or e2e EveryVoice model.",
         ),
     ],
     output_dir: Annotated[
         Path,
-        typer.Option(
+        typer_directory_option(
             "--output-dir",
             "-o",
-            file_okay=False,
-            dir_okay=True,
+            exists=False,
             help="The directory where your synthesized audio should be written",
         ),
     ] = Path("synthesis_output"),
@@ -503,12 +504,9 @@ def synthesize(  # noqa: C901
     ] = 1.0,
     style_reference: Annotated[
         Path | None,
-        typer.Option(
+        typer_file_option(
             "--style-reference",
             "-S",
-            exists=True,
-            file_okay=True,
-            dir_okay=False,
             help="The path to an audio file containing a style reference. Your text-to-spec must have been trained with the global style token module to use this feature.",
         ),
     ] = None,
@@ -526,12 +524,9 @@ def synthesize(  # noqa: C901
     ] = "auto",
     filelist: Annotated[
         Path | None,
-        typer.Option(
+        typer_file_option(
             "--filelist",
             "-f",
-            exists=True,
-            file_okay=True,
-            dir_okay=False,
             help="The path to a file containing a list of utterances (a.k.a filelist). Use --text if you want to just synthesize one sample.",
         ),
     ] = None,
@@ -568,38 +563,27 @@ def synthesize(  # noqa: C901
     ] = [SynthesizeOutputFormats.wav],
     teacher_forcing_directory: Annotated[
         Path | None,
-        typer.Option(
+        typer_directory_option(
             "--teacher-forcing-directory",
             "-T",
             help="ADVANCED. The path to preprocessed folder containing spec and duration folders to use for teacher-forcing the synthesized outputs.",
-            dir_okay=True,
-            file_okay=False,
         ),
     ] = None,
     vocoder_path: Annotated[
         Path | None,
-        typer.Option(
+        typer_file_option(
             "--vocoder-path",
             "-v",
             help="The path to a trained vocoder (aka spec-to-wav model).",
-            dir_okay=False,
-            file_okay=True,
         ),
     ] = None,
     batch_size: Annotated[
-        int,
-        typer.Option(
-            "--batch-size",
-            "-b",
-            help="Batch size.",
-        ),
+        int, typer.Option("--batch-size", "-b", help="Batch size.")
     ] = 4,
     num_workers: Annotated[
         int,
         typer.Option(
-            "--num-workers",
-            "-n",
-            help="Number of workers to process the data.",
+            "--num-workers", "-n", help="Number of workers to process the data."
         ),
     ] = 4,
     **kwargs,

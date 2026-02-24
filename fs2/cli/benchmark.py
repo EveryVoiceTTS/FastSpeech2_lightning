@@ -2,7 +2,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Annotated
 
-import typer
+from everyvoice.base_cli.interfaces import typer_file_argument
 from everyvoice.utils import spinner
 
 
@@ -13,13 +13,7 @@ class BenchmarkType(str, Enum):
 
 def benchmark(
     config_file: Annotated[
-        Path,
-        typer.Argument(
-            exists=True,
-            dir_okay=False,
-            file_okay=True,
-            help="The path to your model configuration file.",
-        ),
+        Path, typer_file_argument(help="The path to your model configuration file.")
     ],
     benchmark_type: BenchmarkType = BenchmarkType.training,
     gpu: bool = True,
