@@ -1,5 +1,6 @@
 from enum import Enum
 from pathlib import Path
+from typing import Annotated
 
 import typer
 from everyvoice.utils import spinner
@@ -11,13 +12,15 @@ class BenchmarkType(str, Enum):
 
 
 def benchmark(
-    config_file: Path = typer.Argument(
-        ...,
-        exists=True,
-        dir_okay=False,
-        file_okay=True,
-        help="The path to your model configuration file.",
-    ),
+    config_file: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            dir_okay=False,
+            file_okay=True,
+            help="The path to your model configuration file.",
+        ),
+    ],
     benchmark_type: BenchmarkType = BenchmarkType.training,
     gpu: bool = True,
     warmup_reps: int = 10,

@@ -1,7 +1,7 @@
 import json
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Annotated, Optional
 
 import typer
 from everyvoice.config.type_definitions import DatasetTextRepresentation
@@ -12,37 +12,45 @@ from .synthesize import get_global_step, synthesize_helper
 
 
 def check_data_command(  # noqa: C901
-    config_file: Path = typer.Argument(
-        ...,
-        exists=True,
-        dir_okay=False,
-        file_okay=True,
-        help="The path to your text-to-spec model configuration file.",
-    ),
-    model_path: Optional[Path] = typer.Argument(
-        ...,
-        file_okay=True,
-        exists=True,
-        dir_okay=False,
-        help="The path to a trained text-to-spec (i.e., feature prediction) or e2e EveryVoice model.",
-    ),
-    output_dir: Path = typer.Option(
-        "checked_data",
-        "--output-dir",
-        "-o",
-        file_okay=False,
-        dir_okay=True,
-        help="The directory where your synthesized audio should be written",
-    ),
-    style_reference: Optional[Path] = typer.Option(
-        None,
-        "--style-reference",
-        "-S",
-        exists=True,
-        file_okay=True,
-        dir_okay=False,
-        help="The path to an audio file containing a style reference. Your text-to-spec must have been trained with the global style token module to use this feature.",
-    ),
+    config_file: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            dir_okay=False,
+            file_okay=True,
+            help="The path to your text-to-spec model configuration file.",
+        ),
+    ],
+    model_path: Annotated[
+        Path,
+        typer.Argument(
+            file_okay=True,
+            exists=True,
+            dir_okay=False,
+            help="The path to a trained text-to-spec (i.e., feature prediction) or e2e EveryVoice model.",
+        ),
+    ],
+    output_dir: Annotated[
+        Path,
+        typer.Option(
+            "--output-dir",
+            "-o",
+            file_okay=False,
+            dir_okay=True,
+            help="The directory where your synthesized audio should be written",
+        ),
+    ] = Path("checked_data"),
+    style_reference: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--style-reference",
+            "-S",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            help="The path to an audio file containing a style reference. Your text-to-spec must have been trained with the global style token module to use this feature.",
+        ),
+    ] = None,
     accelerator: str = typer.Option("auto", "--accelerator", "-a"),
     devices: str = typer.Option(
         "auto", "--devices", "-d", help="The number of GPUs to use"

@@ -2,7 +2,7 @@ import sys
 import textwrap
 from collections import Counter
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Annotated, Any, Optional, Sequence
 
 import typer
 from everyvoice.base_cli.interfaces import inference_base_command_interface
@@ -214,7 +214,7 @@ def prepare_data(
     texts: Optional[list[str]],
     language: str | None,
     speaker: str | None,
-    filelist: Optional[Path],
+    filelist: Path | None,
     # model is of type ..model.FastSpeech2, but we make it Any to keep the CLI
     # fast and enable mocking in unit testing.
     model: Any,
@@ -328,7 +328,7 @@ def get_global_step(model_path: Path) -> int:
 def synthesize_helper(
     model,
     texts: Optional[list[str]],
-    style_reference: Optional[Path],
+    style_reference: Path | None,
     language: Optional[str],
     speaker: Optional[str],
     duration_control: Optional[float],
@@ -340,10 +340,10 @@ def synthesize_helper(
     device,
     batch_size: int,
     num_workers: int,
-    filelist: Optional[Path],
+    filelist: Path | None,
     filelist_data: Optional[list[dict]],
     output_dir: Path,
-    teacher_forcing_directory: Optional[Path],
+    teacher_forcing_directory: Path | None,
     vocoder_global_step: Optional[int] = None,
     vocoder_model=None,
     vocoder_config=None,
@@ -457,77 +457,96 @@ def synthesize_helper(
 
 @merge_args(inference_base_command_interface)
 def synthesize(  # noqa: C901
-    model_path: Path = typer.Argument(
-        ...,
-        file_okay=True,
-        exists=True,
-        dir_okay=False,
-        help="The path to a trained text-to-spec (i.e., feature prediction) or e2e EveryVoice model.",
-    ),
-    output_dir: Path = typer.Option(
-        "synthesis_output",
-        "--output-dir",
-        "-o",
-        file_okay=False,
-        dir_okay=True,
-        help="The directory where your synthesized audio should be written",
-    ),
-    texts: list[str] = typer.Option(
-        [],
-        "--text",
-        "-t",
-        help="Some text to synthesize.  This option can be repeated to synthesize multiple sentences."
-        " It is recommended to use --filelist if you want to synthesize a lot of sentences or have different speaker/language per sentence.",
-    ),
-    language: Optional[str] = typer.Option(
-        None,
-        "--language",
-        "-l",
-        help="Specify which language to use in a multilingual system. [requires --text]",
-    ),
-    duration_control: Optional[float] = typer.Option(
-        1.0,
-        "--duration-control",
-        "-D",
-        help="Control the speaking rate of the synthesis. Set a value to multily the durations by, lower numbers produce quicker speaking rates, larger numbers produce slower speaking rates. Default is 1.0",
-    ),
-    style_reference: Optional[Path] = typer.Option(
-        None,
-        "--style-reference",
-        "-S",
-        exists=True,
-        file_okay=True,
-        dir_okay=False,
-        help="The path to an audio file containing a style reference. Your text-to-spec must have been trained with the global style token module to use this feature.",
-    ),
-    speaker: Optional[str] = typer.Option(
-        None,
-        "--speaker",
-        "-s",
-        help="Specify which speaker to use in a multispeaker system. [requires --text]",
-    ),
-    accelerator: str = typer.Option("auto", "--accelerator", "-a"),
-    devices: str = typer.Option(
-        "auto", "--devices", "-d", help="The number of GPUs to use"
-    ),
-    filelist: Path = typer.Option(
-        None,
-        "--filelist",
-        "-f",
-        exists=True,
-        file_okay=True,
-        dir_okay=False,
-        help="The path to a file containing a list of utterances (a.k.a filelist). Use --text if you want to just synthesize one sample.",
-    ),
-    text_representation: DatasetTextRepresentation = typer.Option(
-        DatasetTextRepresentation.characters,
-        help="The representation of the text you are synthesizing. Can be either 'characters', 'phones', or 'arpabet'. The input type must be compatible with your model.",
-    ),
-    output_type: list[SynthesizeOutputFormats] = typer.Option(
-        [SynthesizeOutputFormats.wav.value],
-        "-O",
-        "--output-type",
-        help="""Which format(s) to synthesize to.
+    model_path: Annotated[
+        Path,
+        typer.Argument(
+            file_okay=True,
+            exists=True,
+            dir_okay=False,
+            help="The path to a trained text-to-spec (i.e., feature prediction) or e2e EveryVoice model.",
+        ),
+    ],
+    output_dir: Annotated[
+        Path,
+        typer.Option(
+            "--output-dir",
+            "-o",
+            file_okay=False,
+            dir_okay=True,
+            help="The directory where your synthesized audio should be written",
+        ),
+    ] = Path("synthesis_output"),
+    texts: Annotated[
+        list[str],
+        typer.Option(
+            "--text",
+            "-t",
+            help="Some text to synthesize.  This option can be repeated to synthesize multiple sentences."
+            " It is recommended to use --filelist if you want to synthesize a lot of sentences or have different speaker/language per sentence.",
+        ),
+    ] = [],
+    language: Annotated[
+        Optional[str],
+        typer.Option(
+            "--language",
+            "-l",
+            help="Specify which language to use in a multilingual system. [requires --text]",
+        ),
+    ] = None,
+    duration_control: Annotated[
+        Optional[float],
+        typer.Option(
+            "--duration-control",
+            "-D",
+            help="Control the speaking rate of the synthesis. Set a value to multily the durations by, lower numbers produce quicker speaking rates, larger numbers produce slower speaking rates. Default is 1.0",
+        ),
+    ] = 1.0,
+    style_reference: Annotated[
+        Path | None,
+        typer.Option(
+            "--style-reference",
+            "-S",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            help="The path to an audio file containing a style reference. Your text-to-spec must have been trained with the global style token module to use this feature.",
+        ),
+    ] = None,
+    speaker: Annotated[
+        Optional[str],
+        typer.Option(
+            "--speaker",
+            "-s",
+            help="Specify which speaker to use in a multispeaker system. [requires --text]",
+        ),
+    ] = None,
+    accelerator: Annotated[str, typer.Option("--accelerator", "-a")] = "auto",
+    devices: Annotated[
+        str, typer.Option("--devices", "-d", help="The number of GPUs to use")
+    ] = "auto",
+    filelist: Annotated[
+        Path | None,
+        typer.Option(
+            "--filelist",
+            "-f",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            help="The path to a file containing a list of utterances (a.k.a filelist). Use --text if you want to just synthesize one sample.",
+        ),
+    ] = None,
+    text_representation: Annotated[
+        DatasetTextRepresentation,
+        typer.Option(
+            help="The representation of the text you are synthesizing. Can be either 'characters', 'phones', or 'arpabet'. The input type must be compatible with your model.",
+        ),
+    ] = DatasetTextRepresentation.characters,
+    output_type: Annotated[
+        list[SynthesizeOutputFormats],
+        typer.Option(
+            "-O",
+            "--output-type",
+            help="""Which format(s) to synthesize to.
         Multiple formats can be provided by repeating `--output-type`.
 
 
@@ -545,35 +564,44 @@ def synthesize(  # noqa: C901
 
         '**readalong-html**' will generate a single file Offline HTML ReadAlong that can be further edited in the ReadAlong Studio Editor, and opened by itself. Also implies '--output-type wav'. Requires --vocoder-path.
         """,
-    ),
-    teacher_forcing_directory: Path = typer.Option(
-        None,
-        "--teacher-forcing-directory",
-        "-T",
-        help="ADVANCED. The path to preprocessed folder containing spec and duration folders to use for teacher-forcing the synthesized outputs.",
-        dir_okay=True,
-        file_okay=False,
-    ),
-    vocoder_path: Path = typer.Option(
-        None,
-        "--vocoder-path",
-        "-v",
-        help="The path to a trained vocoder (aka spec-to-wav model).",
-        dir_okay=False,
-        file_okay=True,
-    ),
-    batch_size: int = typer.Option(
-        4,
-        "--batch-size",
-        "-b",
-        help="Batch size.",
-    ),
-    num_workers: int = typer.Option(
-        4,
-        "--num-workers",
-        "-n",
-        help="Number of workers to process the data.",
-    ),
+        ),
+    ] = [SynthesizeOutputFormats.wav],
+    teacher_forcing_directory: Annotated[
+        Path | None,
+        typer.Option(
+            "--teacher-forcing-directory",
+            "-T",
+            help="ADVANCED. The path to preprocessed folder containing spec and duration folders to use for teacher-forcing the synthesized outputs.",
+            dir_okay=True,
+            file_okay=False,
+        ),
+    ] = None,
+    vocoder_path: Annotated[
+        Path | None,
+        typer.Option(
+            "--vocoder-path",
+            "-v",
+            help="The path to a trained vocoder (aka spec-to-wav model).",
+            dir_okay=False,
+            file_okay=True,
+        ),
+    ] = None,
+    batch_size: Annotated[
+        int,
+        typer.Option(
+            "--batch-size",
+            "-b",
+            help="Batch size.",
+        ),
+    ] = 4,
+    num_workers: Annotated[
+        int,
+        typer.Option(
+            "--num-workers",
+            "-n",
+            help="Number of workers to process the data.",
+        ),
+    ] = 4,
     **kwargs,
 ):
     """Given some text and a trained model, generate some audio. i.e. perform typical speech synthesis"""
