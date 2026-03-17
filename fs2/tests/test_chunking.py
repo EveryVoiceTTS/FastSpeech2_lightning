@@ -401,44 +401,32 @@ class TestWritingReadAlongXML(ChunkingTestBase):
                 self.assertIn('<w time="0.0" dur=', readalong)
 
 
-class TestWritingReadAlongHTML:
-    def test_writing_readalong(self):
+class TestWritingReadAlongHTML(ChunkingTestBase):
+    def test_writing_readalong(self) -> None:
         with silence_c_stderr():
             writers = self.get_test_callback([SynthesizeOutputFormats.readalong_html])
 
-        # Batch 1
-        writer = next(iter(writers.values()))
-        writer.on_predict_batch_end(
-            _trainer=None,
-            _pl_module=None,
-            outputs=self.outputs,
-            batch=self.batch1,
-            _batch_idx=0,
-            _dataloader_idx=0,
-        )
-        output_dir = writer.save_dir
-
-        self.assertTrue(output_dir.exists())
-
-        # Batch 2
-        writer = next(iter(writers.values()))
-        writer.on_predict_batch_end(
-            _trainer=None,
-            _pl_module=None,
-            outputs=self.outputs,
-            batch=self.batch2,
-            _batch_idx=1,
-            _dataloader_idx=1,
-        )
+        for writer in writers.values():
+            for batch, idx in ((self.batch1, 1), (self.batch2, 2)):
+                writer.on_predict_batch_end(
+                    _trainer=None,
+                    _pl_module=None,
+                    outputs=self.outputs,
+                    batch=batch,
+                    _batch_idx=idx,
+                    _dataloader_idx=idx,
+                )
+                output_dir = writer.save_dir
+                self.assertTrue(output_dir.exists())
 
         # Test that the correctly named files were outputted
         # print(output_dir, *output_dir.glob("**/*"))  # For debugging
-        output_files = (
-            output_dir / "short--spk1--lngA--22050-mel-librosa.html",
-            output_dir
-            / "This-utterance-is-wa-dcae74b8--spk2--lngB--22050-mel-librosa.html",
+        output_file_basenames = (
+            "one--S1--L1--22050-mel-librosa.html",
+            "twothreefour--S2--L2--22050-mel-librosa.html",
         )
-        for output_file in output_files:
+        for output_file_basename in output_file_basenames:
+            output_file = output_dir.parent/"readalongs"/output_file_basename
             with self.subTest(output_file=output_file):
                 self.assertTrue(output_file.exists())
                 with open(output_file, "r", encoding="utf8") as f:
