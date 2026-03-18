@@ -22,6 +22,7 @@ from everyvoice.tests.stubs import (
     capture_stderr,
     mute_logger,
     silence_c_stderr,
+    temp_chdir,
 )
 from everyvoice.utils import generic_psv_filelist_reader
 from typer.testing import CliRunner
@@ -103,30 +104,31 @@ class SynthesizeTest(TestCase):
             tmpdir = Path(tmpdir)
             _, spec_model_path = get_stubbed_model(tmpdir)
 
-            with (
-                mock.patch(
-                    self.__module__.replace(
-                        "tests.test_cli", "cli.synthesize.synthesize_helper"
+            with temp_chdir(tmpdir):
+                with (
+                    mock.patch(
+                        self.__module__.replace(
+                            "tests.test_cli", "cli.synthesize.synthesize_helper"
+                        ),
+                        side_effect=self.mock_synthesis,
                     ),
-                    side_effect=self.mock_synthesis,
-                ),
-                mute_logger("everyvoice.utils"),
-            ):
-                result = self.runner.invoke(
-                    app,
-                    [
-                        "synthesize",
-                        str(spec_model_path),
-                        "-t",
-                        "hello world",
-                        "-c",
-                        "text.split_text=False",
-                        "--output-type",
-                        "spec",
-                    ],
-                )
-                self.assertEqual(result.exit_code, 0)
-                self.assertIn("split_text=False", result.stdout)
+                    mute_logger("everyvoice.utils"),
+                ):
+                    result = self.runner.invoke(
+                        app,
+                        [
+                            "synthesize",
+                            str(spec_model_path),
+                            "-t",
+                            "hello world",
+                            "-c",
+                            "text.split_text=False",
+                            "--output-type",
+                            "spec",
+                        ],
+                    )
+                    self.assertEqual(result.exit_code, 0)
+                    self.assertIn("split_text=False", result.stdout)
 
 
 class MockModelForPrepare:
