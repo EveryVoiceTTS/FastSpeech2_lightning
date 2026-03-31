@@ -19,7 +19,6 @@ from everyvoice.text.textsplit import chunk_text
 from everyvoice.utils import slugify, spinner
 from loguru import logger
 from merge_args import merge_args
-from tqdm import tqdm
 
 from ..type_definitions import SynthesizeOutputFormats
 from ..utils import truncate_basename
@@ -358,6 +357,8 @@ def synthesize_helper(
     It allows us to use the same command for synthesis via the CLI and
     via the gradio demo.
     """
+
+    from tqdm import tqdm
 
     from ..dataset import FastSpeech2SynthesisDataModule
 
