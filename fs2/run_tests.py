@@ -7,7 +7,7 @@ import importlib
 import os
 import re
 import sys
-from typing import Iterable
+from collections.abc import Iterable
 from unittest import TestLoader, TestSuite, TextTestRunner
 
 from loguru import logger

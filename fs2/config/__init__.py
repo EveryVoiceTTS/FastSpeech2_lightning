@@ -1,6 +1,6 @@
 from enum import Enum
 from pathlib import Path
-from typing import Annotated, Any, Dict, Optional, Union
+from typing import Annotated, Any, Optional, Union
 
 from annotated_types import Ge
 from everyvoice.config.preprocessing_config import PreprocessingConfig
@@ -278,7 +278,7 @@ class FastSpeech2Config(BaseModelWithContact):
     )
 
     @model_validator(mode="before")  # type: ignore
-    def load_partials(self: Dict[Any, Any], info: ValidationInfo):  # type: ignore[misc]
+    def load_partials(self: dict[Any, Any], info: ValidationInfo):  # type: ignore[misc]
         config_path = (
             info.context.get("config_path", None) if info.context is not None else None
         )

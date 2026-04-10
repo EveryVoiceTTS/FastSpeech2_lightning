@@ -1,8 +1,9 @@
 import sys
 import textwrap
 from collections import Counter
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Annotated, Any, Optional, Sequence
+from typing import Annotated, Any, Optional
 
 import typer
 from everyvoice.base_cli.interfaces import (

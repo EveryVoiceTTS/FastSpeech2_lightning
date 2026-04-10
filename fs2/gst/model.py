@@ -4,7 +4,7 @@
 
 """Style encoder of GST-Tacotron."""
 
-from typing import Sequence
+from collections.abc import Sequence
 
 import torch
 
