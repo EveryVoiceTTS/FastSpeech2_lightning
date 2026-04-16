@@ -53,7 +53,7 @@ class SynthesizeTest(TestCase):
 
     def test_no_model(self):
         result = self.runner.invoke(app, ["synthesize"])
-        self.assertIn("Missing argument 'MODEL_PATH'.", result.stdout)
+        self.assertIn("Missing argument 'MODEL_PATH'.", result.output)
 
     def test_filelist_and_text(self):
         with TemporaryDirectory() as tmpdir:
@@ -76,7 +76,7 @@ class SynthesizeTest(TestCase):
             self.assertIn(
                 "Got arguments for both text and a filelist - this will only process the text."
                 " Please re-run without providing text if you want to run batch synthesis",
-                result.stdout,
+                result.output,
             )
 
     def test_no_filelist_nor_text(self):
@@ -91,7 +91,7 @@ class SynthesizeTest(TestCase):
                     str(model),
                 ),
             )
-            self.assertIn("You must define either --text or --filelist", result.stdout)
+            self.assertIn("You must define either --text or --filelist", result.output)
 
     def mock_synthesis(self, *_args, **_kwargs):
         print(_kwargs["model"].config)
