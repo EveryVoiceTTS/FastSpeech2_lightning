@@ -56,7 +56,7 @@ class FastSpeech2(pl.LightningModule):
                 logger.error(f"{pydantic_validation_error_shortener(e)}")
                 raise TypeError(
                     "Unable to load config.  Possible causes: is it really a FastSpeech2Config? or the correct version?"
-                )
+                ) from e
 
         if stats is not None and not isinstance(stats, Stats):
             stats = Stats(**stats)
