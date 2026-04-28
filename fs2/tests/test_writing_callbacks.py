@@ -5,7 +5,6 @@ from unittest import TestCase
 import torch
 from everyvoice.config.shared_types import ContactInformation
 from everyvoice.tests.model_stubs import get_stubbed_vocoder
-from everyvoice.tests.stubs import silence_c_stderr
 from pympi import TextGrid
 
 from ..config import FastSpeech2Config, FastSpeech2TrainingConfig
@@ -129,15 +128,14 @@ class TestWritingSpec(WritingTestBase):
         """
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
-            with silence_c_stderr():
-                writers = get_synthesis_output_callbacks(
-                    [SynthesizeOutputFormats.spec],
-                    config=FastSpeech2Config(contact=self.contact),
-                    global_step=77,
-                    output_dir=tmp_dir,
-                    output_key=self.output_key,
-                    device=torch.device("cpu"),
-                )
+            writers = get_synthesis_output_callbacks(
+                [SynthesizeOutputFormats.spec],
+                config=FastSpeech2Config(contact=self.contact),
+                global_step=77,
+                output_dir=tmp_dir,
+                output_key=self.output_key,
+                device=torch.device("cpu"),
+            )
             writer = next(iter(writers.values()))
             writer.on_predict_batch_end(
                 _trainer=None,
@@ -175,15 +173,14 @@ class TestWritingTextGrid(WritingTestBase):
         """
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
-            with silence_c_stderr():
-                writers = get_synthesis_output_callbacks(
-                    [SynthesizeOutputFormats.textgrid],
-                    config=FastSpeech2Config(contact=self.contact),
-                    global_step=77,
-                    output_dir=tmp_dir,
-                    output_key=self.output_key,
-                    device=torch.device("cpu"),
-                )
+            writers = get_synthesis_output_callbacks(
+                [SynthesizeOutputFormats.textgrid],
+                config=FastSpeech2Config(contact=self.contact),
+                global_step=77,
+                output_dir=tmp_dir,
+                output_key=self.output_key,
+                device=torch.device("cpu"),
+            )
             writer = next(iter(writers.values()))
             writer.on_predict_batch_end(
                 _trainer=None,
@@ -227,15 +224,14 @@ class TestWritingReadAlong(WritingTestBase):
     def test_writing_readalong(self):
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
-            with silence_c_stderr():
-                writers = get_synthesis_output_callbacks(
-                    [SynthesizeOutputFormats.readalong_xml],
-                    config=FastSpeech2Config(contact=self.contact),
-                    global_step=77,
-                    output_dir=tmp_dir,
-                    output_key=self.output_key,
-                    device=torch.device("cpu"),
-                )
+            writers = get_synthesis_output_callbacks(
+                [SynthesizeOutputFormats.readalong_xml],
+                config=FastSpeech2Config(contact=self.contact),
+                global_step=77,
+                output_dir=tmp_dir,
+                output_key=self.output_key,
+                device=torch.device("cpu"),
+            )
             writer = next(iter(writers.values()))
             writer.on_predict_batch_end(
                 _trainer=None,
@@ -272,21 +268,20 @@ class TestWritingOfflineRAS(WritingTestBase):
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
             vocoder, vocoder_path = get_stubbed_vocoder(tmp_dir)
-            with silence_c_stderr():
-                writers = get_synthesis_output_callbacks(
-                    [SynthesizeOutputFormats.readalong_html],
-                    config=FastSpeech2Config(
-                        contact=self.contact,
-                        training=FastSpeech2TrainingConfig(vocoder_path=vocoder_path),
-                    ),
-                    global_step=77,
-                    output_dir=tmp_dir,
-                    output_key=self.output_key,
-                    device=torch.device("cpu"),
-                    vocoder_model=vocoder,
-                    vocoder_config=vocoder.config,
-                    vocoder_global_step=10,
-                )
+            writers = get_synthesis_output_callbacks(
+                [SynthesizeOutputFormats.readalong_html],
+                config=FastSpeech2Config(
+                    contact=self.contact,
+                    training=FastSpeech2TrainingConfig(vocoder_path=vocoder_path),
+                ),
+                global_step=77,
+                output_dir=tmp_dir,
+                output_key=self.output_key,
+                device=torch.device("cpu"),
+                vocoder_model=vocoder,
+                vocoder_config=vocoder.config,
+                vocoder_global_step=10,
+            )
             for writer in writers.values():
                 writer.on_predict_batch_end(
                     _trainer=None,
@@ -331,21 +326,20 @@ class TestWritingWav(WritingTestBase):
             tmp_dir = Path(tmp_dir)
             vocoder, vocoder_path = get_stubbed_vocoder(tmp_dir)
 
-            with silence_c_stderr():
-                writers = get_synthesis_output_callbacks(
-                    [SynthesizeOutputFormats.wav],
-                    config=FastSpeech2Config(
-                        contact=self.contact,
-                        training=FastSpeech2TrainingConfig(vocoder_path=vocoder_path),
-                    ),
-                    device=torch.device("cpu"),
-                    global_step=77,
-                    output_dir=tmp_dir,
-                    output_key=self.output_key,
-                    vocoder_model=vocoder,
-                    vocoder_config=vocoder.config,
-                    vocoder_global_step=10,
-                )
+            writers = get_synthesis_output_callbacks(
+                [SynthesizeOutputFormats.wav],
+                config=FastSpeech2Config(
+                    contact=self.contact,
+                    training=FastSpeech2TrainingConfig(vocoder_path=vocoder_path),
+                ),
+                device=torch.device("cpu"),
+                global_step=77,
+                output_dir=tmp_dir,
+                output_key=self.output_key,
+                vocoder_model=vocoder,
+                vocoder_config=vocoder.config,
+                vocoder_global_step=10,
+            )
             writer = next(iter(writers.values()))
             writer.on_predict_batch_end(
                 _trainer=None,

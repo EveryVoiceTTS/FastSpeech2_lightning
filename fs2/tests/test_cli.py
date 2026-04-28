@@ -19,9 +19,7 @@ from everyvoice.tests.model_stubs import get_stubbed_model
 from everyvoice.tests.preprocessed_audio_fixture import PreprocessedAudioFixture
 from everyvoice.tests.stubs import (
     TEST_DATA_DIR,
-    capture_stderr,
     mute_logger,
-    silence_c_stderr,
     temp_chdir,
 )
 from everyvoice.utils import generic_psv_filelist_reader
@@ -168,24 +166,23 @@ class PrepareSynthesizeDataTest(TestCase):
         """
         Use a different language than the one provided in the filelist.
         """
-        with silence_c_stderr():
-            data = prepare_synthesize_data(
-                texts=[],
-                language="foo",
-                speaker="bar",
-                duration_control=1.0,
-                style_reference=None,
-                filelist=Path(__file__).parent / "data/filelist.psv",
-                model=MockModelForPrepare(
-                    lang2id={"foo": 1},
-                    speaker2id={"bar": 2},
-                    filelist_loader=generic_psv_filelist_reader,
-                    multilingual=True,
-                    multispeaker=True,
-                    target_text_representation_level=TargetTrainingTextRepresentationLevel.characters,
-                ),
-                text_representation=DatasetTextRepresentation.characters,
-            )
+        data = prepare_synthesize_data(
+            texts=[],
+            language="foo",
+            speaker="bar",
+            duration_control=1.0,
+            style_reference=None,
+            filelist=Path(__file__).parent / "data/filelist.psv",
+            model=MockModelForPrepare(
+                lang2id={"foo": 1},
+                speaker2id={"bar": 2},
+                filelist_loader=generic_psv_filelist_reader,
+                multilingual=True,
+                multispeaker=True,
+                target_text_representation_level=TargetTrainingTextRepresentationLevel.characters,
+            ),
+            text_representation=DatasetTextRepresentation.characters,
+        )
         self.assertEqual(len(data), 11)
         self.assertTrue(all((d["language"] == "foo" for d in data)))
 
@@ -193,24 +190,23 @@ class PrepareSynthesizeDataTest(TestCase):
         """
         Use a different speaker than the one provided in the filelist.
         """
-        with silence_c_stderr():
-            data = prepare_synthesize_data(
-                texts=[],
-                language="foo",
-                speaker="bar",
-                duration_control=1.0,
-                style_reference=None,
-                filelist=Path(__file__).parent / "data/filelist.psv",
-                model=MockModelForPrepare(
-                    lang2id={"foo": 1},
-                    speaker2id={"bar": 2},
-                    filelist_loader=generic_psv_filelist_reader,
-                    multilingual=True,
-                    multispeaker=True,
-                    target_text_representation_level=TargetTrainingTextRepresentationLevel.characters,
-                ),
-                text_representation=DatasetTextRepresentation.characters,
-            )
+        data = prepare_synthesize_data(
+            texts=[],
+            language="foo",
+            speaker="bar",
+            duration_control=1.0,
+            style_reference=None,
+            filelist=Path(__file__).parent / "data/filelist.psv",
+            model=MockModelForPrepare(
+                lang2id={"foo": 1},
+                speaker2id={"bar": 2},
+                filelist_loader=generic_psv_filelist_reader,
+                multilingual=True,
+                multispeaker=True,
+                target_text_representation_level=TargetTrainingTextRepresentationLevel.characters,
+            ),
+            text_representation=DatasetTextRepresentation.characters,
+        )
         self.assertEqual(
             data[-1]["basename"],
             "LJ002 this is a really long basename",
@@ -220,24 +216,23 @@ class PrepareSynthesizeDataTest(TestCase):
         self.assertTrue(all((d["speaker"] == "bar" for d in data)))
 
     def test_plain_filelist(self):
-        with silence_c_stderr():
-            data = prepare_synthesize_data(
-                texts=[],
-                language=None,
-                speaker=None,
-                duration_control=1.0,
-                style_reference=None,
-                filelist=Path(__file__).parent / "data/filelist.txt",
-                model=MockModelForPrepare(
-                    lang2id={"foo": 1},
-                    speaker2id={"bar": 2},
-                    filelist_loader=generic_psv_filelist_reader,
-                    multilingual=True,
-                    multispeaker=True,
-                    target_text_representation_level=TargetTrainingTextRepresentationLevel.characters,
-                ),
-                text_representation=DatasetTextRepresentation.characters,
-            )
+        data = prepare_synthesize_data(
+            texts=[],
+            language=None,
+            speaker=None,
+            duration_control=1.0,
+            style_reference=None,
+            filelist=Path(__file__).parent / "data/filelist.txt",
+            model=MockModelForPrepare(
+                lang2id={"foo": 1},
+                speaker2id={"bar": 2},
+                filelist_loader=generic_psv_filelist_reader,
+                multilingual=True,
+                multispeaker=True,
+                target_text_representation_level=TargetTrainingTextRepresentationLevel.characters,
+            ),
+            text_representation=DatasetTextRepresentation.characters,
+        )
         self.assertEqual(
             data[-1]["basename"],
             "Neild-found-a-man-na-80dfa7e5",
@@ -255,24 +250,23 @@ class PrepareSynthesizeDataTest(TestCase):
         a = "There are approximately 70 Indigenous languages spoken in Canada from 10 distinct language families."
         b = "As a consequence of the residential school system and other policies of cultural suppression, the majority of these languages now have fewer than 500 fluent speakers remaining, most of them elderly."
 
-        with silence_c_stderr():
-            data = prepare_synthesize_data(
-                texts=[a + " " + b],
-                language="foo",
-                speaker="bar",
-                duration_control=1.0,
-                style_reference=None,
-                filelist=Path(),  # Does not get used in this test
-                model=MockModelForPrepare(
-                    lang2id={"foo": 1},
-                    speaker2id={"bar": 2},
-                    filelist_loader=generic_psv_filelist_reader,
-                    multilingual=True,
-                    multispeaker=True,
-                    target_text_representation_level=TargetTrainingTextRepresentationLevel.characters,
-                ),
-                text_representation=DatasetTextRepresentation.characters,
-            )
+        data = prepare_synthesize_data(
+            texts=[a + " " + b],
+            language="foo",
+            speaker="bar",
+            duration_control=1.0,
+            style_reference=None,
+            filelist=Path(),  # Does not get used in this test
+            model=MockModelForPrepare(
+                lang2id={"foo": 1},
+                speaker2id={"bar": 2},
+                filelist_loader=generic_psv_filelist_reader,
+                multilingual=True,
+                multispeaker=True,
+                target_text_representation_level=TargetTrainingTextRepresentationLevel.characters,
+            ),
+            text_representation=DatasetTextRepresentation.characters,
+        )
         self.assertEqual(len(data), 2)
         self.assertEqual(data[0]["characters"], a)
         self.assertEqual(data[1]["characters"], b)
@@ -287,28 +281,27 @@ class PrepareSynthesizeDataTest(TestCase):
         a = "There are approximately 70 Indigenous languages spoken in Canada from 10 distinct language families."
         b = "As a consequence of the residential school system and other policies of cultural suppression, the majority of these languages now have fewer than 500 fluent speakers remaining, most of them elderly."
 
-        with silence_c_stderr():
-            data = prepare_synthesize_data(
-                texts=[a + " " + b],
-                language="foo",
-                speaker="bar",
-                duration_control=1.0,
-                style_reference=None,
-                filelist=Path(__file__).parent / "data/filelist.psv",
-                model=MockModelForPrepare(
-                    lang2id={"foo": 1},
-                    speaker2id={"bar": 2},
-                    filelist_loader=generic_psv_filelist_reader,
-                    multilingual=True,
-                    multispeaker=True,
-                    target_text_representation_level=TargetTrainingTextRepresentationLevel.characters,
-                    text_config=TextConfig(
-                        split_text=False,
-                        boundaries={"foo": {"strong": ".!?", "weak": ",;:"}},
-                    ),
+        data = prepare_synthesize_data(
+            texts=[a + " " + b],
+            language="foo",
+            speaker="bar",
+            duration_control=1.0,
+            style_reference=None,
+            filelist=Path(__file__).parent / "data/filelist.psv",
+            model=MockModelForPrepare(
+                lang2id={"foo": 1},
+                speaker2id={"bar": 2},
+                filelist_loader=generic_psv_filelist_reader,
+                multilingual=True,
+                multispeaker=True,
+                target_text_representation_level=TargetTrainingTextRepresentationLevel.characters,
+                text_config=TextConfig(
+                    split_text=False,
+                    boundaries={"foo": {"strong": ".!?", "weak": ",;:"}},
                 ),
-                text_representation=DatasetTextRepresentation.characters,
-            )
+            ),
+            text_representation=DatasetTextRepresentation.characters,
+        )
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]["characters"], a + " " + b)
         self.assertTrue(data[0]["is_last_input_chunk"])
@@ -482,10 +475,9 @@ class CLITest(PreprocessedAudioFixture, TestCase):
 
     def test_check_data(self):
         filelist = generic_psv_filelist_reader(TEST_DATA_DIR / "metadata.psv")
-        with capture_stderr(), mute_logger("everyvoice.text.text_processor"):
-            checked_data = check_data_from_filelist(
-                self.preprocessor, filelist, heavy_objective_evaluation=True
-            )
+        checked_data = check_data_from_filelist(
+            self.preprocessor, filelist, heavy_objective_evaluation=True
+        )
         self.assertIn("pesq", checked_data[0])
         self.assertIn("stoi", checked_data[0])
         self.assertIn("si_sdr", checked_data[0])

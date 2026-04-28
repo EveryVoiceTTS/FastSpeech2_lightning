@@ -2,13 +2,13 @@ from functools import partial
 from pathlib import Path
 from string import ascii_lowercase
 from tempfile import TemporaryDirectory
+from typing import Callable
 from unittest import TestCase
 
 import torch
 from everyvoice.config.shared_types import ContactInformation
 from everyvoice.config.text_config import TextConfig
 from everyvoice.tests.model_stubs import get_stubbed_vocoder
-from everyvoice.tests.stubs import silence_c_stderr
 from everyvoice.text.text_processor import TextProcessor
 from pydub import AudioSegment
 from pympi import TextGrid
@@ -50,21 +50,20 @@ class TestDuplicateFilename(TestCase):
             tmp_dir = Path(tmp_dir)
             vocoder, vocoder_path = get_stubbed_vocoder(tmp_dir)
 
-            with silence_c_stderr():
-                writers = get_synthesis_output_callbacks(
-                    [SynthesizeOutputFormats.wav],
-                    config=FastSpeech2Config(
-                        contact=self.contact,
-                        training=FastSpeech2TrainingConfig(vocoder_path=vocoder_path),
-                    ),
-                    device=torch.device("cpu"),
-                    global_step=77,
-                    output_dir=tmp_dir,
-                    output_key=self.output_key,
-                    vocoder_model=vocoder,
-                    vocoder_config=vocoder.config,
-                    vocoder_global_step=10,
-                )
+            writers = get_synthesis_output_callbacks(
+                [SynthesizeOutputFormats.wav],
+                config=FastSpeech2Config(
+                    contact=self.contact,
+                    training=FastSpeech2TrainingConfig(vocoder_path=vocoder_path),
+                ),
+                device=torch.device("cpu"),
+                global_step=77,
+                output_dir=tmp_dir,
+                output_key=self.output_key,
+                vocoder_model=vocoder,
+                vocoder_config=vocoder.config,
+                vocoder_global_step=10,
+            )
 
             # Batch 1
             writer = next(iter(writers.values()))
@@ -93,6 +92,11 @@ class TestDuplicateFilename(TestCase):
 
 
 class ChunkingTestBase(TestCase):
+    get_test_callback: Callable
+    outputs: dict
+    batch1: dict
+    batch2: dict
+
     @classmethod
     def setUpClass(cls):
         # Define the function that gets the callbacks, get_test_callback
@@ -172,8 +176,7 @@ class TestWritingWav(ChunkingTestBase):
         """
         Tests the correctness of the output of .wavs for chunked text over multiple batches.
         """
-        with silence_c_stderr():
-            writers = self.get_test_callback([SynthesizeOutputFormats.wav])
+        writers = self.get_test_callback([SynthesizeOutputFormats.wav])
 
         # Batch 1
         writer = next(iter(writers.values()))
@@ -233,8 +236,7 @@ class TestWritingSpec(ChunkingTestBase):
         """
         Tests the correctness of the output of spectrograms for chunked text over multiple batches.
         """
-        with silence_c_stderr():
-            writers = self.get_test_callback([SynthesizeOutputFormats.spec])
+        writers = self.get_test_callback([SynthesizeOutputFormats.spec])
 
         # Batch 1
         writer = next(iter(writers.values()))
@@ -289,8 +291,7 @@ class TestWritingTextGrid(ChunkingTestBase):
         """
         Tests the correctness of the output of TextGrid files for chunked text over multiple batches.
         """
-        with silence_c_stderr():
-            writers = self.get_test_callback([SynthesizeOutputFormats.textgrid])
+        writers = self.get_test_callback([SynthesizeOutputFormats.textgrid])
 
         # Batch 1
         writer = next(iter(writers.values()))
@@ -357,8 +358,7 @@ class TestWritingTextGrid(ChunkingTestBase):
 
 class TestWritingReadAlongXML(ChunkingTestBase):
     def test_writing_readalong(self):
-        with silence_c_stderr():
-            writers = self.get_test_callback([SynthesizeOutputFormats.readalong_xml])
+        writers = self.get_test_callback([SynthesizeOutputFormats.readalong_xml])
 
         # Batch 1
         writer = next(iter(writers.values()))
@@ -403,8 +403,7 @@ class TestWritingReadAlongXML(ChunkingTestBase):
 
 class TestWritingReadAlongHTML(ChunkingTestBase):
     def test_writing_readalong(self) -> None:
-        with silence_c_stderr():
-            writers = self.get_test_callback([SynthesizeOutputFormats.readalong_html])
+        writers = self.get_test_callback([SynthesizeOutputFormats.readalong_html])
 
         for writer in writers.values():
             for batch, idx in ((self.batch1, 1), (self.batch2, 2)):
@@ -426,7 +425,7 @@ class TestWritingReadAlongHTML(ChunkingTestBase):
             "twothreefour--S2--L2--22050-mel-librosa.html",
         )
         for output_file_basename in output_file_basenames:
-            output_file = output_dir.parent/"readalongs"/output_file_basename
+            output_file = output_dir.parent / "readalongs" / output_file_basename
             with self.subTest(output_file=output_file):
                 self.assertTrue(output_file.exists())
                 with open(output_file, "r", encoding="utf8") as f:
