@@ -1,6 +1,5 @@
 """
-If you've installed `everyvoice` and would like to run this unittest:
-python -m unittest everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.tests.test_cli
+To run just this test: pytest path/to/test_cli.py
 """
 
 import io

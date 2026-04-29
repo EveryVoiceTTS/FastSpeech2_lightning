@@ -4,7 +4,6 @@ source_pkgs =
     everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2
 omit =
     *tmp*
-    */run_tests.py
     */tests/*
     */__main__.py
 
