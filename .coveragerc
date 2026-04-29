@@ -1,4 +1,5 @@
 [run]
+branch = true
 source_pkgs =
     fs2
     everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2
