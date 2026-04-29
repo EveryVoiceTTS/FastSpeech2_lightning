@@ -5,6 +5,7 @@ from unittest import TestCase
 from everyvoice.config.shared_types import ContactInformation
 from everyvoice.config.type_definitions import DatasetTextRepresentation
 from everyvoice.text.lookups import LookupTable
+from pytest import raises
 
 from ..cli.synthesize import load_data_from_filelist
 from ..config import FastSpeech2Config
@@ -60,16 +61,16 @@ class TestLoadingModel(TestCase):
             ckpt_fn = tmpdir_str + "/checkpoint.ckpt"
             trainer.save_checkpoint(ckpt_fn)
             m = torch.load(ckpt_fn, weights_only=True)
-            self.assertIn("model_info", m.keys())
+            assert "model_info" in m.keys()
             m["model_info"]["name"] = "BAD_TYPE"
             torch.save(m, ckpt_fn)
             m = torch.load(ckpt_fn, weights_only=True)
-            self.assertIn("model_info", m.keys())
-            self.assertEqual(m["model_info"]["name"], "BAD_TYPE")
-            # self.assertEqual(m["model_info"]["version"], "1.0")
-            with self.assertRaisesRegex(
+            assert "model_info" in m.keys()
+            assert m["model_info"]["name"] == "BAD_TYPE"
+            # assert m["model_info"]["version"] == "1.0"
+            with raises(
                 TypeError,
-                r"Wrong model type \(BAD_TYPE\), we are expecting a 'FastSpeech2' model",
+                match=r"Wrong model type \(BAD_TYPE\), we are expecting a 'FastSpeech2' model",
             ):
                 FastSpeech2.load_from_checkpoint(ckpt_fn)
 
@@ -113,12 +114,10 @@ class TestLoadingModel(TestCase):
             ckpt_fn = tmpdir_str + "/checkpoint.ckpt"
             trainer.save_checkpoint(ckpt_fn)
             m = torch.load(ckpt_fn, weights_only=True)
-            self.assertIn("model_info", m.keys())
-            self.assertEqual(m["model_info"]["name"], FastSpeech2.__name__)
-            self.assertEqual(m["model_info"]["version"], BAD_VERSION)
-            with self.assertRaisesRegex(
-                InvalidVersion, r"Invalid version: 'BAD_VERSION'"
-            ):
+            assert "model_info" in m.keys()
+            assert m["model_info"]["name"] == FastSpeech2.__name__
+            assert m["model_info"]["version"] == BAD_VERSION
+            with raises(InvalidVersion, match=r"Invalid version: 'BAD_VERSION'"):
                 FastSpeech2.load_from_checkpoint(ckpt_fn)
 
     def test_newer_model_version(self):
@@ -160,12 +159,12 @@ class TestLoadingModel(TestCase):
             ckpt_fn = tmpdir_str + "/checkpoint.ckpt"
             trainer.save_checkpoint(ckpt_fn)
             m = torch.load(ckpt_fn, weights_only=True)
-            self.assertIn("model_info", m.keys())
-            self.assertEqual(m["model_info"]["name"], FastSpeech2.__name__)
-            self.assertEqual(m["model_info"]["version"], BAD_VERSION)
-            with self.assertRaisesRegex(
+            assert "model_info" in m.keys()
+            assert m["model_info"]["name"] == FastSpeech2.__name__
+            assert m["model_info"]["version"] == BAD_VERSION
+            with raises(
                 ValueError,
-                r"Your model was created with a newer version of EveryVoice, please update your software.",
+                match=r"Your model was created with a newer version of EveryVoice, please update your software.",
             ):
                 FastSpeech2.load_from_checkpoint(ckpt_fn)
 
@@ -189,9 +188,9 @@ class TestLoadingConfig(TestCase):
         ).model_dump()
         del arguments["VERSION"]
 
-        self.assertNotIn("VERSION", arguments)
+        assert "VERSION" not in arguments
         c = FastSpeech2Config(**arguments)
-        self.assertEqual(c.VERSION, "1.0")
+        assert c.VERSION == "1.0"
 
     def test_config_newer_version(self):
         """
@@ -204,9 +203,9 @@ class TestLoadingConfig(TestCase):
         NEWER_VERSION = "100.0"
         reference.VERSION = NEWER_VERSION
 
-        with self.assertRaisesRegex(
+        with raises(
             ValueError,
-            r"Your config was created with a newer version of EveryVoice, please update your software.",
+            match=r"Your config was created with a newer version of EveryVoice, please update your software.",
         ):
             FastSpeech2Config(**reference.model_dump())
 
@@ -239,12 +238,12 @@ class TestLoadingData(TestCase):
 
     def test_load_oneline(self):
         data = self.write_and_load("this is a test\n")
-        self.assertEqual(len(data), 1)
+        assert len(data) == 1
 
     def test_load_twolines(self):
         data = self.write_and_load("test line 1\ntest line 2\n")
-        self.assertEqual(len(data), 2)
+        assert len(data) == 2
 
     def test_load_psv(self):
         data = self.write_and_load("characters|language\nfoo|eng\nbar|eng\nbaz|fra\n")
-        self.assertEqual(len(data), 3)
+        assert len(data) == 3

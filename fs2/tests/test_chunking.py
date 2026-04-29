@@ -77,18 +77,14 @@ class TestDuplicateFilename(TestCase):
             )
             output_dir = writer.save_dir
             # print(output_dir, *output_dir.glob("**"))  # For debugging
-            self.assertTrue(output_dir.exists())
-            self.assertTrue(
-                (
-                    output_dir
-                    / "This-is-a-chunkThis--9fc7184d--S1--L1--ckpt=77--v_ckpt=10--pred.wav"
-                ).exists()
-            )
-            self.assertTrue(
-                (
-                    output_dir / "This-is-a-chunk--S1--L1--ckpt=77--v_ckpt=10--pred.wav"
-                ).exists()
-            )
+            assert output_dir.exists()
+            assert (
+                output_dir
+                / "This-is-a-chunkThis--9fc7184d--S1--L1--ckpt=77--v_ckpt=10--pred.wav"
+            ).exists()
+            assert (
+                output_dir / "This-is-a-chunk--S1--L1--ckpt=77--v_ckpt=10--pred.wav"
+            ).exists()
 
 
 class ChunkingTestBase(TestCase):
@@ -190,7 +186,7 @@ class TestWritingWav(ChunkingTestBase):
         )
         output_dir = writer.save_dir
         # print(output_dir, *output_dir.glob("**"))  # For debugging
-        self.assertTrue(output_dir.exists())
+        assert output_dir.exists()
 
         # Batch 2
         writer = next(iter(writers.values()))
@@ -204,19 +200,16 @@ class TestWritingWav(ChunkingTestBase):
         )
 
         # Test that the correctly named files were outputted
-        self.assertTrue(
-            (output_dir / "one--S1--L1--ckpt=77--v_ckpt=10--pred.wav").exists()
-        )
-        self.assertTrue(
-            (output_dir / "twothreefour--S2--L2--ckpt=77--v_ckpt=10--pred.wav").exists()
-        )
+        assert (output_dir / "one--S1--L1--ckpt=77--v_ckpt=10--pred.wav").exists()
+        assert (
+            output_dir / "twothreefour--S2--L2--ckpt=77--v_ckpt=10--pred.wav"
+        ).exists()
 
         # Tests that last_file_written contains the correct most recent filename written
         # This is important for the demo
-        self.assertEqual(
-            (output_dir / "twothreefour--S2--L2--ckpt=77--v_ckpt=10--pred.wav"),
-            Path(writer.last_file_written),
-        )
+        assert (
+            output_dir / "twothreefour--S2--L2--ckpt=77--v_ckpt=10--pred.wav"
+        ) == Path(writer.last_file_written)
 
         # Checks that the files have reasonable lengths
         output_one = AudioSegment.from_file(
@@ -228,7 +221,7 @@ class TestWritingWav(ChunkingTestBase):
 
         # There are four chunks but two outputs.
         # Output one contains only one chunk, so output_two should be 3 times longer
-        self.assertEqual(len(output_one) * 3, len(output_two))
+        assert len(output_one) * 3 == len(output_two)
 
 
 class TestWritingSpec(ChunkingTestBase):
@@ -250,7 +243,7 @@ class TestWritingSpec(ChunkingTestBase):
         )
         output_dir = writer.save_dir
         # print(output_dir, *output_dir.glob("**"))  # For debugging
-        self.assertTrue(output_dir.exists())
+        assert output_dir.exists()
 
         # Batch 2
         writer = next(iter(writers.values()))
@@ -264,14 +257,10 @@ class TestWritingSpec(ChunkingTestBase):
         )
 
         # Test that the correctly named files were outputted
-        self.assertTrue(
-            (output_dir / "one--S1--L1--spec-pred-22050-mel-librosa.pt").exists()
-        )
-        self.assertTrue(
-            (
-                output_dir / "twothreefour--S2--L2--spec-pred-22050-mel-librosa.pt"
-            ).exists()
-        )
+        assert (output_dir / "one--S1--L1--spec-pred-22050-mel-librosa.pt").exists()
+        assert (
+            output_dir / "twothreefour--S2--L2--spec-pred-22050-mel-librosa.pt"
+        ).exists()
 
         # Checks that the files have reasonable lengths
         output_one = torch.load(
@@ -283,7 +272,7 @@ class TestWritingSpec(ChunkingTestBase):
 
         # There are four chunks but two outputs.
         # Output one contains only one chunk, so output_two should be 3 times longer
-        self.assertEqual(output_one.size(-1) * 3, output_two.size(-1))
+        assert output_one.size(-1) * 3 == output_two.size(-1)
 
 
 class TestWritingTextGrid(ChunkingTestBase):
@@ -305,7 +294,7 @@ class TestWritingTextGrid(ChunkingTestBase):
         )
         output_dir = writer.save_dir
         # print(output_dir, *output_dir.glob("**/*"))  # For debugging
-        self.assertTrue(output_dir.exists())
+        assert output_dir.exists()
 
         # Batch 2
         writer = next(iter(writers.values()))
@@ -318,12 +307,10 @@ class TestWritingTextGrid(ChunkingTestBase):
             _dataloader_idx=1,
         )
         # Test that the correctly named files were outputted
-        self.assertTrue(
-            (output_dir / "one--S1--L1--22050-mel-librosa.TextGrid").exists()
-        )
-        self.assertTrue(
-            (output_dir / "twothreefour--S2--L2--22050-mel-librosa.TextGrid").exists()
-        )
+        assert (output_dir / "one--S1--L1--22050-mel-librosa.TextGrid").exists()
+        assert (
+            output_dir / "twothreefour--S2--L2--22050-mel-librosa.TextGrid"
+        ).exists()
 
         # Check that the correct words were added to the first TextGrid
         tg = TextGrid(
@@ -333,11 +320,11 @@ class TestWritingTextGrid(ChunkingTestBase):
 
         phones = [interval[2] for interval in tiers[0].get_all_intervals()]
         for phone, char in zip(list(phones), list("one")):
-            self.assertEqual(phone, char)
+            assert phone == char
 
         words = tiers[2].get_all_intervals()
-        self.assertEqual(len(words), 1)
-        self.assertEqual(words[0][2], "one")
+        assert len(words) == 1
+        assert words[0][2] == "one"
 
         # Check that the correct words were added to the second TextGrid
         tg = TextGrid(
@@ -347,13 +334,13 @@ class TestWritingTextGrid(ChunkingTestBase):
 
         phones = [interval[2] for interval in tiers[0].get_all_intervals()]
         for phone, char in zip(list(phones), list("twothreefour")):
-            self.assertEqual(phone, char)
+            assert phone == char
 
         words = tiers[2].get_all_intervals()
-        self.assertEqual(len(words), 3)
-        self.assertEqual(words[0][2], "two")
-        self.assertEqual(words[1][2], "three")
-        self.assertEqual(words[2][2], "four")
+        assert len(words) == 3
+        assert words[0][2] == "two"
+        assert words[1][2] == "three"
+        assert words[2][2] == "four"
 
 
 class TestWritingReadAlongXML(ChunkingTestBase):
@@ -372,7 +359,7 @@ class TestWritingReadAlongXML(ChunkingTestBase):
         )
         output_dir = writer.save_dir
 
-        self.assertTrue(output_dir.exists())
+        assert output_dir.exists()
 
         # Batch 2
         writer = next(iter(writers.values()))
@@ -393,12 +380,12 @@ class TestWritingReadAlongXML(ChunkingTestBase):
         )
         for output_file in output_files:
             with self.subTest(output_file=output_file):
-                self.assertTrue(output_file.exists())
+                assert output_file.exists()
                 with open(output_file, "r", encoding="utf8") as f:
                     readalong = f.read()
                 # print(readalong)
-                self.assertIn("<read-along", readalong)
-                self.assertIn('<w time="0.0" dur=', readalong)
+                assert "<read-along" in readalong
+                assert '<w time="0.0" dur=' in readalong
 
 
 class TestWritingReadAlongHTML(ChunkingTestBase):
@@ -416,7 +403,7 @@ class TestWritingReadAlongHTML(ChunkingTestBase):
                     _dataloader_idx=idx,
                 )
                 output_dir = writer.save_dir
-                self.assertTrue(output_dir.exists())
+                assert output_dir.exists()
 
         # Test that the correctly named files were outputted
         # print(output_dir, *output_dir.glob("**/*"))  # For debugging
@@ -427,9 +414,9 @@ class TestWritingReadAlongHTML(ChunkingTestBase):
         for output_file_basename in output_file_basenames:
             output_file = output_dir.parent / "readalongs" / output_file_basename
             with self.subTest(output_file=output_file):
-                self.assertTrue(output_file.exists())
+                assert output_file.exists()
                 with open(output_file, "r", encoding="utf8") as f:
                     readalong = f.read()
                 # print(readalong)
-                self.assertIn("<read-along", readalong)
-                self.assertIn("<span slot", readalong)
+                assert "<read-along" in readalong
+                assert "<span slot" in readalong

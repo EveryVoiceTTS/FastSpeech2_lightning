@@ -22,6 +22,7 @@ from everyvoice.tests.stubs import (
     temp_chdir,
 )
 from everyvoice.utils import generic_psv_filelist_reader
+from pytest import approx, raises
 from typer.testing import CliRunner
 
 from ..cli.check_data_heavy import check_data_from_filelist
@@ -46,11 +47,11 @@ class SynthesizeTest(TestCase):
 
     def test_help(self):
         result = self.runner.invoke(app, ["synthesize", "--help"])
-        self.assertIn("synthesize [OPTIONS] MODEL_PATH", result.stdout)
+        assert "synthesize [OPTIONS] MODEL_PATH" in result.stdout
 
     def test_no_model(self):
         result = self.runner.invoke(app, ["synthesize"])
-        self.assertIn("Missing argument 'MODEL_PATH'.", result.output)
+        assert "Missing argument 'MODEL_PATH'." in result.output
 
     def test_filelist_and_text(self):
         with TemporaryDirectory() as tmpdir:
@@ -70,10 +71,10 @@ class SynthesizeTest(TestCase):
                     str(model),
                 ),
             )
-            self.assertIn(
+            assert (
                 "Got arguments for both text and a filelist - this will only process the text."
-                " Please re-run without providing text if you want to run batch synthesis",
-                result.output,
+                " Please re-run without providing text if you want to run batch synthesis"
+                in result.output
             )
 
     def test_no_filelist_nor_text(self):
@@ -88,7 +89,7 @@ class SynthesizeTest(TestCase):
                     str(model),
                 ),
             )
-            self.assertIn("You must define either --text or --filelist", result.output)
+            assert "You must define either --text or --filelist" in result.output
 
     def mock_synthesis(self, *_args, **_kwargs):
         print(_kwargs["model"].config)
@@ -124,8 +125,8 @@ class SynthesizeTest(TestCase):
                             "spec",
                         ],
                     )
-                    self.assertEqual(result.exit_code, 0)
-                    self.assertIn("split_text=False", result.stdout)
+                    assert result.exit_code == 0
+                    assert "split_text=False" in result.stdout
 
 
 class MockModelForPrepare:
@@ -182,8 +183,8 @@ class PrepareSynthesizeDataTest(TestCase):
             ),
             text_representation=DatasetTextRepresentation.characters,
         )
-        self.assertEqual(len(data), 11)
-        self.assertTrue(all((d["language"] == "foo" for d in data)))
+        assert len(data) == 11
+        assert all((d["language"] == "foo" for d in data))
 
     def test_filelist_speaker(self):
         """
@@ -206,13 +207,11 @@ class PrepareSynthesizeDataTest(TestCase):
             ),
             text_representation=DatasetTextRepresentation.characters,
         )
-        self.assertEqual(
-            data[-1]["basename"],
-            "LJ002 this is a really long basename",
-            "Asserts that if a filelist provides a basename, it won't get slugified or truncated",
-        )
-        self.assertEqual(len(data), 11)
-        self.assertTrue(all((d["speaker"] == "bar" for d in data)))
+        assert (
+            data[-1]["basename"] == "LJ002 this is a really long basename"
+        ), "Asserts that if a filelist provides a basename, it won't get slugified or truncated"
+        assert len(data) == 11
+        assert all((d["speaker"] == "bar" for d in data))
 
     def test_plain_filelist(self):
         data = prepare_synthesize_data(
@@ -232,14 +231,12 @@ class PrepareSynthesizeDataTest(TestCase):
             ),
             text_representation=DatasetTextRepresentation.characters,
         )
-        self.assertEqual(
-            data[-1]["basename"],
-            "Neild-found-a-man-na-80dfa7e5",
-            "Asserts that basenames are truncated and slugified",
-        )
-        self.assertEqual(len(data), 10)
-        self.assertTrue(all((d["language"] == "foo" for d in data)))
-        self.assertTrue(all((d["speaker"] == "bar" for d in data)))
+        assert (
+            data[-1]["basename"] == "Neild-found-a-man-na-80dfa7e5"
+        ), "Asserts that basenames are truncated and slugified"
+        assert len(data) == 10
+        assert all((d["language"] == "foo" for d in data))
+        assert all((d["speaker"] == "bar" for d in data))
 
     def test_chunking(self):
         """
@@ -266,11 +263,11 @@ class PrepareSynthesizeDataTest(TestCase):
             ),
             text_representation=DatasetTextRepresentation.characters,
         )
-        self.assertEqual(len(data), 2)
-        self.assertEqual(data[0]["characters"], a)
-        self.assertEqual(data[1]["characters"], b)
-        self.assertFalse(data[0]["is_last_input_chunk"])
-        self.assertTrue(data[1]["is_last_input_chunk"])
+        assert len(data) == 2
+        assert data[0]["characters"] == a
+        assert data[1]["characters"] == b
+        assert not data[0]["is_last_input_chunk"]
+        assert data[1]["is_last_input_chunk"]
 
     def test_no_chunking(self):
         """
@@ -301,9 +298,9 @@ class PrepareSynthesizeDataTest(TestCase):
             ),
             text_representation=DatasetTextRepresentation.characters,
         )
-        self.assertEqual(len(data), 1)
-        self.assertEqual(data[0]["characters"], a + " " + b)
-        self.assertTrue(data[0]["is_last_input_chunk"])
+        assert len(data) == 1
+        assert data[0]["characters"] == a + " " + b
+        assert data[0]["is_last_input_chunk"]
 
     def test_get_text_split_params(self):
         """
@@ -348,11 +345,11 @@ class PrepareSynthesizeDataTest(TestCase):
         )
         desired_length, max_length, strong_boundaries, weak_boundaries = split_params
 
-        self.assertTrue(split_text)
-        self.assertEqual(desired_length, 3)
-        self.assertEqual(max_length, 5)
-        self.assertEqual(strong_boundaries, "‽")
-        self.assertEqual(weak_boundaries, ":?")
+        assert split_text
+        assert desired_length == 3
+        assert max_length == 5
+        assert strong_boundaries == "‽"
+        assert weak_boundaries == ":?"
 
 
 class ValidateDataWithModelTest(TestCase):
@@ -369,28 +366,28 @@ class ValidateDataWithModelTest(TestCase):
         config.model.multilingual = True
         model_languages = {"L1", "L2"}
         f = io.StringIO()
-        with self.assertRaises(SystemExit), redirect_stderr(f):
+        with raises(SystemExit), redirect_stderr(f):
             validate_data_keys_with_model_keys(
                 data_keys={language},
                 model_keys=model_languages,
                 key="language",
                 multi=bool(model_languages),
             )
-        self.assertIn(
-            f"You provided {set((language,))} which is not a language supported by the model {model_languages}.",
-            f.getvalue(),
+        assert (
+            f"You provided {set((language,))} which is not a language supported by the model {model_languages}."
+            in f.getvalue()
         )
         language_two = "ALSO_UNSUPPORTED"
-        with self.assertRaises(SystemExit), redirect_stderr(f):
+        with raises(SystemExit), redirect_stderr(f):
             validate_data_keys_with_model_keys(
                 data_keys={language, language_two},
                 model_keys=model_languages,
                 key="language",
                 multi=bool(model_languages),
             )
-        self.assertIn(
-            f"You provided {set((language, language_two))} which are not languages that are supported by the model {model_languages}.",
-            f.getvalue(),
+        assert (
+            f"You provided {set((language, language_two))} which are not languages that are supported by the model {model_languages}."
+            in f.getvalue()
         )
 
     def test_not_multilingual_with_language(self):
@@ -402,17 +399,14 @@ class ValidateDataWithModelTest(TestCase):
         config.model.multilingual = False
         model_languages = DEFAULT_LANG2ID
         f = io.StringIO()
-        with self.assertRaises(SystemExit), redirect_stderr(f):
+        with raises(SystemExit), redirect_stderr(f):
             validate_data_keys_with_model_keys(
                 data_keys={language},
                 model_keys=model_languages,
                 key="language",
                 multi=bool(model_languages),
             )
-        self.assertIn(
-            "The current model doesn't support multiple languages",
-            f.getvalue(),
-        )
+        assert "The current model doesn't support multiple languages" in f.getvalue()
 
     def test_multispeaker_invalid_speaker(self):
         """
@@ -423,16 +417,16 @@ class ValidateDataWithModelTest(TestCase):
         config.model.multispeaker = True
         model_speakers = {"S1", "S2"}
         f = io.StringIO()
-        with self.assertRaises(SystemExit), redirect_stderr(f):
+        with raises(SystemExit), redirect_stderr(f):
             validate_data_keys_with_model_keys(
                 data_keys={speaker},
                 model_keys=model_speakers,
                 key="speaker",
                 multi=bool(model_speakers),
             )
-        self.assertIn(
-            f"You provided {set((speaker,))} which is not a speaker supported by the model {model_speakers}.",
-            f.getvalue(),
+        assert (
+            f"You provided {set((speaker,))} which is not a speaker supported by the model {model_speakers}."
+            in f.getvalue()
         )
 
     def test_not_multispeaker_with_speaker(self):
@@ -444,17 +438,14 @@ class ValidateDataWithModelTest(TestCase):
         config.model.multispeaker = False
         model_speakers = DEFAULT_SPEAKER2ID
         f = io.StringIO()
-        with self.assertRaises(SystemExit), redirect_stderr(f):
+        with raises(SystemExit), redirect_stderr(f):
             validate_data_keys_with_model_keys(
                 data_keys={speaker},
                 model_keys=model_speakers,
                 key="speaker",
                 multi=bool(model_speakers),
             )
-        self.assertIn(
-            "The current model doesn't support multiple speakers",
-            f.getvalue(),
-        )
+        assert "The current model doesn't support multiple speakers" in f.getvalue()
 
 
 class CLITest(PreprocessedAudioFixture, TestCase):
@@ -477,12 +468,12 @@ class CLITest(PreprocessedAudioFixture, TestCase):
         checked_data = check_data_from_filelist(
             self.preprocessor, filelist, heavy_objective_evaluation=True
         )
-        self.assertIn("pesq", checked_data[0])
-        self.assertIn("stoi", checked_data[0])
-        self.assertIn("si_sdr", checked_data[0])
-        self.assertGreater(checked_data[0]["pesq"], 3.0)
-        self.assertLess(checked_data[0]["pesq"], 5.0)
-        self.assertAlmostEqual(checked_data[0]["duration"], 5.17, 2)
+        assert "pesq" in checked_data[0]
+        assert "stoi" in checked_data[0]
+        assert "si_sdr" in checked_data[0]
+        assert checked_data[0]["pesq"] > 3.0
+        assert checked_data[0]["pesq"] < 5.0
+        assert checked_data[0]["duration"] == approx(5.17, abs=0.01)
 
     def test_commands_present(self):
         """
@@ -491,7 +482,7 @@ class CLITest(PreprocessedAudioFixture, TestCase):
         result = self.runner.invoke(app, ["--help"])
         for command in self.subcommands:
             with self.subTest(msg=f"Looking for {command}"):
-                self.assertIn(command, result.stdout)
+                assert command in result.stdout
 
     def test_command_help_messages(self):
         """
@@ -500,9 +491,9 @@ class CLITest(PreprocessedAudioFixture, TestCase):
         for subcommand in self.subcommands:
             with self.subTest(msg=f"Looking for {subcommand}'s help"):
                 result = self.runner.invoke(app, [subcommand, "--help"])
-                self.assertEqual(result.exit_code, 0)
+                assert result.exit_code == 0
                 result = self.runner.invoke(app, [subcommand, "-h"])
-                self.assertEqual(result.exit_code, 0)
+                assert result.exit_code == 0
 
 
 class MiscTests(TestCase):
@@ -514,8 +505,6 @@ class MiscTests(TestCase):
 
         from .._version import VERSION as fs2_version
 
-        self.assertEqual(
-            ev_version,
-            fs2_version,
-            "Version mismatch between EveryVoice and FastSpeech2_lightning",
-        )
+        assert (
+            ev_version == fs2_version
+        ), "Version mismatch between EveryVoice and FastSpeech2_lightning"

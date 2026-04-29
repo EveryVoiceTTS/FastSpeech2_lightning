@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
@@ -33,7 +34,7 @@ class TestTruncateBasename(TestCase):
         Short utterances should produce file names that are not truncated.
         """
         output = truncate_basename("Short utterance")
-        self.assertEqual(output, "Short-utterance")
+        assert output == "Short-utterance"
 
     def test_long_name(self):
         """
@@ -41,8 +42,8 @@ class TestTruncateBasename(TestCase):
         should have a sha1 in case two utterances have the same prefix.
         """
         output = truncate_basename("A utterance that is too long")
-        self.assertEqual(len(output), BASENAME_MAX_LENGTH + 1 + 8)
-        self.assertEqual(output, "A-utterance-that-is--d607fba8")
+        assert len(output) == BASENAME_MAX_LENGTH + 1 + 8
+        assert output == "A-utterance-that-is--d607fba8"
 
     def test_limit(self):
         """
@@ -50,8 +51,8 @@ class TestTruncateBasename(TestCase):
         """
         input = "A" * BASENAME_MAX_LENGTH
         output = truncate_basename(input)
-        self.assertEqual(len(output), BASENAME_MAX_LENGTH)
-        self.assertEqual(output, input)
+        assert len(output) == BASENAME_MAX_LENGTH
+        assert output == input
 
     def test_limit_plus_one(self):
         """
@@ -59,7 +60,7 @@ class TestTruncateBasename(TestCase):
         """
         input = "A" * (BASENAME_MAX_LENGTH + 1)
         output = truncate_basename(input)
-        self.assertEqual(len(output), BASENAME_MAX_LENGTH + 1 + 8)
+        assert len(output) == BASENAME_MAX_LENGTH + 1 + 8
 
     def test_same_prefix_different_names(self):
         """
@@ -70,9 +71,10 @@ class TestTruncateBasename(TestCase):
         input2 = prefix + "2"
         output1 = truncate_basename(input1)
         output2 = truncate_basename(input2)
-        self.assertNotEqual(output1, output2)
-        self.assertRegex(output1, prefix + r"-[0-9A-Fa-f]{8}")
-        self.assertRegex(output2, prefix + r"-[0-9A-Fa-f]{8}")
+        assert output1 != output2
+        pattern = re.compile(prefix + r"-[0-9A-Fa-f]{8}")
+        assert pattern.search(output1), f"{output1} does not match {pattern}"
+        assert pattern.search(output2), f"{output1} does not match {pattern}"
 
 
 class WritingTestBase(TestCase):
@@ -147,18 +149,14 @@ class TestWritingSpec(WritingTestBase):
             )
             output_dir = writer.save_dir
             # print(output_dir, *output_dir.glob("**/*"))  # For debugging
-            self.assertTrue(output_dir.exists())
-            self.assertTrue(
-                (
-                    output_dir / "short--spk1--lngA--spec-pred-22050-mel-librosa.pt"
-                ).exists()
-            )
-            self.assertTrue(
-                (
-                    output_dir
-                    / "This-utterance-is-wa-dcae74b8--spk2--lngB--spec-pred-22050-mel-librosa.pt"
-                ).exists()
-            )
+            assert output_dir.exists()
+            assert (
+                output_dir / "short--spk1--lngA--spec-pred-22050-mel-librosa.pt"
+            ).exists()
+            assert (
+                output_dir
+                / "This-utterance-is-wa-dcae74b8--spk2--lngB--spec-pred-22050-mel-librosa.pt"
+            ).exists()
 
 
 class TestWritingTextGrid(WritingTestBase):
@@ -192,16 +190,14 @@ class TestWritingTextGrid(WritingTestBase):
             )
             output_dir = writer.save_dir
             # print(output_dir, *output_dir.glob("**/*"))  # For debugging
-            self.assertTrue(output_dir.exists())
-            self.assertTrue(
-                (output_dir / "short--spk1--lngA--22050-mel-librosa.TextGrid").exists()
-            )
-            self.assertTrue(
-                (
-                    output_dir
-                    / "This-utterance-is-wa-dcae74b8--spk2--lngB--22050-mel-librosa.TextGrid"
-                ).exists()
-            )
+            assert output_dir.exists()
+            assert (
+                output_dir / "short--spk1--lngA--22050-mel-librosa.TextGrid"
+            ).exists()
+            assert (
+                output_dir
+                / "This-utterance-is-wa-dcae74b8--spk2--lngB--22050-mel-librosa.TextGrid"
+            ).exists()
             tg = TextGrid(
                 file_path=(
                     output_dir
@@ -209,11 +205,11 @@ class TestWritingTextGrid(WritingTestBase):
                 )
             )
             tiers = list(tg.get_tiers())
-            self.assertEqual(tiers[0].name, "phones")
-            self.assertEqual(tiers[1].name, "phone annotations")
-            self.assertEqual(tiers[2].name, "words")
-            self.assertEqual(tiers[3].name, "word annotations")
-            self.assertEqual(tiers[2].intervals[0][2], "This")
+            assert tiers[0].name == "phones"
+            assert tiers[1].name == "phone annotations"
+            assert tiers[2].name == "words"
+            assert tiers[3].name == "word annotations"
+            assert tiers[2].intervals[0][2] == "This"
 
 
 class TestWritingReadAlong(WritingTestBase):
@@ -251,12 +247,12 @@ class TestWritingReadAlong(WritingTestBase):
             )
             for output_file in output_files:
                 with self.subTest(output_file=output_file):
-                    self.assertTrue(output_file.exists())
+                    assert output_file.exists()
                     with open(output_file, "r", encoding="utf8") as f:
                         readalong = f.read()
                     # print(readalong)
-                    self.assertIn("<read-along", readalong)
-                    self.assertIn('<w time="0.0" dur=', readalong)
+                    assert "<read-along" in readalong
+                    assert '<w time="0.0" dur=' in readalong
 
 
 class TestWritingOfflineRAS(WritingTestBase):
@@ -295,7 +291,7 @@ class TestWritingOfflineRAS(WritingTestBase):
 
             # print(output_dir, *output_dir.glob("**/*"))  # For debugging
 
-            self.assertTrue(output_dir.exists())
+            assert output_dir.exists()
             output_files = (
                 output_dir / "short--spk1--lngA--22050-mel-librosa.html",
                 output_dir
@@ -303,12 +299,12 @@ class TestWritingOfflineRAS(WritingTestBase):
             )
             for output_file in output_files:
                 with self.subTest(output_file=output_file):
-                    self.assertTrue(output_file.exists())
+                    assert output_file.exists()
                     with open(output_file, "r", encoding="utf8") as f:
                         readalong = f.read()
                     # print(readalong)
-                    self.assertIn("<read-along", readalong)
-                    self.assertIn("<span slot", readalong)
+                    assert "<read-along" in readalong
+                    assert "<span slot" in readalong
 
 
 class TestWritingWav(WritingTestBase):
@@ -351,15 +347,11 @@ class TestWritingWav(WritingTestBase):
             )
             output_dir = writer.save_dir
             # print(output_dir, *output_dir.glob("**/*"))  # For debugging
-            self.assertTrue(output_dir.exists())
-            self.assertTrue(
-                (
-                    output_dir / "short--spk1--lngA--ckpt=77--v_ckpt=10--pred.wav"
-                ).exists()
-            )
-            self.assertTrue(
-                (
-                    output_dir
-                    / "This-utterance-is-wa-dcae74b8--spk2--lngB--ckpt=77--v_ckpt=10--pred.wav"
-                ).exists()
-            )
+            assert output_dir.exists()
+            assert (
+                output_dir / "short--spk1--lngA--ckpt=77--v_ckpt=10--pred.wav"
+            ).exists()
+            assert (
+                output_dir
+                / "This-utterance-is-wa-dcae74b8--spk2--lngB--ckpt=77--v_ckpt=10--pred.wav"
+            ).exists()
