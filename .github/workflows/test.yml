@@ -38,7 +38,6 @@ jobs:
           cd EveryVoice
           CUDA_TAG=cpu pip install -r requirements.torch.txt --find-links https://download.pytorch.org/whl/torch_stable.html
           pip install -e .[dev]
-          pip install coverage
 
       - run: pip freeze
 
@@ -47,7 +46,7 @@ jobs:
       - name: Run fs2 unit tests
         run: |
           cd EveryVoice/everyvoice/model/feature_prediction/FastSpeech2_lightning/
-          coverage run -m unittest discover everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.tests
+          coverage run -m pytest
           coverage xml
 
       - name: Plain text coverage report
