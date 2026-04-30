@@ -6,8 +6,9 @@ import io
 from contextlib import redirect_stderr
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest import TestCase, mock
+from unittest import mock
 
+import pytest
 from everyvoice.config.shared_types import ContactInformation
 from everyvoice.config.text_config import TextConfig
 from everyvoice.config.type_definitions import (
@@ -16,13 +17,8 @@ from everyvoice.config.type_definitions import (
 )
 from everyvoice.tests.model_stubs import get_stubbed_model
 from everyvoice.tests.preprocessed_audio_fixture import PreprocessedAudioFixture
-from everyvoice.tests.stubs import (
-    TEST_DATA_DIR,
-    mute_logger,
-    temp_chdir,
-)
+from everyvoice.tests.stubs import TEST_DATA_DIR, mute_logger, temp_chdir
 from everyvoice.utils import generic_psv_filelist_reader
-from pytest import approx, raises
 from typer.testing import CliRunner
 
 from ..cli.check_data_heavy import check_data_from_filelist
@@ -41,10 +37,13 @@ CONTACT = ContactInformation(
 )
 
 
-class SynthesizeTest(TestCase):
-    def setUp(self) -> None:
-        self.runner = CliRunner()
+@pytest.fixture(scope="class")
+def runner(request) -> None:
+    request.cls.runner = CliRunner()
 
+
+@pytest.mark.usefixtures("runner")
+class TestSynthesize:
     def test_help(self):
         result = self.runner.invoke(app, ["synthesize", "--help"])
         assert "synthesize [OPTIONS] MODEL_PATH" in result.stdout
@@ -159,7 +158,7 @@ class MockModelForPrepare:
 
 # TODO: Currently, an extra unwanted split occurs on the period in "Mr. Neild".
 # In future versions, we would like to prevent erroneous splitting on abbreviations.
-class PrepareSynthesizeDataTest(TestCase):
+class TestPrepareSynthesizeData:
     """"""
 
     def test_filelist_language(self):
@@ -352,7 +351,7 @@ class PrepareSynthesizeDataTest(TestCase):
         assert weak_boundaries == ":?"
 
 
-class ValidateDataWithModelTest(TestCase):
+class TestValidateDataWithModel:
     """
     Validate different combination of user provided options against model configuration.
     """
@@ -366,7 +365,7 @@ class ValidateDataWithModelTest(TestCase):
         config.model.multilingual = True
         model_languages = {"L1", "L2"}
         f = io.StringIO()
-        with raises(SystemExit), redirect_stderr(f):
+        with pytest.raises(SystemExit), redirect_stderr(f):
             validate_data_keys_with_model_keys(
                 data_keys={language},
                 model_keys=model_languages,
@@ -378,7 +377,7 @@ class ValidateDataWithModelTest(TestCase):
             in f.getvalue()
         )
         language_two = "ALSO_UNSUPPORTED"
-        with raises(SystemExit), redirect_stderr(f):
+        with pytest.raises(SystemExit), redirect_stderr(f):
             validate_data_keys_with_model_keys(
                 data_keys={language, language_two},
                 model_keys=model_languages,
@@ -399,7 +398,7 @@ class ValidateDataWithModelTest(TestCase):
         config.model.multilingual = False
         model_languages = DEFAULT_LANG2ID
         f = io.StringIO()
-        with raises(SystemExit), redirect_stderr(f):
+        with pytest.raises(SystemExit), redirect_stderr(f):
             validate_data_keys_with_model_keys(
                 data_keys={language},
                 model_keys=model_languages,
@@ -417,7 +416,7 @@ class ValidateDataWithModelTest(TestCase):
         config.model.multispeaker = True
         model_speakers = {"S1", "S2"}
         f = io.StringIO()
-        with raises(SystemExit), redirect_stderr(f):
+        with pytest.raises(SystemExit), redirect_stderr(f):
             validate_data_keys_with_model_keys(
                 data_keys={speaker},
                 model_keys=model_speakers,
@@ -438,7 +437,7 @@ class ValidateDataWithModelTest(TestCase):
         config.model.multispeaker = False
         model_speakers = DEFAULT_SPEAKER2ID
         f = io.StringIO()
-        with raises(SystemExit), redirect_stderr(f):
+        with pytest.raises(SystemExit), redirect_stderr(f):
             validate_data_keys_with_model_keys(
                 data_keys={speaker},
                 model_keys=model_speakers,
@@ -448,20 +447,13 @@ class ValidateDataWithModelTest(TestCase):
         assert "The current model doesn't support multiple speakers" in f.getvalue()
 
 
-class CLITest(PreprocessedAudioFixture, TestCase):
+@pytest.mark.usefixtures("runner")
+class TestCLI(PreprocessedAudioFixture):
     """
     Validate that all subcommands are accessible.
     """
 
-    def setUp(self) -> None:
-        super().setUp()
-        self.runner = CliRunner()
-        self.subcommands = (
-            "benchmark",
-            "preprocess",
-            "synthesize",
-            "train",
-        )
+    subcommands = ("benchmark", "preprocess", "synthesize", "train")
 
     def test_check_data(self):
         filelist = generic_psv_filelist_reader(TEST_DATA_DIR / "metadata.psv")
@@ -473,30 +465,30 @@ class CLITest(PreprocessedAudioFixture, TestCase):
         assert "si_sdr" in checked_data[0]
         assert checked_data[0]["pesq"] > 3.0
         assert checked_data[0]["pesq"] < 5.0
-        assert checked_data[0]["duration"] == approx(5.17, abs=0.01)
+        assert checked_data[0]["duration"] == pytest.approx(5.17, abs=0.01)
 
-    def test_commands_present(self):
+    def test_commands_present(self, subtests):
         """
         Each subcommand is present in the the command's help message.
         """
         result = self.runner.invoke(app, ["--help"])
         for command in self.subcommands:
-            with self.subTest(msg=f"Looking for {command}"):
+            with subtests.test(msg=f"Looking for {command}"):
                 assert command in result.stdout
 
-    def test_command_help_messages(self):
+    def test_command_help_messages(self, subtests):
         """
         Each subcommand has its help message.
         """
         for subcommand in self.subcommands:
-            with self.subTest(msg=f"Looking for {subcommand}'s help"):
+            with subtests.test(msg=f"Looking for {subcommand}'s help"):
                 result = self.runner.invoke(app, [subcommand, "--help"])
                 assert result.exit_code == 0
                 result = self.runner.invoke(app, [subcommand, "-h"])
                 assert result.exit_code == 0
 
 
-class MiscTests(TestCase):
+class TestMisc:
     def test_version_sync(self):
         """
         Ensure fs2 and everyvoice versions are in sync.
