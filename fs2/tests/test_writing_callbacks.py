@@ -1,7 +1,6 @@
 import re
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest import TestCase
 
 import torch
 from everyvoice.config.shared_types import ContactInformation
@@ -24,7 +23,7 @@ except Exception:
     pass
 
 
-class TestTruncateBasename(TestCase):
+class TestTruncateBasename:
     """
     Testing truncate_basename().
     """
@@ -77,45 +76,43 @@ class TestTruncateBasename(TestCase):
         assert pattern.search(output2), f"{output1} does not match {pattern}"
 
 
-class WritingTestBase(TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.contact = ContactInformation(
-            contact_name="Test Runner", contact_email="info@everyvoice.ca"
-        )
-        cls.output_key = "output"
-        cls.outputs = {
-            cls.output_key: torch.ones([2, 500, 80], device="cpu"),
-            "duration_prediction": torch.ones([2, 7], device="cpu"),
-            "tgt_lens": [
-                90,
-                490,
-            ],
-        }
-        cls.batch = {
-            "basename": [
-                "short",
-                "This-utterance-is-wa-dcae74b8",
-            ],
-            "duration_control": [1.0, 1.0],
-            "raw_text": [
-                "short",
-                "This utterance is way too long",
-            ],
-            "text": [
-                torch.IntTensor([2, 3, 4, 5, 6, 7, 8], device="cpu"),
-                torch.IntTensor([2, 3, 4, 5, 6, 7, 8], device="cpu"),
-            ],
-            "speaker": [
-                "spk1",
-                "spk2",
-            ],
-            "language": [
-                "lngA",
-                "lngB",
-            ],
-            "is_last_input_chunk": [1, 1],
-        }
+class WritingTestBase:
+    contact = ContactInformation(
+        contact_name="Test Runner", contact_email="info@everyvoice.ca"
+    )
+    output_key = "output"
+    outputs = {
+        output_key: torch.ones([2, 500, 80], device="cpu"),
+        "duration_prediction": torch.ones([2, 7], device="cpu"),
+        "tgt_lens": [
+            90,
+            490,
+        ],
+    }
+    batch = {
+        "basename": [
+            "short",
+            "This-utterance-is-wa-dcae74b8",
+        ],
+        "duration_control": [1.0, 1.0],
+        "raw_text": [
+            "short",
+            "This utterance is way too long",
+        ],
+        "text": [
+            torch.IntTensor([2, 3, 4, 5, 6, 7, 8], device="cpu"),
+            torch.IntTensor([2, 3, 4, 5, 6, 7, 8], device="cpu"),
+        ],
+        "speaker": [
+            "spk1",
+            "spk2",
+        ],
+        "language": [
+            "lngA",
+            "lngB",
+        ],
+        "is_last_input_chunk": [1, 1],
+    }
 
 
 class TestWritingSpec(WritingTestBase):
@@ -217,7 +214,7 @@ class TestWritingReadAlong(WritingTestBase):
     Testing the callback that writes .readalong files.
     """
 
-    def test_writing_readalong(self):
+    def test_writing_readalong(self, subtests):
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
             writers = get_synthesis_output_callbacks(
@@ -246,7 +243,7 @@ class TestWritingReadAlong(WritingTestBase):
                 / "This-utterance-is-wa-dcae74b8--spk2--lngB--22050-mel-librosa.readalong",
             )
             for output_file in output_files:
-                with self.subTest(output_file=output_file):
+                with subtests.test(output_file=output_file):
                     assert output_file.exists()
                     with open(output_file, "r", encoding="utf8") as f:
                         readalong = f.read()
@@ -260,7 +257,7 @@ class TestWritingOfflineRAS(WritingTestBase):
     Testing the callback that writes Offline HTML readalong files.
     """
 
-    def test_writing_offline_ras(self):
+    def test_writing_offline_ras(self, subtests):
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
             vocoder, vocoder_path = get_stubbed_vocoder(tmp_dir)
@@ -298,7 +295,7 @@ class TestWritingOfflineRAS(WritingTestBase):
                 / "This-utterance-is-wa-dcae74b8--spk2--lngB--22050-mel-librosa.html",
             )
             for output_file in output_files:
-                with self.subTest(output_file=output_file):
+                with subtests.test(output_file=output_file):
                     assert output_file.exists()
                     with open(output_file, "r", encoding="utf8") as f:
                         readalong = f.read()

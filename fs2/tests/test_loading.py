@@ -1,6 +1,5 @@
 import tempfile
 from pathlib import Path
-from unittest import TestCase
 
 from everyvoice.config.shared_types import ContactInformation
 from everyvoice.config.type_definitions import DatasetTextRepresentation
@@ -15,14 +14,11 @@ from ..type_definitions_heavy import Stats, StatsInfo
 TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX = "everyvoice-text-to-spec"
 
 
-class TestLoadingModel(TestCase):
+class TestLoadingModel:
     """Test loading models"""
 
     data_dir = Path(__file__).parent / "data"
-
-    def setUp(self) -> None:
-        super().setUp()
-        self.config_dir = self.data_dir / "config"
+    config_dir = data_dir / "config"
 
     def test_wrong_model_type(self):
         """
@@ -169,14 +165,11 @@ class TestLoadingModel(TestCase):
                 FastSpeech2.load_from_checkpoint(ckpt_fn)
 
 
-class TestLoadingConfig(TestCase):
+class TestLoadingConfig:
     """Test loading configurations"""
 
     data_dir = Path(__file__).parent / "data"
-
-    def setUp(self) -> None:
-        super().setUp()
-        self.config_dir = self.data_dir / "config"
+    config_dir = data_dir / "config"
 
     def test_config_versionless(self):
         """
@@ -222,7 +215,7 @@ class StubModelWithConfigOnly:
         self.speaker2id: LookupTable = {}
 
 
-class TestLoadingData(TestCase):
+class TestLoadingData:
 
     def write_and_load(self, file_contents: str):
         with tempfile.TemporaryDirectory() as tmpdir:

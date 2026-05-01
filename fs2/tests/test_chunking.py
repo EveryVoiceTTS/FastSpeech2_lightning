@@ -3,7 +3,6 @@ from pathlib import Path
 from string import ascii_lowercase
 from tempfile import TemporaryDirectory
 from typing import Callable
-from unittest import TestCase
 
 import torch
 from everyvoice.config.shared_types import ContactInformation
@@ -18,29 +17,28 @@ from ..prediction_writing_callback import get_synthesis_output_callbacks
 from ..type_definitions import SynthesizeOutputFormats
 
 
-class TestDuplicateFilename(TestCase):
-    def setUp(self):
-        self.contact = ContactInformation(
-            contact_name="Test Runner", contact_email="info@everyvoice.ca"
-        )
-        self.output_key = "output"
-        self.outputs = {
-            self.output_key: torch.ones([3, 500, 80], device="cpu"),
-            "duration_prediction": torch.ones([3, 7], device="cpu"),
-            "tgt_lens": [490, 490, 490],
-        }
-        self.batch1 = {
-            "basename": ["This is a chunk", "This is another chunk", "This is a chunk"],
-            "raw_text": ["This is a chunk", "This is another chunk", "This is a chunk"],
-            "text": [
-                torch.IntTensor([2, 3, 4, 5, 6, 7, 8], device="cpu"),
-                torch.IntTensor([2, 3, 4, 5, 6, 7, 8], device="cpu"),
-                torch.IntTensor([2, 3, 4, 5, 6, 7, 8], device="cpu"),
-            ],
-            "speaker": ["S1", "S1", "S1"],
-            "language": ["L1", "L1", "L1"],
-            "is_last_input_chunk": [0, 1, 1],
-        }
+class TestDuplicateFilename:
+    contact = ContactInformation(
+        contact_name="Test Runner", contact_email="info@everyvoice.ca"
+    )
+    output_key = "output"
+    outputs = {
+        output_key: torch.ones([3, 500, 80], device="cpu"),
+        "duration_prediction": torch.ones([3, 7], device="cpu"),
+        "tgt_lens": [490, 490, 490],
+    }
+    batch1 = {
+        "basename": ["This is a chunk", "This is another chunk", "This is a chunk"],
+        "raw_text": ["This is a chunk", "This is another chunk", "This is a chunk"],
+        "text": [
+            torch.IntTensor([2, 3, 4, 5, 6, 7, 8], device="cpu"),
+            torch.IntTensor([2, 3, 4, 5, 6, 7, 8], device="cpu"),
+            torch.IntTensor([2, 3, 4, 5, 6, 7, 8], device="cpu"),
+        ],
+        "speaker": ["S1", "S1", "S1"],
+        "language": ["L1", "L1", "L1"],
+        "is_last_input_chunk": [0, 1, 1],
+    }
 
     def test_duplicate_filename(self):
         """
@@ -87,14 +85,15 @@ class TestDuplicateFilename(TestCase):
             ).exists()
 
 
-class ChunkingTestBase(TestCase):
+class ChunkingTestBase:
+    # Type declaractions only, values are injected by setup_class
     get_test_callback: Callable
     outputs: dict
     batch1: dict
     batch2: dict
 
     @classmethod
-    def setUpClass(cls):
+    def setup_class(cls):
         # Define the function that gets the callbacks, get_test_callback
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
@@ -344,7 +343,7 @@ class TestWritingTextGrid(ChunkingTestBase):
 
 
 class TestWritingReadAlongXML(ChunkingTestBase):
-    def test_writing_readalong(self):
+    def test_writing_readalong(self, subtests):
         writers = self.get_test_callback([SynthesizeOutputFormats.readalong_xml])
 
         # Batch 1
@@ -379,7 +378,7 @@ class TestWritingReadAlongXML(ChunkingTestBase):
             output_dir / "twothreefour--S2--L2--22050-mel-librosa.readalong",
         )
         for output_file in output_files:
-            with self.subTest(output_file=output_file):
+            with subtests.test(output_file=output_file):
                 assert output_file.exists()
                 with open(output_file, "r", encoding="utf8") as f:
                     readalong = f.read()
@@ -389,7 +388,7 @@ class TestWritingReadAlongXML(ChunkingTestBase):
 
 
 class TestWritingReadAlongHTML(ChunkingTestBase):
-    def test_writing_readalong(self) -> None:
+    def test_writing_readalong(self, subtests) -> None:
         writers = self.get_test_callback([SynthesizeOutputFormats.readalong_html])
 
         for writer in writers.values():
@@ -413,7 +412,7 @@ class TestWritingReadAlongHTML(ChunkingTestBase):
         )
         for output_file_basename in output_file_basenames:
             output_file = output_dir.parent / "readalongs" / output_file_basename
-            with self.subTest(output_file=output_file):
+            with subtests.test(output_file=output_file):
                 assert output_file.exists()
                 with open(output_file, "r", encoding="utf8") as f:
                     readalong = f.read()
