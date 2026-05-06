@@ -97,7 +97,7 @@ Interactively install the package and its dev dependencies from the project root
 
 ```sh
 pip install -e '.[dev]'
-pre-commit install
+prek install
 gitlint install-hook
 ```
 
