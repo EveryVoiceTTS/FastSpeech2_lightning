@@ -93,10 +93,10 @@ Feel free to dive in!
 
 This repo follows the [Contributor Covenant](http://contributor-covenant.org/version/1/3/0/) Code of Conduct.
 
-You can install our standard Git hooks by running these commands in your sandbox:
+Interactively install the package and its dev dependencies from the project root, and initialize out pre-commit and gitlint hooks:
 
 ```sh
-pip install -r requirements.dev.txt
+pip install -e '.[dev]'
 pre-commit install
 gitlint install-hook
 ```
@@ -104,13 +104,6 @@ gitlint install-hook
 Have a look at [Contributing.md](https://github.com/EveryVoiceTTS/EveryVoice/blob/main/Contributing.md)
 for the full details on the Conventional Commit messages we prefer, our code
 formatting conventions, and our Git hooks.
-
-You can then interactively install the package by running the following command from the project root:
-
-```sh
-pip install -e .
-```
-
 
 ## Acknowledgements
 
