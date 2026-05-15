@@ -9,6 +9,9 @@ import numpy as np
 import numpy.typing as npt
 import torch
 import torchaudio
+from everyvoice.base_cli.prediction_writing_callback import (
+    BasePredictionWritingCallback,
+)
 from everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.utils import (
     truncate_basename,
 )
@@ -114,7 +117,7 @@ def get_synthesis_output_callbacks(
     return callbacks
 
 
-class PredictionWritingCallbackBase(Callback):
+class PredictionWritingCallbackBase(BasePredictionWritingCallback):
     def __init__(
         self,
         config: FastSpeech2Config,
@@ -123,31 +126,13 @@ class PredictionWritingCallbackBase(Callback):
         save_dir: Path,
         include_global_step_in_filename: bool = False,
     ) -> None:
-        super().__init__()
+        super().__init__(
+            save_dir=save_dir,
+            file_extension=file_extension,
+            global_step=global_step,
+            include_global_step_in_filename=include_global_step_in_filename,
+        )
         self.config = config
-        self.file_extension = file_extension
-        self.global_step = f"ckpt={global_step}"
-        self.save_dir = save_dir
-        self.sep = "--"
-        self.include_global_step_in_filename = include_global_step_in_filename
-
-        self.save_dir.mkdir(parents=True, exist_ok=True)
-
-    def get_filename(
-        self,
-        basename: str,
-        speaker: str,
-        language: str,
-    ) -> str:
-        # We don't truncate or alter the filename here because the basename is
-        # already truncated/cleaned in cli/synthesize.py
-        name_parts = [basename, speaker, language, self.file_extension]
-        if self.include_global_step_in_filename:
-            name_parts.insert(-1, self.global_step)
-        path = self.save_dir / self.sep.join(name_parts)
-        # synthesizing spec allows nested outputs so we may need to make subdirs
-        path.parent.mkdir(parents=True, exist_ok=True)
-        return str(path)
 
 
 class ScorerCallback(Callback):
@@ -661,9 +646,6 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
         )
         self.output_hop_size = (
             sampling_rate_change * vocoder_config.preprocessing.audio.fft_hop_size
-        )
-        self.file_extension = self.sep.join(
-            (f"v_ckpt={vocoder_global_step}", self.file_extension)
         )
 
         logger.info(f"Saving wav output to {self.save_dir}")
