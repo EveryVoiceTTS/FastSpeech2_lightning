@@ -647,6 +647,9 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
         self.output_hop_size = (
             sampling_rate_change * vocoder_config.preprocessing.audio.fft_hop_size
         )
+        self.file_extension: str = self.sep.join(
+            (f"v_ckpt={vocoder_global_step}", self.file_extension)
+        )
 
         logger.info(f"Saving wav output to {self.save_dir}")
 
