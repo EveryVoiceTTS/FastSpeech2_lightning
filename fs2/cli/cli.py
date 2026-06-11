@@ -1,4 +1,5 @@
 import typer
+from everyvoice.base_cli import default_typer_args
 from everyvoice.wizard import TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX
 
 from .benchmark import benchmark as app_benchmark
@@ -7,9 +8,7 @@ from .synthesize import synthesize as app_synthesize
 from .train import train as app_train
 
 app = typer.Typer(
-    pretty_exceptions_show_locals=False,
-    context_settings={"help_option_names": ["-h", "--help"]},
-    rich_markup_mode="markdown",
+    **default_typer_args,
     help="A PyTorch Lightning implementation of the FastSpeech2 Text-to-Speech Feature Prediction Model",
 )
 
