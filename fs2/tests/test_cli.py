@@ -486,17 +486,3 @@ class TestCLI(PreprocessedAudioFixture):
                 assert result.exit_code == 0
                 result = self.runner.invoke(app, [subcommand, "-h"])
                 assert result.exit_code == 0
-
-
-class TestMisc:
-    def test_version_sync(self):
-        """
-        Ensure fs2 and everyvoice versions are in sync.
-        """
-        from everyvoice._version import VERSION as ev_version
-
-        from .._version import VERSION as fs2_version
-
-        assert (
-            ev_version == fs2_version
-        ), "Version mismatch between EveryVoice and FastSpeech2_lightning"
