@@ -86,16 +86,16 @@ class FastSpeechDataset(Dataset):
         language_id = self.lang2id[language]
         basename = item["basename"]
         if self.inference:
-            # TODO: we shouldn't calculate all possible representations at synthesis time,
-            #       despite that's what we do at preprocessing time.
-            character_tokens, phone_tokens, _ = Preprocessor.process_text(
+            character_tokens, phone_tokens, pfs = Preprocessor.process_text(
                 item,
                 text_processor=self.text_processor,
-                use_pfs=False,
+                use_pfs=self.config.model.target_text_representation_level
+                == TargetTrainingTextRepresentationLevel.phonological_features,
                 encode_as_string=True,
             )
             item["character_tokens"] = character_tokens
             item["phone_tokens"] = phone_tokens
+            item["pfs"] = pfs
         if self.teacher_forcing or not self.inference:
             mel = self._load_file(
                 basename,
@@ -179,15 +179,16 @@ class FastSpeechDataset(Dataset):
             raw_text = item.get(
                 TargetTrainingTextRepresentationLevel.ipa_phones.value, "text"
             )
-        pfs = None
-        if (
-            self.config.model.target_text_representation_level
-            == TargetTrainingTextRepresentationLevel.phonological_features
-        ):
-            pfs = self._load_file(basename, speaker, language, "pfs", "pfs.pt")
+
         if not self.inference:
             energy = self._load_file(basename, speaker, language, "energy", "energy.pt")
             pitch = self._load_file(basename, speaker, language, "pitch", "pitch.pt")
+            pfs = None
+            if (
+                self.config.model.target_text_representation_level
+                == TargetTrainingTextRepresentationLevel.phonological_features
+            ):
+                pfs = self._load_file(basename, speaker, language, "pfs", "pfs.pt")
         else:
             energy = None
             pitch = None
