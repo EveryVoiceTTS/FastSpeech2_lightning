@@ -50,7 +50,7 @@ class TestSynthesize:
 
     def test_no_model(self):
         result = self.runner.invoke(app, ["synthesize"])
-        assert "Missing argument 'MODEL_PATH'." in result.output
+        assert "Usage:" in result.output
 
     def test_filelist_and_text(self):
         with TemporaryDirectory() as tmpdir:

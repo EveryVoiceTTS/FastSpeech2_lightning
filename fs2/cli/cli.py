@@ -1,5 +1,5 @@
 import typer
-from everyvoice.base_cli import default_typer_args
+from everyvoice.base_cli import command, default_typer_args
 from everyvoice.wizard import TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX
 
 from .benchmark import benchmark as app_benchmark
@@ -12,12 +12,14 @@ app = typer.Typer(
     help="A PyTorch Lightning implementation of the FastSpeech2 Text-to-Speech Feature Prediction Model",
 )
 
-app.command(
+command(
+    app,
     name="benchmark",
     short_help="",
 )(app_benchmark)
 
-app.command(
+command(
+    app,
     name="preprocess",
     short_help="Preprocess your data",
     help=f"""
@@ -35,12 +37,14 @@ app.command(
     """,
 )(app_preprocess)
 
-app.command(
+command(
+    app,
     name="synthesize",
     short_help="""Given some text and a trained model, generate some audio. i.e. perform typical speech synthesis""",
 )(app_synthesize)
 
-app.command(
+command(
+    app,
     name="train",
     short_help="Train your Text-to-Spec model",
     help=f"""Train your text-to-spec model.  For example:
