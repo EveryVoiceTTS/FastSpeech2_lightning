@@ -4,7 +4,6 @@ from tempfile import TemporaryDirectory
 
 import torch
 from everyvoice.config.shared_types import ContactInformation
-from everyvoice.tests.model_stubs import get_stubbed_vocoder
 from pympi import TextGrid
 
 from ..config import FastSpeech2Config, FastSpeech2TrainingConfig
@@ -257,10 +256,10 @@ class TestWritingOfflineRAS(WritingTestBase):
     Testing the callback that writes Offline HTML readalong files.
     """
 
-    def test_writing_offline_ras(self, subtests):
+    def test_writing_offline_ras(self, subtests, stubbed_vocoder):
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
-            vocoder, vocoder_path = get_stubbed_vocoder(tmp_dir)
+            vocoder, vocoder_path = stubbed_vocoder
             writers = get_synthesis_output_callbacks(
                 [SynthesizeOutputFormats.readalong_html],
                 config=FastSpeech2Config(
@@ -310,14 +309,14 @@ class TestWritingWav(WritingTestBase):
     Note that this test may be expansive.
     """
 
-    def test_filenames_not_truncated(self):
+    def test_filenames_not_truncated(self, stubbed_vocoder):
         """
         We limit the file name's length to at most BASENAME_MAX_LENGTH in the CLI,
         but the callback does not truncate the basenames passed to it
         """
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
-            vocoder, vocoder_path = get_stubbed_vocoder(tmp_dir)
+            vocoder, vocoder_path = stubbed_vocoder
 
             writers = get_synthesis_output_callbacks(
                 [SynthesizeOutputFormats.wav],

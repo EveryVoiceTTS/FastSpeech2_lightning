@@ -40,13 +40,13 @@ class TestDuplicateFilename:
         "is_last_input_chunk": [0, 1, 1],
     }
 
-    def test_duplicate_filename(self):
+    def test_duplicate_filename(self, stubbed_vocoder):
         """
         Tests that the second file is not overwritten when the first chunk is the same for two files.
         """
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
-            vocoder, vocoder_path = get_stubbed_vocoder(tmp_dir)
+            vocoder, vocoder_path = stubbed_vocoder
 
             writers = get_synthesis_output_callbacks(
                 [SynthesizeOutputFormats.wav],
