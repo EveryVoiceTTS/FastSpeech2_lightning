@@ -15,7 +15,6 @@ from everyvoice.config.type_definitions import (
     DatasetTextRepresentation,
     TargetTrainingTextRepresentationLevel,
 )
-from everyvoice.tests.model_stubs import get_stubbed_model
 from everyvoice.tests.preprocessed_audio_fixture import PreprocessedAudioFixture
 from everyvoice.tests.stubs import TEST_DATA_DIR, mute_logger, temp_chdir
 from everyvoice.utils import generic_psv_filelist_reader
@@ -93,13 +92,13 @@ class TestSynthesize:
     def mock_synthesis(self, *_args, **_kwargs):
         print(_kwargs["model"].config)
 
-    def test_config_args(self):
+    def test_config_args(self, stubbed_model):
         """
         Tests the -c flag with 'everyvoice synthesize'
         """
         with TemporaryDirectory() as tmpdir:
             tmpdir = Path(tmpdir)
-            _, spec_model_path = get_stubbed_model(tmpdir)
+            _, spec_model_path = stubbed_model
 
             with temp_chdir(tmpdir):
                 with (
