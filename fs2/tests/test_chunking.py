@@ -7,10 +7,10 @@ from typing import Callable
 import torch
 from everyvoice.config.shared_types import ContactInformation
 from everyvoice.config.text_config import TextConfig
-from everyvoice.tests.model_stubs import get_stubbed_vocoder
 from everyvoice.text.text_processor import TextProcessor
 from pydub import AudioSegment
 from pympi import TextGrid
+from pytest import fixture
 
 from ..config import FastSpeech2Config, FastSpeech2TrainingConfig
 from ..prediction_writing_callback import get_synthesis_output_callbacks
@@ -85,81 +85,77 @@ class TestDuplicateFilename:
             ).exists()
 
 
+TEXT_CONFIG = TextConfig(symbols={"ascii": list(ascii_lowercase)})
+TEXT_PROCESSOR = TextProcessor(TEXT_CONFIG)
+
+
+@fixture(scope="session")
+def test_callback(tmp_path_factory, stubbed_vocoder) -> Callable:
+    tmp_dir = tmp_path_factory.mktemp("chunking-test-callback")
+    vocoder, vocoder_path = stubbed_vocoder
+    config = FastSpeech2Config(
+        contact=ContactInformation(
+            contact_name="Test Runner", contact_email="info@everyvoice.ca"
+        ),
+        training=FastSpeech2TrainingConfig(vocoder_path=vocoder_path),
+        text=TEXT_CONFIG,
+    )
+    return partial(
+        get_synthesis_output_callbacks,
+        config=config,
+        device=torch.device("cpu"),
+        global_step=77,
+        output_dir=tmp_dir,
+        output_key="output",
+        vocoder_model=vocoder,
+        vocoder_config=vocoder.config,
+        vocoder_global_step=10,
+    )
+
+
 class ChunkingTestBase:
-    # Type declaractions only, values are injected by setup_class
-    get_test_callback: Callable
-    outputs: dict
-    batch1: dict
-    batch2: dict
-
-    @classmethod
-    def setup_class(cls):
-        # Define the function that gets the callbacks, get_test_callback
-        with TemporaryDirectory() as tmp_dir:
-            tmp_dir = Path(tmp_dir)
-            vocoder, vocoder_path = get_stubbed_vocoder(tmp_dir)
-            config = FastSpeech2Config(
-                contact=ContactInformation(
-                    contact_name="Test Runner", contact_email="info@everyvoice.ca"
-                ),
-                training=FastSpeech2TrainingConfig(vocoder_path=vocoder_path),
-                text=TextConfig(symbols={"ascii": list(ascii_lowercase)}),
-            )
-            tp = TextProcessor(config.text)
-            cls.get_test_callback = partial(
-                get_synthesis_output_callbacks,
-                config=config,
-                device=torch.device("cpu"),
-                global_step=77,
-                output_dir=tmp_dir,
-                output_key="output",
-                vocoder_model=vocoder,
-                vocoder_config=vocoder.config,
-                vocoder_global_step=10,
-            )
-
-        # Define the batches
-        cls.outputs = {
-            "output": torch.ones([2, 500, 80], device="cpu"),
-            "duration_prediction": torch.ones([2, 5], device="cpu"),
-            "tgt_lens": [490, 490],
-        }
-        cls.batch1 = {
-            "basename": ["one", "two"],
-            "raw_text": ["one", "two"],
-            "duration_control": [1.0, 1.0],
-            "text": [
-                torch.IntTensor(tp.encode_text("one\x80\x80"), device="cpu"),
-                torch.IntTensor(tp.encode_text("two\x80\x80"), device="cpu"),
-            ],
-            "speaker": [
-                "S1",
-                "S2",
-            ],
-            "language": [
-                "L1",
-                "L2",
-            ],
-            "is_last_input_chunk": [1, 0],
-        }
-        cls.batch2 = {
-            "basename": ["three", "four"],
-            "raw_text": ["three", "four"],
-            "duration_control": [1.0, 1.0],
-            "text": [
-                torch.IntTensor(tp.encode_text("three"), device="cpu"),
-                torch.IntTensor(tp.encode_text("four\x80"), device="cpu"),
-            ],
-            "speaker": [
-                "S1",
-                "S2",
-            ],
-            "language": [
-                "L1",
-                "L2",
-            ],
-            "is_last_input_chunk": [0, 1],
-        }
+    # Define the batches
+    outputs = {
+        "output": torch.ones([2, 500, 80], device="cpu"),
+        "duration_prediction": torch.ones([2, 5], device="cpu"),
+        "tgt_lens": [490, 490],
+    }
+    batch1 = {
+        "basename": ["one", "two"],
+        "raw_text": ["one", "two"],
+        "duration_control": [1.0, 1.0],
+        "text": [
+            torch.IntTensor(TEXT_PROCESSOR.encode_text("one\x80\x80"), device="cpu"),
+            torch.IntTensor(TEXT_PROCESSOR.encode_text("two\x80\x80"), device="cpu"),
+        ],
+        "speaker": [
+            "S1",
+            "S2",
+        ],
+        "language": [
+            "L1",
+            "L2",
+        ],
+        "is_last_input_chunk": [1, 0],
+    }
+    batch2 = {
+        "basename": ["three", "four"],
+        "raw_text": ["three", "four"],
+        "duration_control": [1.0, 1.0],
+        "text": [
+            torch.IntTensor(TEXT_PROCESSOR.encode_text("three"), device="cpu"),
+            torch.IntTensor(TEXT_PROCESSOR.encode_text("four\x80"), device="cpu"),
+        ],
+        "speaker": [
+            "S1",
+            "S2",
+        ],
+        "language": [
+            "L1",
+            "L2",
+        ],
+        "is_last_input_chunk": [0, 1],
+    }
 
 
 class TestWritingWav(ChunkingTestBase):
@@ -167,11 +163,11 @@ class TestWritingWav(ChunkingTestBase):
     Testing chunking when writing wav files.
     """
 
-    def test_wav_chunks(self):
+    def test_wav_chunks(self, test_callback):
         """
         Tests the correctness of the output of .wavs for chunked text over multiple batches.
         """
-        writers = self.get_test_callback([SynthesizeOutputFormats.wav])
+        writers = test_callback([SynthesizeOutputFormats.wav])
 
         # Batch 1
         writer = next(iter(writers.values()))
@@ -224,11 +220,11 @@ class TestWritingWav(ChunkingTestBase):
 
 
 class TestWritingSpec(ChunkingTestBase):
-    def test_spec_chunks(self):
+    def test_spec_chunks(self, test_callback):
         """
         Tests the correctness of the output of spectrograms for chunked text over multiple batches.
         """
-        writers = self.get_test_callback([SynthesizeOutputFormats.spec])
+        writers = test_callback([SynthesizeOutputFormats.spec])
 
         # Batch 1
         writer = next(iter(writers.values()))
@@ -275,11 +271,11 @@ class TestWritingSpec(ChunkingTestBase):
 
 
 class TestWritingTextGrid(ChunkingTestBase):
-    def test_textgrid_chunks(self):
+    def test_textgrid_chunks(self, test_callback):
         """
         Tests the correctness of the output of TextGrid files for chunked text over multiple batches.
         """
-        writers = self.get_test_callback([SynthesizeOutputFormats.textgrid])
+        writers = test_callback([SynthesizeOutputFormats.textgrid])
 
         # Batch 1
         writer = next(iter(writers.values()))
@@ -343,8 +339,8 @@ class TestWritingTextGrid(ChunkingTestBase):
 
 
 class TestWritingReadAlongXML(ChunkingTestBase):
-    def test_writing_readalong(self, subtests):
-        writers = self.get_test_callback([SynthesizeOutputFormats.readalong_xml])
+    def test_writing_readalong(self, subtests, test_callback):
+        writers = test_callback([SynthesizeOutputFormats.readalong_xml])
 
         # Batch 1
         writer = next(iter(writers.values()))
@@ -388,8 +384,8 @@ class TestWritingReadAlongXML(ChunkingTestBase):
 
 
 class TestWritingReadAlongHTML(ChunkingTestBase):
-    def test_writing_readalong(self, subtests) -> None:
-        writers = self.get_test_callback([SynthesizeOutputFormats.readalong_html])
+    def test_writing_readalong(self, subtests, test_callback) -> None:
+        writers = test_callback([SynthesizeOutputFormats.readalong_html])
 
         for writer in writers.values():
             for batch, idx in ((self.batch1, 1), (self.batch2, 2)):
