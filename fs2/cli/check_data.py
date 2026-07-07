@@ -26,7 +26,7 @@ def check_data_command(  # noqa: C901
     model_path: Annotated[
         Path,
         typer_file_argument(
-            help="The path to a trained text-to-spec (i.e., feature prediction) or e2e EveryVoice model.",
+            help="The path to a trained text-to-spec (i.e., feature prediction) model.",
         ),
     ],
     output_dir: Annotated[
