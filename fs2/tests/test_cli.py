@@ -36,13 +36,12 @@ CONTACT = ContactInformation(
 )
 
 
-@pytest.fixture(scope="class")
-def runner(request) -> None:
-    request.cls.runner = CliRunner()
-
-
-@pytest.mark.usefixtures("runner")
 class TestSynthesize:
+
+    @pytest.fixture(autouse=True)
+    def setup_runner(self):
+        self.runner = CliRunner()
+
     def test_help(self):
         result = self.runner.invoke(app, ["synthesize", "--help"])
         assert "synthesize [OPTIONS] MODEL_PATH" in result.stdout
@@ -446,13 +445,16 @@ class TestValidateDataWithModel:
         assert "The current model doesn't support multiple speakers" in f.getvalue()
 
 
-@pytest.mark.usefixtures("runner")
 class TestCLI(PreprocessedAudioFixture):
     """
     Validate that all subcommands are accessible.
     """
 
     subcommands = ("benchmark", "preprocess", "synthesize", "train")
+
+    @pytest.fixture(autouse=True)
+    def setup_runner(self):
+        self.runner = CliRunner()
 
     def test_check_data(self):
         filelist = generic_psv_filelist_reader(TEST_DATA_DIR / "metadata.psv")
