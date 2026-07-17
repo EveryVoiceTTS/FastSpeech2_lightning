@@ -1,4 +1,3 @@
-import json
 import sys
 from pathlib import Path
 from typing import Annotated
@@ -110,6 +109,8 @@ def check_data_command(  # noqa: C901
     """
 
     with spinner():
+        import json
+
         from everyvoice.base_cli.helpers import MODEL_CONFIGS, load_unknown_config
         from everyvoice.preprocessor import Preprocessor
         from everyvoice.utils.heavy import get_device_from_accelerator

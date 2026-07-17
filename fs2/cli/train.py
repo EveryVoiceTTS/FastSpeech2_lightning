@@ -1,5 +1,3 @@
-import json
-
 from everyvoice.base_cli.interfaces import train_base_command_interface
 from everyvoice.utils import spinner
 from merge_args import merge_args
@@ -8,6 +6,8 @@ from merge_args import merge_args
 @merge_args(train_base_command_interface)
 def train(**kwargs):
     with spinner():
+        import json
+
         from everyvoice.base_cli.helpers import (
             load_config_base_command,
             train_base_command,

@@ -1,4 +1,3 @@
-import json
 from enum import Enum
 
 import typer
@@ -30,6 +29,8 @@ def preprocess(
     **kwargs,
 ):
     with spinner():
+        import json
+
         from everyvoice.base_cli.helpers import preprocess_base_command
 
         from ..config import FastSpeech2Config
