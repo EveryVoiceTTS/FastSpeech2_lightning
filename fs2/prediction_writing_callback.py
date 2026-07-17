@@ -9,6 +9,7 @@ import numpy as np
 import numpy.typing as npt
 import torch
 import torchaudio
+from everyvoice import logger
 from everyvoice.base_cli.prediction_writing_callback import (
     BasePredictionWritingCallback,
 )
@@ -19,7 +20,6 @@ from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import HiFiGAN
 from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.model import HiFiGAN
 from everyvoice.text.text_processor import TextProcessor
 from everyvoice.utils import slugify
-from loguru import logger
 from pympi import TextGrid
 from pytorch_lightning.callbacks import Callback
 from readalongs.api import (

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Annotated, Any, Optional
 
 import typer
+from everyvoice import logger
 from everyvoice.base_cli.interfaces import (
     inference_base_command_interface,
     typer_directory_option,
@@ -18,7 +19,6 @@ from everyvoice.config.type_definitions import (
 )
 from everyvoice.text.textsplit import chunk_text
 from everyvoice.utils import slugify, spinner
-from loguru import logger
 from merge_args import merge_args
 
 from ..type_definitions import SynthesizeOutputFormats

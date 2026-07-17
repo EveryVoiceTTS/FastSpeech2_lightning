@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+from everyvoice import logger
 from everyvoice.base_cli.interfaces import (
     typer_directory_option,
     typer_file_argument,
@@ -11,7 +12,6 @@ from everyvoice.base_cli.interfaces import (
 )
 from everyvoice.config.type_definitions import DatasetTextRepresentation
 from everyvoice.utils import generic_psv_filelist_reader, spinner
-from loguru import logger
 
 from .synthesize import get_global_step, synthesize_helper
 

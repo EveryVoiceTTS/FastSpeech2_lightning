@@ -6,6 +6,7 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 import torchaudio
+from everyvoice import logger
 from everyvoice.config.type_definitions import TargetTrainingTextRepresentationLevel
 from everyvoice.model.feature_prediction.config import FeaturePredictionConfig
 from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
@@ -18,7 +19,6 @@ from everyvoice.text.text_processor import TextProcessor
 from everyvoice.text.utils import get_symbols_from_checkpoint_symbol_dict, symbol_sorter
 from everyvoice.utils import pydantic_validation_error_shortener
 from everyvoice.utils.heavy import expand
-from loguru import logger
 from torch import nn
 from torchaudio.models import Conformer
 
