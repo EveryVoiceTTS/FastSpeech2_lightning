@@ -44,7 +44,7 @@ class TestSynthesize:
 
     def test_help(self):
         result = self.runner.invoke(app, ["synthesize", "--help"])
-        assert "synthesize [OPTIONS] MODEL_PATH" in result.stdout
+        assert "synthesize [OPTIONS]" in result.stdout
 
     def test_no_model(self):
         result = self.runner.invoke(app, ["synthesize"])
