@@ -35,8 +35,46 @@ DEFAULT_LANG2ID: LookupTable = {}
 DEFAULT_SPEAKER2ID: LookupTable = {}
 
 
+def _remap_embedding_weights(
+    old_symbols: list[str], new_symbols: list[str], old_weights: torch.Tensor
+) -> torch.Tensor:
+    """Build an embedding weight tensor shaped for new_symbols, copying each
+    row from old_weights whose symbol is still present in old_symbols to its
+    new position in new_symbols. Symbols only in new_symbols (e.g. growth from
+    fine-tuning on new data) get a zero-initialized row; symbols only in
+    old_symbols (e.g. shrinkage from representation-level filtering) are
+    simply dropped.
+    """
+    assert len(old_symbols) <= old_weights.size(0), (
+        "Unfortunately we are unable to automatically update your embedding "
+        "table. Please re-train your model or downgrade to everyvoice < 0.3.0 "
+        "or an earlier alpha release, e.g. pip install everyvoice==0.2.0a1"
+    )
+    old_set = set(old_symbols)
+    new_set = set(new_symbols)
+    added = sorted(new_set - old_set)
+    dropped = sorted(old_set - new_set)
+    if added:
+        logger.warning(
+            "The following symbols are new to your embedding table and will "
+            f"be zero-initialized rather than restored from the checkpoint: {added}"
+        )
+    if dropped:
+        logger.warning(
+            "The following symbols from your checkpoint are no longer declared "
+            f"for this model and their trained embeddings will be dropped: {dropped}"
+        )
+    old_index = {symbol: i for i, symbol in enumerate(old_symbols)}
+    new_weights = torch.zeros(len(new_symbols), old_weights.size(1))
+    for new_i, symbol in enumerate(new_symbols):
+        old_i = old_index.get(symbol)
+        if old_i is not None:
+            new_weights[new_i] = old_weights[old_i]
+    return new_weights
+
+
 class FastSpeech2(pl.LightningModule):
-    _VERSION: str = "1.2"
+    _VERSION: str = "1.3"
 
     def __init__(
         self,
@@ -62,7 +100,10 @@ class FastSpeech2(pl.LightningModule):
             stats = Stats(**stats)
         self.config = config
         self.batch_size = config.training.batch_size
-        self.text_processor = TextProcessor(config.text)
+        self.text_processor = TextProcessor(
+            config.text,
+            target_text_representation_level=config.model.target_text_representation_level,
+        )
         # TODO Should we fallback to a default lang2id/speaker2id if we are loading an old model?
         self.lang2id = lang2id
         self.speaker2id = speaker2id
@@ -327,25 +368,51 @@ class FastSpeech2(pl.LightningModule):
                 ),
                 hardcoded_initial_symbols=old_hardcoded_symbols,
             )
-            model_symbols = self.text_processor.symbols
-            assert len(checkpoint_symbols) <= len(
-                model_symbols
-            ), "Unfortunately we are unable to automatically update your embedding table. Please re-train your model or downgrade to everyvoice < 0.3.0 or an earlier alpha release, e.g. pip install everyvoice==0.2.0a1"
-            checkpoint_symbol_indices = torch.Tensor(
-                [
-                    model_symbols.index(c) if c in model_symbols else 0
-                    for c in checkpoint_symbols
-                ]
-            ).int()
-            new_weights = torch.zeros(self.text_input_layer.weight.size())
-            # Copy data into the correct positions
-            new_weights[checkpoint_symbol_indices, :] = checkpoint["state_dict"][
-                "text_input_layer.weight"
-            ]
-            # Update the checkpoint's state_dict with the new weights
-            checkpoint["state_dict"]["text_input_layer.weight"] = new_weights
+            checkpoint["state_dict"]["text_input_layer.weight"] = (
+                _remap_embedding_weights(
+                    checkpoint_symbols,
+                    self.text_processor.symbols,
+                    checkpoint["state_dict"]["text_input_layer.weight"],
+                )
+            )
             logger.warning(
                 f"Your checkpoint was trained using version {ckpt_version} of the EveryVoice FastSpeech2 text-to-spec model but your code is currently running {self._VERSION}. We have attempted to update your checkpoint automatically, but if you encounter issues, please re-train your model or downgrade to everyvoice < 0.3.0 or an earlier alpha release, e.g. pip install everyvoice==0.2.0a1"
+            )
+
+        # We started filtering the declared symbol set by target_text_representation_level
+        # in version 1.3, instead of always using the union of every declared
+        # characters/phones field which this can change a model's
+        # embedding table, so 1.2-vintage checkpoints (which don't have
+        # realized_symbols yet, see below) need a one-time remap too.
+        elif ckpt_version < Version("1.3"):
+            checkpoint_symbols = symbol_sorter(
+                get_symbols_from_checkpoint_symbol_dict(
+                    checkpoint["hyper_parameters"]["config"]["text"]["symbols"]
+                )
+            )
+            checkpoint["state_dict"]["text_input_layer.weight"] = (
+                _remap_embedding_weights(
+                    checkpoint_symbols,
+                    self.text_processor.symbols,
+                    checkpoint["state_dict"]["text_input_layer.weight"],
+                )
+            )
+            logger.warning(
+                f"Your checkpoint was trained using version {ckpt_version} of the EveryVoice FastSpeech2 text-to-spec model but your code is currently running {self._VERSION}. We have attempted to update your checkpoint automatically, but if you encounter issues, please re-train your model or downgrade to everyvoice < 0.3.0 or an earlier alpha release, e.g. pip install everyvoice==0.2.0a1"
+            )
+
+        # From 1.3 onward, checkpoints carry their own realized, ordered symbol
+        # list (see on_save_checkpoint), so reconciling against a live-recomputed
+        # embedding table never needs another version-gated migration like the
+        # ones above, instead, it replays the exact list that was actually trained.
+        realized_symbols = checkpoint["hyper_parameters"].get("realized_symbols")
+        if realized_symbols is not None:
+            checkpoint["state_dict"]["text_input_layer.weight"] = (
+                _remap_embedding_weights(
+                    realized_symbols,
+                    self.text_processor.symbols,
+                    checkpoint["state_dict"]["text_input_layer.weight"],
+                )
             )
 
         return checkpoint
@@ -372,6 +439,11 @@ class FastSpeech2(pl.LightningModule):
         checkpoint["hyper_parameters"]["config"] = self.config.model_checkpoint_dump()
         if self.stats is not None:
             checkpoint["hyper_parameters"]["stats"] = self.stats.model_dump(mode="json")
+        # Persist the realized, ordered embedding-table symbol list itself (not
+        # just the raw text config it was derived from), so future changes to
+        # the symbol-set algorithm can restore this exact table without having
+        # to reconstruct what a past algorithm version would have produced.
+        checkpoint["hyper_parameters"]["realized_symbols"] = self.text_processor.symbols
         checkpoint["model_info"] = {
             "name": self.__class__.__name__,
             "version": self._VERSION,

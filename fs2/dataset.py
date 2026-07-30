@@ -41,7 +41,10 @@ class FastSpeechDataset(Dataset):
         self.dataset = dataset
         self.config = config
         self.sep = "--"
-        self.text_processor = TextProcessor(config.text)
+        self.text_processor = TextProcessor(
+            config.text,
+            target_text_representation_level=config.model.target_text_representation_level,
+        )
         self.preprocessed_dir = Path(self.config.preprocessing.save_dir)
         self.sampling_rate = self.config.preprocessing.audio.input_sampling_rate
         self.teacher_forcing = teacher_forcing

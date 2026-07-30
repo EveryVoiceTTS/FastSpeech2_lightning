@@ -306,7 +306,10 @@ class PredictionWritingAlignedTextCallback(PredictionWritingCallbackBase):
         self.xmax: float = 0
         self.phones: list[tuple[float, float, str]] = []
         self.words: list[tuple[float, float, str]] = []
-        self.text_processor = TextProcessor(config.text)
+        self.text_processor = TextProcessor(
+            config.text,
+            target_text_representation_level=config.model.target_text_representation_level,
+        )
         self.output_key = output_key
         logger.info(f"Saving text output to {self.save_dir}")
 
@@ -521,7 +524,10 @@ class PredictionWritingReadAlongCallback(PredictionWritingAlignedTextCallback):
             file_extension=f"{config.preprocessing.audio.input_sampling_rate}-{config.preprocessing.audio.spec_type}.readalong",
             save_dir=output_dir / "readalongs",
         )
-        self.text_processor = TextProcessor(config.text)
+        self.text_processor = TextProcessor(
+            config.text,
+            target_text_representation_level=config.model.target_text_representation_level,
+        )
         self.output_key = output_key
 
     def save_aligned_text_to_file(
@@ -573,7 +579,10 @@ class PredictionWritingOfflineRASCallback(PredictionWritingAlignedTextCallback):
             file_extension=f"{config.preprocessing.audio.input_sampling_rate}-{config.preprocessing.audio.spec_type}.html",
             save_dir=output_dir / "readalongs",
         )
-        self.text_processor = TextProcessor(config.text)
+        self.text_processor = TextProcessor(
+            config.text,
+            target_text_representation_level=config.model.target_text_representation_level,
+        )
         self.output_key = output_key
         self.wav_callback = wav_callback
 
