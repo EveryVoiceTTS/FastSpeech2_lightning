@@ -32,6 +32,23 @@ from .config import FastSpeech2Config
 from .type_definitions import SynthesizeOutputFormats
 
 
+def resolve_chunked_basename(chunk_basenames: list[str], full_text: str) -> str:
+    """
+    Determine the basename to use for a (possibly multi-chunk) synthesized utterance.
+
+    A filelist-provided basename is duplicated identically across every chunk
+    of the same utterance, so if all of ``chunk_basenames`` agree, that value
+    is a real basename and is used as-is, however long it is: this is what
+    lets synthesized files line up with the filenames a fine-tuning
+    dataloader expects. Otherwise, no real basename was available and each
+    chunk was assigned its own auto-generated slug, so we fall back to
+    slugifying/truncating the reassembled raw text of the whole utterance.
+    """
+    if len(set(chunk_basenames)) == 1:
+        return chunk_basenames[0]
+    return truncate_basename(slugify(full_text))
+
+
 def get_synthesis_output_callbacks(
     output_type: Sequence[SynthesizeOutputFormats],
     output_dir: Path,
@@ -234,6 +251,7 @@ class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
         logger.info(f"Saving pytorch output to {self.save_dir}")
 
         self.full_text: str = ""  # Accumulates full text before saving file
+        self.chunk_basenames: list[str] = []  # Accumulates per-chunk basenames
         self.full_spec = torch.tensor(())  # Accumulates full input before saving file
 
     def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
@@ -249,6 +267,7 @@ class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
         assert "tgt_lens" in outputs and outputs["tgt_lens"] is not None
 
         texts = batch["raw_text"]
+        basenames = batch["basename"]
         speakers = batch["speaker"]
         languages = batch["language"]
         is_last_input_chunk = batch["is_last_input_chunk"]
@@ -263,11 +282,14 @@ class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
 
             # Concatenate the current text to the full text
             self.full_text += texts[i]
+            self.chunk_basenames.append(basenames[i])
 
             if is_last_input_chunk[i]:
                 # Generate filename
                 # Assumes that speakers will be the same across chunks in the same text input
-                basename = truncate_basename(slugify(self.full_text))
+                basename = resolve_chunked_basename(
+                    self.chunk_basenames, self.full_text
+                )
                 filename = self.get_filename(basename, speakers[i], languages[i])
 
                 # Save file
@@ -279,6 +301,7 @@ class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
                 # Reset the accumulator variables
                 self.full_spec = torch.tensor(())
                 self.full_text = ""
+                self.chunk_basenames = []
 
 
 class PredictionWritingAlignedTextCallback(PredictionWritingCallbackBase):
@@ -303,6 +326,7 @@ class PredictionWritingAlignedTextCallback(PredictionWritingCallbackBase):
             save_dir=save_dir,
         )
         self.full_text: str = ""  # Accumulates full text before saving file
+        self.chunk_basenames: list[str] = []  # Accumulates per-chunk basenames
         self.xmax: float = 0
         self.phones: list[tuple[float, float, str]] = []
         self.words: list[tuple[float, float, str]] = []
@@ -403,6 +427,7 @@ class PredictionWritingAlignedTextCallback(PredictionWritingCallbackBase):
             and outputs["duration_prediction"] is not None
         )
 
+        basenames = batch["basename"]
         speakers = batch["speaker"]
         languages = batch["language"]
         texts = batch["text"]  # type: ignore
@@ -418,6 +443,7 @@ class PredictionWritingAlignedTextCallback(PredictionWritingCallbackBase):
 
             # Concatenate
             self.full_text += raw_texts[i]
+            self.chunk_basenames.append(basenames[i])
             for phone in phones:
                 self.phones.append(
                     (phone[0] + self.xmax, phone[1] + self.xmax, phone[2])
@@ -428,17 +454,21 @@ class PredictionWritingAlignedTextCallback(PredictionWritingCallbackBase):
 
             if is_last_input_chunk[i]:
                 # Save the output to file (the subclass has to implement this)
+                basename = resolve_chunked_basename(
+                    self.chunk_basenames, self.full_text
+                )
                 self.save_aligned_text_to_file(
                     self.xmax,
                     self.phones,
                     self.words,
-                    self.full_text,
+                    basename,
                     speakers[i],
                     languages[i],
                 )
 
                 # Reset the accumulator variables
                 self.full_text = ""
+                self.chunk_basenames = []
                 self.xmax = 0
                 self.phones = []
                 self.words = []
@@ -469,14 +499,11 @@ class PredictionWritingTextGridCallback(PredictionWritingAlignedTextCallback):
         max_seconds: float,
         phones: list[tuple[float, float, str]],
         words: list[tuple[float, float, str]],
-        full_text: str,
+        basename: str,
         speaker: str,
         language: str,
     ):
         """Save the aligned text as a TextGrid with phones and words layers"""
-
-        # Find basename from full text
-        basename = truncate_basename(slugify(full_text))
 
         new_tg = TextGrid(xmax=max_seconds)
         phone_tier = new_tg.add_tier("phones")
@@ -535,14 +562,11 @@ class PredictionWritingReadAlongCallback(PredictionWritingAlignedTextCallback):
         max_seconds: float,
         phones: list[tuple[float, float, str]],
         words: list[tuple[float, float, str]],
-        full_text: str,
+        basename: str,
         speaker: str,
         language: str,
     ):
         """Save the aligned text as a .readalong file"""
-
-        # Find basename from full text
-        basename = truncate_basename(slugify(full_text))
 
         ras_tokens: list[Token] = []
         for start, end, label in words:
@@ -591,14 +615,11 @@ class PredictionWritingOfflineRASCallback(PredictionWritingAlignedTextCallback):
         max_seconds: float,
         phones: list[tuple[float, float, str]],
         words: list[tuple[float, float, str]],
-        full_text: str,
+        basename: str,
         speaker: str,
         language: str,
     ):
         """Save the aligned text as an Offline HTML readalong file"""
-
-        # Find basename from full text
-        basename = truncate_basename(slugify(full_text))
 
         ras_tokens: list[Token] = []
         for start, end, label in words:
@@ -644,6 +665,7 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
 
         self.last_file_written: Optional[str] = None  # Necessary for the demo
         self.full_text: str = ""  # Accumulates full text before saving file
+        self.chunk_basenames: list[str] = []  # Accumulates per-chunk basenames
         self.full_wav = torch.tensor(())  # Accumulates full wav before saving file
         self.output_key = output_key
         self.device = device
@@ -705,6 +727,7 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
         assert "tgt_lens" in outputs and outputs["tgt_lens"] is not None
 
         texts = batch["raw_text"]
+        basenames = batch["basename"]
         speakers = batch["speaker"]
         languages = batch["language"]
         is_last_input_chunk = batch["is_last_input_chunk"]
@@ -719,11 +742,14 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
 
             # Concatenate the current text to the full text
             self.full_text += texts[i]
+            self.chunk_basenames.append(basenames[i])
 
             if is_last_input_chunk[i]:
                 # Generate filename
                 # Assumes that speakers will be the same across chunks in the same text input
-                basename = truncate_basename(slugify(self.full_text))
+                basename = resolve_chunked_basename(
+                    self.chunk_basenames, self.full_text
+                )
                 filename = self.get_filename(basename, speakers[i], languages[i])
 
                 # Save file
@@ -739,6 +765,7 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
                 # Reset the accumulator variables
                 self.full_wav = torch.tensor(())
                 self.full_text = ""
+                self.chunk_basenames = []
 
                 # Update last_file_written (for demo)
                 self.last_file_written = filename

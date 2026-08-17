@@ -89,9 +89,12 @@ class WritingTestBase:
         ],
     }
     batch = {
+        # "spk2_utt002" deliberately does not match slugify(raw_text) below, so
+        # these tests catch writers that ignore the filelist-provided basename
+        # and re-derive one from the text instead.
         "basename": [
             "short",
-            "This-utterance-is-wa-dcae74b8",
+            "spk2_utt002",
         ],
         "duration_control": [1.0, 1.0],
         "raw_text": [
@@ -150,8 +153,7 @@ class TestWritingSpec(WritingTestBase):
                 output_dir / "short--spk1--lngA--spec-pred-22050-mel-librosa.pt"
             ).exists()
             assert (
-                output_dir
-                / "This-utterance-is-wa-dcae74b8--spk2--lngB--spec-pred-22050-mel-librosa.pt"
+                output_dir / "spk2_utt002--spk2--lngB--spec-pred-22050-mel-librosa.pt"
             ).exists()
 
 
@@ -191,13 +193,11 @@ class TestWritingTextGrid(WritingTestBase):
                 output_dir / "short--spk1--lngA--22050-mel-librosa.TextGrid"
             ).exists()
             assert (
-                output_dir
-                / "This-utterance-is-wa-dcae74b8--spk2--lngB--22050-mel-librosa.TextGrid"
+                output_dir / "spk2_utt002--spk2--lngB--22050-mel-librosa.TextGrid"
             ).exists()
             tg = TextGrid(
                 file_path=(
-                    output_dir
-                    / "This-utterance-is-wa-dcae74b8--spk2--lngB--22050-mel-librosa.TextGrid"
+                    output_dir / "spk2_utt002--spk2--lngB--22050-mel-librosa.TextGrid"
                 )
             )
             tiers = list(tg.get_tiers())
@@ -238,8 +238,7 @@ class TestWritingReadAlong(WritingTestBase):
             # print(output_dir, *output_dir.glob("**/*"))  # For debugging
             output_files = (
                 output_dir / "short--spk1--lngA--22050-mel-librosa.readalong",
-                output_dir
-                / "This-utterance-is-wa-dcae74b8--spk2--lngB--22050-mel-librosa.readalong",
+                output_dir / "spk2_utt002--spk2--lngB--22050-mel-librosa.readalong",
             )
             for output_file in output_files:
                 with subtests.test(output_file=output_file):
@@ -290,8 +289,7 @@ class TestWritingOfflineRAS(WritingTestBase):
             assert output_dir.exists()
             output_files = (
                 output_dir / "short--spk1--lngA--22050-mel-librosa.html",
-                output_dir
-                / "This-utterance-is-wa-dcae74b8--spk2--lngB--22050-mel-librosa.html",
+                output_dir / "spk2_utt002--spk2--lngB--22050-mel-librosa.html",
             )
             for output_file in output_files:
                 with subtests.test(output_file=output_file):
@@ -348,6 +346,5 @@ class TestWritingWav(WritingTestBase):
                 output_dir / "short--spk1--lngA--ckpt=77--v_ckpt=10--pred.wav"
             ).exists()
             assert (
-                output_dir
-                / "This-utterance-is-wa-dcae74b8--spk2--lngB--ckpt=77--v_ckpt=10--pred.wav"
+                output_dir / "spk2_utt002--spk2--lngB--ckpt=77--v_ckpt=10--pred.wav"
             ).exists()

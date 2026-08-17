@@ -28,7 +28,9 @@ class TestDuplicateFilename:
         "tgt_lens": [490, 490, 490],
     }
     batch1 = {
-        "basename": ["This is a chunk", "This is another chunk", "This is a chunk"],
+        # Pre-slugified, as load_data_from_filelist would produce when no
+        # filelist basename column is available.
+        "basename": ["This-is-a-chunk", "This-is-another-chunk", "This-is-a-chunk"],
         "raw_text": ["This is a chunk", "This is another chunk", "This is a chunk"],
         "text": [
             torch.IntTensor([2, 3, 4, 5, 6, 7, 8], device="cpu"),
