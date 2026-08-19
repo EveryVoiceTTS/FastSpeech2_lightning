@@ -353,6 +353,7 @@ def synthesize_helper(
     vocoder_model=None,
     vocoder_config=None,
     return_scores=False,
+    simple_filenames: bool = False,
 ):
     """This is a helper to perform synthesis once the model has been loaded.
     It allows us to use the same command for synthesis via the CLI and
@@ -423,6 +424,7 @@ def synthesize_helper(
         vocoder_config=vocoder_config,
         vocoder_global_step=vocoder_global_step,
         return_scores=return_scores,
+        simple_filenames=simple_filenames,
     )
     trainer = Trainer(
         logger=False,  # We don't need to log things to tensorboard during inference
@@ -476,7 +478,11 @@ def synthesize(  # noqa: C901
             "--output-dir",
             "-o",
             exists=False,
-            help="The directory where your synthesized audio should be written",
+            help="The directory where your synthesized audio should be written."
+            " By default, filenames include the basename, speaker, language, and"
+            " other metadata, e.g."
+            " 'LJ050-0269--LJ--eng--ckpt=100000--v_ckpt=100000--pred.wav'."
+            " Use --simple-filenames to write just 'LJ050-0269.wav' instead.",
         ),
     ] = Path("synthesis_output"),
     texts: Annotated[
@@ -588,6 +594,18 @@ def synthesize(  # noqa: C901
             "--num-workers", "-n", help="Number of workers to process the data."
         ),
     ] = 4,
+    simple_filenames: Annotated[
+        bool,
+        typer.Option(
+            "--simple-filenames",
+            help="Write output filenames as just the basename and extension"
+            " (e.g. 'LJ050-0269.wav') instead of the default, which also includes"
+            " the speaker, language, and other metadata"
+            " (e.g. 'LJ050-0269--LJ--eng--ckpt=100000--v_ckpt=100000--pred.wav')."
+            " Only use this if your basenames are unique across speakers and"
+            " languages in your filelist, otherwise outputs can overwrite each other.",
+        ),
+    ] = False,
     **kwargs,
 ):
     """Given some text and a trained model, generate some audio. i.e. perform typical speech synthesis"""
@@ -692,4 +710,5 @@ def synthesize(  # noqa: C901
         vocoder_model=vocoder_model,
         vocoder_config=vocoder_config,
         vocoder_global_step=vocoder_global_step,
+        simple_filenames=simple_filenames,
     )

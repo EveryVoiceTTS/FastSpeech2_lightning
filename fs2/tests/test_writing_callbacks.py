@@ -156,6 +156,34 @@ class TestWritingSpec(WritingTestBase):
                 output_dir / "spk2_utt002--spk2--lngB--spec-pred-22050-mel-librosa.pt"
             ).exists()
 
+    def test_simple_filenames(self):
+        """
+        With simple_filenames=True, only the basename and extension are used.
+        """
+        with TemporaryDirectory() as tmp_dir:
+            tmp_dir = Path(tmp_dir)
+            writers = get_synthesis_output_callbacks(
+                [SynthesizeOutputFormats.spec],
+                config=FastSpeech2Config(contact=self.contact),
+                global_step=77,
+                output_dir=tmp_dir,
+                output_key=self.output_key,
+                device=torch.device("cpu"),
+                simple_filenames=True,
+            )
+            writer = next(iter(writers.values()))
+            writer.on_predict_batch_end(
+                _trainer=None,
+                _pl_module=None,
+                outputs=self.outputs,
+                batch=self.batch,
+                _batch_idx=0,
+                _dataloader_idx=0,
+            )
+            output_dir = writer.save_dir
+            assert (output_dir / "short.pt").exists()
+            assert (output_dir / "spk2_utt002.pt").exists()
+
 
 class TestWritingTextGrid(WritingTestBase):
     """
@@ -348,3 +376,41 @@ class TestWritingWav(WritingTestBase):
             assert (
                 output_dir / "spk2_utt002--spk2--lngB--ckpt=77--v_ckpt=10--pred.wav"
             ).exists()
+
+    def test_simple_filenames(self, stubbed_vocoder):
+        """
+        With simple_filenames=True, only the basename and extension are used,
+        even though the wav callback embeds extra info (v_ckpt=...) into
+        file_extension after __init__.
+        """
+        with TemporaryDirectory() as tmp_dir:
+            tmp_dir = Path(tmp_dir)
+            vocoder, vocoder_path = stubbed_vocoder
+
+            writers = get_synthesis_output_callbacks(
+                [SynthesizeOutputFormats.wav],
+                config=FastSpeech2Config(
+                    contact=self.contact,
+                    training=FastSpeech2TrainingConfig(vocoder_path=vocoder_path),
+                ),
+                device=torch.device("cpu"),
+                global_step=77,
+                output_dir=tmp_dir,
+                output_key=self.output_key,
+                vocoder_model=vocoder,
+                vocoder_config=vocoder.config,
+                vocoder_global_step=10,
+                simple_filenames=True,
+            )
+            writer = next(iter(writers.values()))
+            writer.on_predict_batch_end(
+                _trainer=None,
+                _pl_module=None,
+                outputs=self.outputs,
+                batch=self.batch,
+                _batch_idx=0,
+                _dataloader_idx=0,
+            )
+            output_dir = writer.save_dir
+            assert (output_dir / "short.wav").exists()
+            assert (output_dir / "spk2_utt002.wav").exists()

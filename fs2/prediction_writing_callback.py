@@ -60,6 +60,7 @@ def get_synthesis_output_callbacks(
     vocoder_config: Optional[HiFiGANConfig] = None,
     vocoder_global_step: Optional[int] = None,
     return_scores=False,
+    simple_filenames: bool = False,
 ) -> dict[SynthesizeOutputFormats | str, Callback]:
     """
     Given a list of desired output file formats, return the proper callbacks
@@ -94,6 +95,7 @@ def get_synthesis_output_callbacks(
             vocoder_model=vocoder_model,
             vocoder_config=vocoder_config,
             vocoder_global_step=vocoder_global_step,
+            simple_filenames=simple_filenames,
         )
     if SynthesizeOutputFormats.spec in output_type:
         callbacks[SynthesizeOutputFormats.spec] = PredictionWritingSpecCallback(
@@ -101,6 +103,7 @@ def get_synthesis_output_callbacks(
             global_step=global_step,
             output_dir=output_dir,
             output_key=output_key,
+            simple_filenames=simple_filenames,
         )
     if SynthesizeOutputFormats.textgrid in output_type:
         callbacks[SynthesizeOutputFormats.textgrid] = PredictionWritingTextGridCallback(
@@ -108,6 +111,7 @@ def get_synthesis_output_callbacks(
             global_step=global_step,
             output_dir=output_dir,
             output_key=output_key,
+            simple_filenames=simple_filenames,
         )
     if SynthesizeOutputFormats.readalong_xml in output_type:
         callbacks[SynthesizeOutputFormats.readalong_xml] = (
@@ -116,6 +120,7 @@ def get_synthesis_output_callbacks(
                 global_step=global_step,
                 output_dir=output_dir,
                 output_key=output_key,
+                simple_filenames=simple_filenames,
             )
         )
     if SynthesizeOutputFormats.readalong_html in output_type:
@@ -128,6 +133,7 @@ def get_synthesis_output_callbacks(
                 output_dir=output_dir,
                 output_key=output_key,
                 wav_callback=wav_callback,
+                simple_filenames=simple_filenames,
             )
         )
 
@@ -142,12 +148,14 @@ class PredictionWritingCallbackBase(BasePredictionWritingCallback):
         global_step: int,
         save_dir: Path,
         include_global_step_in_filename: bool = False,
+        simple_filenames: bool = False,
     ) -> None:
         super().__init__(
             save_dir=save_dir,
             file_extension=file_extension,
             global_step=global_step,
             include_global_step_in_filename=include_global_step_in_filename,
+            simple_filenames=simple_filenames,
         )
         self.config = config
 
@@ -239,12 +247,14 @@ class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
         global_step: int,
         output_dir: Path,
         output_key: str,
+        simple_filenames: bool = False,
     ):
         super().__init__(
             config=config,
             global_step=global_step,
             file_extension=f"spec-pred-{config.preprocessing.audio.input_sampling_rate}-{config.preprocessing.audio.spec_type}.pt",
             save_dir=output_dir / "synthesized_spec",
+            simple_filenames=simple_filenames,
         )
 
         self.output_key = output_key
@@ -318,12 +328,14 @@ class PredictionWritingAlignedTextCallback(PredictionWritingCallbackBase):
         output_key: str,
         file_extension: str,
         save_dir: Path,
+        simple_filenames: bool = False,
     ):
         super().__init__(
             config=config,
             global_step=global_step,
             file_extension=file_extension,
             save_dir=save_dir,
+            simple_filenames=simple_filenames,
         )
         self.full_text: str = ""  # Accumulates full text before saving file
         self.chunk_basenames: list[str] = []  # Accumulates per-chunk basenames
@@ -485,6 +497,7 @@ class PredictionWritingTextGridCallback(PredictionWritingAlignedTextCallback):
         global_step: int,
         output_dir: Path,
         output_key: str,
+        simple_filenames: bool = False,
     ):
         super().__init__(
             config=config,
@@ -492,6 +505,7 @@ class PredictionWritingTextGridCallback(PredictionWritingAlignedTextCallback):
             output_key=output_key,
             file_extension=f"{config.preprocessing.audio.input_sampling_rate}-{config.preprocessing.audio.spec_type}.TextGrid",
             save_dir=output_dir / "textgrids",
+            simple_filenames=simple_filenames,
         )
 
     def save_aligned_text_to_file(
@@ -543,6 +557,7 @@ class PredictionWritingReadAlongCallback(PredictionWritingAlignedTextCallback):
         global_step: int,
         output_dir: Path,
         output_key: str,
+        simple_filenames: bool = False,
     ):
         super().__init__(
             config=config,
@@ -550,6 +565,7 @@ class PredictionWritingReadAlongCallback(PredictionWritingAlignedTextCallback):
             output_key=output_key,
             file_extension=f"{config.preprocessing.audio.input_sampling_rate}-{config.preprocessing.audio.spec_type}.readalong",
             save_dir=output_dir / "readalongs",
+            simple_filenames=simple_filenames,
         )
         self.text_processor = TextProcessor(
             config.text,
@@ -595,6 +611,7 @@ class PredictionWritingOfflineRASCallback(PredictionWritingAlignedTextCallback):
         output_dir: Path,
         output_key: str,
         wav_callback: PredictionWritingWavCallback,
+        simple_filenames: bool = False,
     ):
         super().__init__(
             config=config,
@@ -602,6 +619,7 @@ class PredictionWritingOfflineRASCallback(PredictionWritingAlignedTextCallback):
             output_key=output_key,
             file_extension=f"{config.preprocessing.audio.input_sampling_rate}-{config.preprocessing.audio.spec_type}.html",
             save_dir=output_dir / "readalongs",
+            simple_filenames=simple_filenames,
         )
         self.text_processor = TextProcessor(
             config.text,
@@ -654,6 +672,7 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
         vocoder_model: HiFiGAN,
         vocoder_config: HiFiGANConfig,
         vocoder_global_step: int,
+        simple_filenames: bool = False,
     ):
         super().__init__(
             config=config,
@@ -661,6 +680,7 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
             global_step=global_step,
             save_dir=output_dir / "wav",
             include_global_step_in_filename=True,
+            simple_filenames=simple_filenames,
         )
 
         self.last_file_written: Optional[str] = None  # Necessary for the demo
