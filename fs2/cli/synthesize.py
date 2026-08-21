@@ -599,9 +599,7 @@ def synthesize(  # noqa: C901
         typer.Option(
             "--simple-filenames",
             help="Write output filenames as just the basename and extension"
-            " (e.g. 'LJ050-0269.wav') instead of the default, which also includes"
-            " the speaker, language, and other metadata"
-            " (e.g. 'LJ050-0269--LJ--eng--ckpt=100000--v_ckpt=100000--pred.wav')."
+            " (e.g. 'LJ050-0269.wav') instead of the default."
             " Only use this if your basenames are unique across speakers and"
             " languages in your filelist, otherwise outputs can overwrite each other.",
         ),
