@@ -1,4 +1,6 @@
+import sys
 from enum import Enum
+from typing import Annotated
 
 import typer
 from everyvoice.base_cli.interfaces import preprocess_base_command_interface
@@ -17,15 +19,17 @@ class PreprocessCategories(str, Enum):
 
 @merge_args(preprocess_base_command_interface)
 def preprocess(
-    compute_stats: bool = typer.Option(
-        True, "--stats/--no-stats", "-S", help="Calculate stats for energy and pitch"
-    ),
-    steps: list[PreprocessCategories] = typer.Option(
-        [cat.value for cat in PreprocessCategories],
-        "-s",
-        "--steps",
-        help="Which steps of the preprocessor to use. If none are provided, all steps will be performed.",
-    ),
+    compute_stats: Annotated[
+        bool, typer.Option("-S", "--stats/--no-stats", help="Calculate stats for energy and pitch")
+    ] = True,
+    steps: Annotated[
+        list[PreprocessCategories],
+        typer.Option(
+            "-s",
+            "--steps",
+            help="Which steps of the preprocessor to use. If none are provided, all steps will be performed.",
+        ),
+    ] = list(PreprocessCategories),
     **kwargs,
 ):
     with spinner():
@@ -35,9 +39,17 @@ def preprocess(
 
         from ..config import FastSpeech2Config
 
+    try:
+        my_steps = [PreprocessCategories(step).name for step in steps]
+    except ValueError as e:
+        raise typer.BadParameter(str(e)) from e
+
+    print(kwargs)
+    print(steps)
+
     preprocessor, config, processed = preprocess_base_command(
         model_config=FastSpeech2Config,
-        steps=[step.name for step in steps],
+        steps=my_steps,
         **kwargs,
     )
 
