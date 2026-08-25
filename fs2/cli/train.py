@@ -1,10 +1,17 @@
 from everyvoice.base_cli.interfaces import train_base_command_interface
 from everyvoice.utils import spinner
+from everyvoice.wizard import TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX
 from merge_args import merge_args
 
 
 @merge_args(train_base_command_interface)
-def train(**kwargs):
+def train(**kwargs) -> None:
+    """Train your FastSpeech2 text-to-spec model.
+
+    For example:
+
+    **everyvoice train text-to-spec config/everyvoice-text-to-spec.yaml**
+    """
     with spinner():
         import json
 
@@ -39,3 +46,9 @@ def train(**kwargs):
         model_kwargs=model_kwargs,
         **kwargs,
     )
+
+
+# docstrings cannot be f-strings, so assert they're still in sync
+assert (
+    f"config/{TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX}.yaml" in train.__doc__
+), "docstring out of sync with everyvoice.wizard config file names"

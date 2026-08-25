@@ -1,11 +1,17 @@
-import sys
+import multiprocessing as mp
 from enum import Enum
 from typing import Annotated
 
 import typer
-from everyvoice.base_cli.interfaces import preprocess_base_command_interface
+from everyvoice.base_cli.interfaces import (
+    ConfigArgs,
+    ConfigFile,
+    CPUs,
+    Debug,
+    Overwrite,
+)
 from everyvoice.utils import spinner
-from merge_args import merge_args
+from everyvoice.wizard import TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX
 
 
 class PreprocessCategories(str, Enum):
@@ -17,8 +23,8 @@ class PreprocessCategories(str, Enum):
     energy = "energy"
 
 
-@merge_args(preprocess_base_command_interface)
 def preprocess(
+    *,
     compute_stats: Annotated[
         bool, typer.Option("-S", "--stats/--no-stats", help="Calculate stats for energy and pitch")
     ] = True,
@@ -30,8 +36,24 @@ def preprocess(
             help="Which steps of the preprocessor to use. If none are provided, all steps will be performed.",
         ),
     ] = list(PreprocessCategories),
-    **kwargs,
-):
+    config_file: ConfigFile,
+    config_args: ConfigArgs = [],
+    cpus: CPUs = min(4, mp.cpu_count()),
+    overwrite: Overwrite = False,
+    debug: Debug = False,
+) -> None:
+    """
+    Preprocess data for a FastSpeech2 text-to-spec model.
+
+    By default every step of the preprocessor will be done by running:
+
+    **everyvoice preprocess text-to-spec config/everyvoice-text-to-spec.yaml**
+
+    To run only specific steps:
+
+    **everyvoice preprocess text-to-spec config/everyvoice-text-to-spec.yaml -s energy -s pitch**
+    """
+    print("STATS", compute_stats)
     with spinner():
         import json
 
@@ -44,13 +66,14 @@ def preprocess(
     except ValueError as e:
         raise typer.BadParameter(str(e)) from e
 
-    print(kwargs)
-    print(steps)
-
     preprocessor, config, processed = preprocess_base_command(
         model_config=FastSpeech2Config,
         steps=my_steps,
-        **kwargs,
+        config_file=config_file,
+        config_args=config_args,
+        cpus=cpus,
+        overwrite=overwrite,
+        debug=debug,
     )
 
     if compute_stats:
@@ -87,3 +110,9 @@ def preprocess(
         stats = {**previous_stats, **stats}
         with open(stats_path, "w", encoding="utf8") as f:
             json.dump(stats, f)
+
+
+# docstrings cannot be f-strings, so assert they're still in sync
+assert f"config/{TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX}.yaml" in (
+    preprocess.__doc__ or ""
+), "docstring out of sync with everyvoice.wizard config file names"
