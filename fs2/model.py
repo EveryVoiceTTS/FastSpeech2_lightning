@@ -46,9 +46,8 @@ def _remap_embedding_weights(
     simply dropped.
     """
     assert len(old_symbols) <= old_weights.size(0), (
-        "Unfortunately we are unable to automatically update your embedding "
-        "table. Please re-train your model or downgrade to everyvoice < 0.3.0 "
-        "or an earlier alpha release, e.g. pip install everyvoice==0.2.0a1"
+        "Unfortunately we are unable to automatically update your embedding table. "
+        "Please re-train your model or downgrade everyvoice to the version that was used to train your model."
     )
     old_set = set(old_symbols)
     new_set = set(new_symbols)
@@ -347,8 +346,9 @@ class FastSpeech2(pl.LightningModule):
             == TargetTrainingTextRepresentationLevel.phonological_features.value
         ):
             raise ValueError(
-                f"""There were breaking changes to the handling of phonological features in version 1.2 of the EveryVoice FastSpeech2 text-to-spec model, introduced in version 0.3.0 of EveryVoice.
-                               Your model is version {ckpt_version} and your model may not work as a result. Please downgrade to everyvoice < 0.3.0 or an earlier alpha release, e.g. pip install everyvoice==0.2.0a1"""
+                "There were breaking changes to the handling of phonological features in version 1.2 of the EveryVoice FastSpeech2 text-to-spec model, introduced in version 0.3.0 of EveryVoice. "
+                f"Your model is version {ckpt_version} and it may not work as a result. "
+                "Please re-train your model or downgrade to everyvoice < 0.3.0."
             )
 
         elif ckpt_version < Version("1.2"):
@@ -376,7 +376,9 @@ class FastSpeech2(pl.LightningModule):
                 )
             )
             logger.warning(
-                f"Your checkpoint was trained using version {ckpt_version} of the EveryVoice FastSpeech2 text-to-spec model but your code is currently running {self._VERSION}. We have attempted to update your checkpoint automatically, but if you encounter issues, please re-train your model or downgrade to everyvoice < 0.3.0 or an earlier alpha release, e.g. pip install everyvoice==0.2.0a1"
+                f"Your checkpoint was trained using version {ckpt_version} of the EveryVoice FastSpeech2 text-to-spec model but your code is currently running {self._VERSION}. "
+                "We have attempted to update your checkpoint automatically, but if you encounter issues, "
+                "please re-train your model or downgrade everyvoice to the version that was used to train your model."
             )
 
         # We started filtering the declared symbol set by target_text_representation_level
@@ -398,7 +400,9 @@ class FastSpeech2(pl.LightningModule):
                 )
             )
             logger.warning(
-                f"Your checkpoint was trained using version {ckpt_version} of the EveryVoice FastSpeech2 text-to-spec model but your code is currently running {self._VERSION}. We have attempted to update your checkpoint automatically, but if you encounter issues, please re-train your model or downgrade to everyvoice < 0.3.0 or an earlier alpha release, e.g. pip install everyvoice==0.2.0a1"
+                f"Your checkpoint was trained using version {ckpt_version} of the EveryVoice FastSpeech2 text-to-spec model but your code is currently running {self._VERSION}. "
+                "We have attempted to update your checkpoint automatically, but if you encounter issues, "
+                "please re-train your model or downgrade everyvoice to the version that was used to train your model."
             )
 
         # From 1.3 onward, checkpoints carry their own realized, ordered symbol
