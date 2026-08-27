@@ -18,7 +18,7 @@ class PreprocessCategories(str, Enum):
 @merge_args(preprocess_base_command_interface)
 def preprocess(
     compute_stats: bool = typer.Option(
-        True, "-S", "--stats", help="Calculate stats for energy and pitch"
+        True, "--stats/--no-stats", "-S", help="Calculate stats for energy and pitch"
     ),
     steps: list[PreprocessCategories] = typer.Option(
         [cat.value for cat in PreprocessCategories],
