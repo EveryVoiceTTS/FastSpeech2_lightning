@@ -1,14 +1,15 @@
 import multiprocessing as mp
 from enum import Enum
+from pathlib import Path
 from typing import Annotated
 
 import typer
 from everyvoice.base_cli.interfaces import (
-    ConfigArgs,
-    ConfigFile,
-    CPUs,
-    Debug,
-    Overwrite,
+    ConfigArgsOption,
+    ConfigFileArgument,
+    CPUsOption,
+    DebugFlag,
+    OverwriteFlag,
 )
 from everyvoice.utils import spinner
 from everyvoice.wizard import TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX
@@ -23,24 +24,27 @@ class PreprocessCategories(str, Enum):
     energy = "energy"
 
 
+ComputeStatsToggle = typer.Option(
+    "-S", "--stats/--no-stats", help="Calculate stats for energy and pitch"
+)
+PreprocessStepsOption = typer.Option(
+    "-s",
+    "--steps",
+    help="Which steps of the preprocessor to use. If none are provided, all steps will be performed.",
+)
+
+
 def preprocess(
     *,
-    compute_stats: Annotated[
-        bool, typer.Option("-S", "--stats/--no-stats", help="Calculate stats for energy and pitch")
-    ] = True,
-    steps: Annotated[
-        list[PreprocessCategories],
-        typer.Option(
-            "-s",
-            "--steps",
-            help="Which steps of the preprocessor to use. If none are provided, all steps will be performed.",
-        ),
-    ] = list(PreprocessCategories),
-    config_file: ConfigFile,
-    config_args: ConfigArgs = [],
-    cpus: CPUs = min(4, mp.cpu_count()),
-    overwrite: Overwrite = False,
-    debug: Debug = False,
+    compute_stats: Annotated[bool, ComputeStatsToggle] = True,
+    steps: Annotated[list[PreprocessCategories], PreprocessStepsOption] = list(
+        PreprocessCategories
+    ),
+    config_file: Annotated[Path, ConfigFileArgument],
+    config_args: Annotated[list[str], ConfigArgsOption] = [],
+    cpus: Annotated[int, CPUsOption] = min(4, mp.cpu_count()),
+    overwrite: Annotated[bool, OverwriteFlag] = False,
+    debug: Annotated[bool, DebugFlag] = False,
 ) -> None:
     """
     Preprocess data for a FastSpeech2 text-to-spec model.
