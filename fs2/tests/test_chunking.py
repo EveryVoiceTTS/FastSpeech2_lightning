@@ -7,6 +7,7 @@ from typing import Callable
 import torch
 from everyvoice.config.shared_types import ContactInformation
 from everyvoice.config.text_config import TextConfig
+from everyvoice.config.type_definitions import SynthesizeOutputFormats
 from everyvoice.text.text_processor import TextProcessor
 from pydub import AudioSegment
 from pympi import TextGrid
@@ -14,7 +15,6 @@ from pytest import fixture
 
 from ..config import FastSpeech2Config, FastSpeech2TrainingConfig
 from ..prediction_writing_callback import get_synthesis_output_callbacks
-from ..type_definitions import SynthesizeOutputFormats
 
 
 class TestDuplicateFilename:

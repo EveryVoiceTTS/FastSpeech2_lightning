@@ -13,13 +13,11 @@ from everyvoice import logger
 from everyvoice.base_cli.prediction_writing_callback import (
     BasePredictionWritingCallback,
 )
-from everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2.utils import (
-    truncate_basename,
-)
+from everyvoice.config.type_definitions import SynthesizeOutputFormats
 from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import HiFiGANConfig
 from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.model import HiFiGAN
 from everyvoice.text.text_processor import TextProcessor
-from everyvoice.utils import slugify
+from everyvoice.utils import resolve_chunked_basename
 from pympi import TextGrid
 from pytorch_lightning.callbacks import Callback
 from readalongs.api import (
@@ -29,24 +27,6 @@ from readalongs.api import (
 )
 
 from .config import FastSpeech2Config
-from .type_definitions import SynthesizeOutputFormats
-
-
-def resolve_chunked_basename(chunk_basenames: list[str], full_text: str) -> str:
-    """
-    Determine the basename to use for a (possibly multi-chunk) synthesized utterance.
-
-    A filelist-provided basename is duplicated identically across every chunk
-    of the same utterance, so if all of ``chunk_basenames`` agree, that value
-    is a real basename and is used as-is, however long it is: this is what
-    lets synthesized files line up with the filenames a fine-tuning
-    dataloader expects. Otherwise, no real basename was available and each
-    chunk was assigned its own auto-generated slug, so we fall back to
-    slugifying/truncating the reassembled raw text of the whole utterance.
-    """
-    if len(set(chunk_basenames)) == 1:
-        return chunk_basenames[0]
-    return truncate_basename(slugify(full_text))
 
 
 def get_synthesis_output_callbacks(

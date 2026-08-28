@@ -5,8 +5,6 @@ from matplotlib import pyplot as plt
 
 from ..type_definitions_heavy import Stats
 
-BASENAME_MAX_LENGTH = 20
-
 
 def mask_from_lens(lens, max_len: Optional[int] = None):
     if max_len is None:

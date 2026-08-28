@@ -1,15 +1,13 @@
-import re
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import torch
 from everyvoice.config.shared_types import ContactInformation
+from everyvoice.config.type_definitions import SynthesizeOutputFormats
 from pympi import TextGrid
 
 from ..config import FastSpeech2Config, FastSpeech2TrainingConfig
 from ..prediction_writing_callback import get_synthesis_output_callbacks
-from ..type_definitions import SynthesizeOutputFormats
-from ..utils import BASENAME_MAX_LENGTH, truncate_basename
 
 try:
     # Accelerate the failing for fetching bundles online, since we don't
@@ -20,59 +18,6 @@ try:
     make_package.FETCH_BUNDLE_TIMEOUT_SECONDS = 1
 except Exception:
     pass
-
-
-class TestTruncateBasename:
-    """
-    Testing truncate_basename().
-    """
-
-    def test_short_name(self):
-        """
-        Short utterances should produce file names that are not truncated.
-        """
-        output = truncate_basename("Short utterance")
-        assert output == "Short-utterance"
-
-    def test_long_name(self):
-        """
-        Uttrerances longer than BASENAME_MAX_LENGTH should get truncated and
-        should have a sha1 in case two utterances have the same prefix.
-        """
-        output = truncate_basename("A utterance that is too long")
-        assert len(output) == BASENAME_MAX_LENGTH + 1 + 8
-        assert output == "A-utterance-that-is--d607fba8"
-
-    def test_limit(self):
-        """
-        Utterances exactly BASENAME_MAX_LENGTH long should not be truncated.
-        """
-        input = "A" * BASENAME_MAX_LENGTH
-        output = truncate_basename(input)
-        assert len(output) == BASENAME_MAX_LENGTH
-        assert output == input
-
-    def test_limit_plus_one(self):
-        """
-        Testing the edge case where the utterance as one too many characters.
-        """
-        input = "A" * (BASENAME_MAX_LENGTH + 1)
-        output = truncate_basename(input)
-        assert len(output) == BASENAME_MAX_LENGTH + 1 + 8
-
-    def test_same_prefix_different_names(self):
-        """
-        Two long utterances with the same prefix should yield different file names.
-        """
-        prefix = "A" * BASENAME_MAX_LENGTH
-        input1 = prefix + "1"
-        input2 = prefix + "2"
-        output1 = truncate_basename(input1)
-        output2 = truncate_basename(input2)
-        assert output1 != output2
-        pattern = re.compile(prefix + r"-[0-9A-Fa-f]{8}")
-        assert pattern.search(output1), f"{output1} does not match {pattern}"
-        assert pattern.search(output2), f"{output1} does not match {pattern}"
 
 
 class WritingTestBase:

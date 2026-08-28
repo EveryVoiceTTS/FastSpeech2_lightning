@@ -15,14 +15,12 @@ from everyvoice.base_cli.interfaces import (
 )
 from everyvoice.config.type_definitions import (
     DatasetTextRepresentation,
+    SynthesizeOutputFormats,
     TargetTrainingTextRepresentationLevel,
 )
-from everyvoice.text.textsplit import chunk_text
-from everyvoice.utils import slugify, spinner
+from everyvoice.text.textsplit import chunk_text, resolve_split_params
+from everyvoice.utils import slugify, spinner, truncate_basename
 from merge_args import merge_args
-
-from ..type_definitions import SynthesizeOutputFormats
-from ..utils import truncate_basename
 
 
 def validate_data_keys_with_model_keys(
@@ -83,23 +81,11 @@ def get_text_split_params(
     from ..type_definitions_heavy import Stats
 
     text_config: TextConfig = model.config.text
-    split_text: bool = text_config.split_text
 
-    strong_boundaries: str = ""
-    weak_boundaries: str = ""
     desired_length: float = 100
     max_length: float = 200
 
-    if split_text:
-        # Get splitting boundaries from Text Config
-        try:
-            effective_language = language or ""
-            strong_boundaries = text_config.boundaries[effective_language].strong
-            weak_boundaries = text_config.boundaries[effective_language].weak
-        except KeyError:
-            logger.warning(
-                f"Boundaries for language '{language}' could not be found in TextConfig. Chunking will not be performed."
-            )
+    if text_config.split_text:
         # Get desired and max length from Stats
         try:
             stats: Stats = model.stats
@@ -120,11 +106,11 @@ def get_text_split_params(
                 f"Length stats for {text_representation} could not be found. Chunking with default lengths."
             )
 
-    return split_text, (
-        int(desired_length),
-        int(max_length),
-        strong_boundaries,
-        weak_boundaries,
+    return resolve_split_params(
+        text_config,
+        language,
+        desired_length=int(desired_length),
+        max_length=int(max_length),
     )
 
 
