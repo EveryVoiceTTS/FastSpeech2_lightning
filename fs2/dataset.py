@@ -3,6 +3,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from everyvoice import logger
 from everyvoice.config.type_definitions import (
     DatasetTextRepresentation,
     TargetTrainingTextRepresentationLevel,
@@ -99,6 +100,12 @@ class FastSpeechDataset(Dataset):
             item["character_tokens"] = character_tokens
             item["phone_tokens"] = phone_tokens
             item["pfs"] = pfs
+            logger.info(
+                "FastSpeech2 inference text processing: "
+                f"raw_text={item.get('characters', item.get('phones'))!r} "
+                f"target_text_representation_level={self.config.model.target_text_representation_level.value!r} "
+                f"character_tokens={character_tokens!r} phone_tokens={phone_tokens!r}"
+            )
         if self.teacher_forcing or not self.inference:
             mel = self._load_file(
                 basename,
