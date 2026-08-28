@@ -30,7 +30,19 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Topic :: Multimedia :: Sound/Audio :: Speech",
 ]
-dependencies = ["everyvoice"]
+dependencies = [
+    "everyvoice==0.5.0",
+]
+
+[project.optional-dependencies]
+dev = ["everyvoice[dev]"]
+
+[tool.uv]
+override-dependencies = [
+  # replace unmaintained pydub, which gradio requests, by pydub_ng
+  "pydub; python_version < '0'",
+  "pydub-ng>=0.2.0",
+]
 
 [project.scripts]
 fs2l = "fs2.cli:app"
@@ -49,5 +61,5 @@ include = ["/fs2"]
 [tool.hatch.build.targets.wheel]
 include = ["/fs2"]
 
-[project.optional-dependencies]
-dev = ["everyvoice[dev]"]
+[tool.uv.sources]
+everyvoice = { path = "../../../../", editable = true }
