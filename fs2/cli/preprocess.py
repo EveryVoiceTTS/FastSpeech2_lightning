@@ -12,6 +12,7 @@ from everyvoice.base_cli.interfaces import (
     OverwriteFlag,
 )
 from everyvoice.utils import spinner
+from everyvoice.wizard import TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX
 
 
 class PreprocessCategories(str, Enum):
@@ -25,7 +26,9 @@ class PreprocessCategories(str, Enum):
 
 ComputeStatsToggle = typer.Option(
     # keep "-S" second so the CLI help displays "[default: stats]" not "[default: S]"
-    "--stats/--no-stats", "-S", help="Calculate stats for energy and pitch"
+    "--stats/--no-stats",
+    "-S",
+    help="Calculate stats for energy and pitch",
 )
 StepsOption = typer.Option(
     "-s",
@@ -35,12 +38,11 @@ StepsOption = typer.Option(
 
 
 def preprocess(
-    *,
+    config_file: Annotated[Path, ConfigFileArgument],
     compute_stats: Annotated[bool, ComputeStatsToggle] = True,
     steps: Annotated[list[PreprocessCategories], StepsOption] = list(
         PreprocessCategories
     ),
-    config_file: Annotated[Path, ConfigFileArgument],
     config_args: Annotated[list[str], ConfigArgsOption] = [],
     cpus: Annotated[int, CPUsOption] = min(4, mp.cpu_count()),
     overwrite: Annotated[bool, OverwriteFlag] = False,
