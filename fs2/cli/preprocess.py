@@ -12,7 +12,6 @@ from everyvoice.base_cli.interfaces import (
     OverwriteFlag,
 )
 from everyvoice.utils import spinner
-from everyvoice.wizard import TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX
 
 
 class PreprocessCategories(str, Enum):
@@ -25,9 +24,10 @@ class PreprocessCategories(str, Enum):
 
 
 ComputeStatsToggle = typer.Option(
-    "-S", "--stats/--no-stats", help="Calculate stats for energy and pitch"
+    # keep "-S" second so the CLI help displays "[default: stats]" not "[default: S]"
+    "--stats/--no-stats", "-S", help="Calculate stats for energy and pitch"
 )
-PreprocessStepsOption = typer.Option(
+StepsOption = typer.Option(
     "-s",
     "--steps",
     help="Which steps of the preprocessor to use. If none are provided, all steps will be performed.",
@@ -37,7 +37,7 @@ PreprocessStepsOption = typer.Option(
 def preprocess(
     *,
     compute_stats: Annotated[bool, ComputeStatsToggle] = True,
-    steps: Annotated[list[PreprocessCategories], PreprocessStepsOption] = list(
+    steps: Annotated[list[PreprocessCategories], StepsOption] = list(
         PreprocessCategories
     ),
     config_file: Annotated[Path, ConfigFileArgument],
@@ -57,7 +57,6 @@ def preprocess(
 
     **everyvoice preprocess text-to-spec config/everyvoice-text-to-spec.yaml -s energy -s pitch**
     """
-    print("STATS", compute_stats)
     with spinner():
         import json
 
