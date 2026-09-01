@@ -1,10 +1,25 @@
-from everyvoice.base_cli.interfaces import train_base_command_interface
+from pathlib import Path
+from typing import Annotated
+
+from everyvoice.base_cli.interfaces import (
+    AcceleratorOption,
+    ConfigArgsOption,
+    ConfigFileArgument,
+    DevicesOption,
+    NodesOption,
+    StrategyOption,
+)
 from everyvoice.utils import spinner
-from merge_args import merge_args
 
 
-@merge_args(train_base_command_interface)
-def train(**kwargs):
+def train(
+    config_file: Annotated[Path, ConfigFileArgument],
+    config_args: Annotated[list[str], ConfigArgsOption] = [],
+    accelerator: Annotated[str, AcceleratorOption] = "auto",
+    devices: Annotated[str, DevicesOption] = "auto",
+    nodes: Annotated[int, NodesOption] = 1,
+    strategy: Annotated[str, StrategyOption] = "ddp",
+) -> None:
     with spinner():
         import json
 
@@ -19,8 +34,6 @@ def train(**kwargs):
         from ..model import FastSpeech2
         from ..type_definitions_heavy import Stats
 
-    config_args = kwargs["config_args"]
-    config_file = kwargs["config_file"]
     config = load_config_base_command(FastSpeech2Config, config_args, config_file)
     lang2id, speaker2id = lookuptables_from_config(config)
 
@@ -37,5 +50,10 @@ def train(**kwargs):
         monitor="validation/total_loss",
         gradient_clip_val=1.0,
         model_kwargs=model_kwargs,
-        **kwargs,
+        config_file=config_file,
+        config_args=config_args,
+        accelerator=accelerator,
+        devices=devices,
+        nodes=nodes,
+        strategy=strategy,
     )

@@ -8,7 +8,8 @@ from typing import Annotated, Any, Optional
 import typer
 from everyvoice import logger
 from everyvoice.base_cli.interfaces import (
-    inference_base_command_interface,
+    AcceleratorOption,
+    ConfigArgsOption,
     typer_directory_option,
     typer_file_argument,
     typer_file_option,
@@ -20,7 +21,6 @@ from everyvoice.config.type_definitions import (
 )
 from everyvoice.text.textsplit import chunk_text, resolve_split_params
 from everyvoice.utils import slugify, spinner, truncate_basename
-from merge_args import merge_args
 
 
 def validate_data_keys_with_model_keys(
@@ -450,7 +450,6 @@ def synthesize_helper(
     )
 
 
-@merge_args(inference_base_command_interface)
 def synthesize(  # noqa: C901
     model_path: Annotated[
         Path,
@@ -512,7 +511,7 @@ def synthesize(  # noqa: C901
             help="Specify which speaker to use in a multispeaker system. [requires --text]",
         ),
     ] = None,
-    accelerator: Annotated[str, typer.Option("--accelerator", "-a")] = "auto",
+    accelerator: Annotated[str, AcceleratorOption] = "auto",
     devices: Annotated[
         str, typer.Option("--devices", "-d", help="The number of GPUs to use")
     ] = "auto",
@@ -590,7 +589,7 @@ def synthesize(  # noqa: C901
             " languages in your filelist, otherwise outputs can overwrite each other.",
         ),
     ] = False,
-    **kwargs,
+    config_args: Annotated[list[str], ConfigArgsOption] = [],
 ):
     """Given some text and a trained model, generate some audio. i.e. perform typical speech synthesis"""
     # TODO: allow for changing of language/speaker and variance control
@@ -648,7 +647,7 @@ def synthesize(  # noqa: C901
         sys.exit(1)
     model.eval()
 
-    inference_base_command(model, **kwargs)
+    inference_base_command(model, config_args=config_args)
 
     # get global step
     # We can't just use model.global_step because it gets reset by lightning

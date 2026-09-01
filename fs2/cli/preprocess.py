@@ -1,9 +1,17 @@
+import multiprocessing as mp
 from enum import Enum
+from pathlib import Path
+from typing import Annotated
 
 import typer
-from everyvoice.base_cli.interfaces import preprocess_base_command_interface
+from everyvoice.base_cli.interfaces import (
+    ConfigArgsOption,
+    ConfigFileArgument,
+    CPUsOption,
+    DebugFlag,
+    OverwriteFlag,
+)
 from everyvoice.utils import spinner
-from merge_args import merge_args
 
 
 class PreprocessCategories(str, Enum):
@@ -15,19 +23,30 @@ class PreprocessCategories(str, Enum):
     energy = "energy"
 
 
-@merge_args(preprocess_base_command_interface)
+ComputeStatsToggle = typer.Option(
+    # keep "-S" second so the CLI help displays "[default: stats]" not "[default: S]"
+    "--stats/--no-stats",
+    "-S",
+    help="Calculate stats for energy and pitch",
+)
+StepsOption = typer.Option(
+    "-s",
+    "--steps",
+    help="Which steps of the preprocessor to use. If none are provided, all steps will be performed.",
+)
+
+
 def preprocess(
-    compute_stats: bool = typer.Option(
-        True, "--stats/--no-stats", "-S", help="Calculate stats for energy and pitch"
+    config_file: Annotated[Path, ConfigFileArgument],
+    compute_stats: Annotated[bool, ComputeStatsToggle] = True,
+    steps: Annotated[list[PreprocessCategories], StepsOption] = list(
+        PreprocessCategories
     ),
-    steps: list[PreprocessCategories] = typer.Option(
-        [cat.value for cat in PreprocessCategories],
-        "-s",
-        "--steps",
-        help="Which steps of the preprocessor to use. If none are provided, all steps will be performed.",
-    ),
-    **kwargs,
-):
+    config_args: Annotated[list[str], ConfigArgsOption] = [],
+    cpus: Annotated[int, CPUsOption] = min(4, mp.cpu_count()),
+    overwrite: Annotated[bool, OverwriteFlag] = False,
+    debug: Annotated[bool, DebugFlag] = False,
+) -> None:
     with spinner():
         import json
 
@@ -38,7 +57,11 @@ def preprocess(
     preprocessor, config, processed = preprocess_base_command(
         model_config=FastSpeech2Config,
         steps=[step.name for step in steps],
-        **kwargs,
+        config_file=config_file,
+        config_args=config_args,
+        cpus=cpus,
+        overwrite=overwrite,
+        debug=debug,
     )
 
     if compute_stats:
