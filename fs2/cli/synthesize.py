@@ -591,7 +591,7 @@ def synthesize(  # noqa: C901
     ] = False,
     config_args: Annotated[list[str], ConfigArgsOption] = [],
 ):
-    """Given some text and a trained model, generate some audio. i.e. perform typical speech synthesis"""
+    """Given some text and a trained FastSpeech2 model, generate some audio. i.e. perform typical speech synthesis"""
     # TODO: allow for changing of language/speaker and variance control
 
     # Do argument error checking before doing expensive imports

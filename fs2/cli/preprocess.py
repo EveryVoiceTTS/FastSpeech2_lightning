@@ -12,6 +12,7 @@ from everyvoice.base_cli.interfaces import (
     OverwriteFlag,
 )
 from everyvoice.utils import spinner
+from everyvoice.wizard import TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX
 
 
 class PreprocessCategories(str, Enum):
@@ -47,6 +48,17 @@ def preprocess(
     overwrite: Annotated[bool, OverwriteFlag] = False,
     debug: Annotated[bool, DebugFlag] = False,
 ) -> None:
+    """
+    Preprocess data for a FastSpeech2 text-to-spec model.
+
+    By default every step of the preprocessor will be done by running:
+
+    **everyvoice preprocess text-to-spec config/everyvoice-text-to-spec.yaml**
+
+    To run only specific steps:
+
+    **everyvoice preprocess text-to-spec config/everyvoice-text-to-spec.yaml -s energy -s pitch**
+    """
     with spinner():
         import json
 
@@ -54,9 +66,14 @@ def preprocess(
 
         from ..config import FastSpeech2Config
 
+    try:
+        my_steps = [PreprocessCategories(step).name for step in steps]
+    except ValueError as e:
+        raise typer.BadParameter(str(e)) from e
+
     preprocessor, config, processed = preprocess_base_command(
         model_config=FastSpeech2Config,
-        steps=[step.name for step in steps],
+        steps=my_steps,
         config_file=config_file,
         config_args=config_args,
         cpus=cpus,
@@ -98,3 +115,9 @@ def preprocess(
         stats = {**previous_stats, **stats}
         with open(stats_path, "w", encoding="utf8") as f:
             json.dump(stats, f)
+
+
+# docstrings cannot be f-strings, so assert they're still in sync
+assert f"config/{TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX}.yaml" in (
+    preprocess.__doc__ or ""
+), "docstring out of sync with everyvoice.wizard config file names"

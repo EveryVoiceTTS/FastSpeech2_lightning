@@ -1,6 +1,5 @@
 import typer
 from everyvoice.base_cli import command, default_typer_args
-from everyvoice.wizard import TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX
 
 from .benchmark import benchmark as app_benchmark
 from .preprocess import preprocess as app_preprocess
@@ -15,40 +14,19 @@ app = typer.Typer(
 command(
     app,
     name="benchmark",
-    short_help="",
 )(app_benchmark)
 
 command(
     app,
     name="preprocess",
-    short_help="Preprocess your data",
-    help=f"""
-    # Preprocess Help
-
-    This command will preprocess all of the data you need for use with EveryVoice.
-
-    By default every step of the preprocessor will be done by running:
-    \n\n
-    **everyvoice preprocess text-to-spec config/{TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX}.yaml**
-    \n\n
-    If you only want to process specific things, you can run specific commands by adding them as options for example:
-    \n\n
-    **everyvoice preprocess text-to-spec config/{TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX}.yaml -s energy -s pitch**
-    """,
 )(app_preprocess)
 
 command(
     app,
     name="synthesize",
-    short_help="""Given some text and a trained model, generate some audio. i.e. perform typical speech synthesis""",
 )(app_synthesize)
 
 command(
     app,
     name="train",
-    short_help="Train your Text-to-Spec model",
-    help=f"""Train your text-to-spec model.  For example:
-
-    **everyvoice train text-to-spec config/{TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX}.yaml**
-    """,
 )(app_train)

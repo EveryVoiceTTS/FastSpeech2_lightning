@@ -10,6 +10,7 @@ from everyvoice.base_cli.interfaces import (
     StrategyOption,
 )
 from everyvoice.utils import spinner
+from everyvoice.wizard import TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX
 
 
 def train(
@@ -20,6 +21,12 @@ def train(
     nodes: Annotated[int, NodesOption] = 1,
     strategy: Annotated[str, StrategyOption] = "ddp",
 ) -> None:
+    """Train your FastSpeech2 text-to-spec model.
+
+    For example:
+
+    **everyvoice train text-to-spec config/everyvoice-text-to-spec.yaml**
+    """
     with spinner():
         import json
 
@@ -57,3 +64,9 @@ def train(
         nodes=nodes,
         strategy=strategy,
     )
+
+
+# docstrings cannot be f-strings, so assert they're still in sync
+assert (
+    f"config/{TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX}.yaml" in train.__doc__  # type: ignore
+), "docstring out of sync with everyvoice.wizard config file names"
