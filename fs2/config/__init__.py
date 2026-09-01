@@ -1,6 +1,6 @@
 from enum import Enum
 from pathlib import Path
-from typing import Annotated, Any, Optional, Union
+from typing import Annotated, Any, Optional
 
 from annotated_types import Ge
 from everyvoice.config.preprocessing_config import PreprocessingConfig
@@ -203,7 +203,7 @@ class FastSpeech2TrainingConfig(BaseTrainingConfig):
     )
     # TODO: Implement early stopping
     # early_stopping: EarlyStoppingConfig = Field(default_factory=EarlyStoppingConfig)
-    vocoder_path: Union[FilePath, None] = None
+    vocoder_path: FilePath | None = None
     mel_loss_weight: float = Field(
         default=1.0, description="Multiply the spec loss by this weight"
     )
