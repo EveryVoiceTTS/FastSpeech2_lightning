@@ -164,9 +164,7 @@ def load_data_from_filelist(
     except KeyError:
         # TODO: Errors should have better formatting:
         #       https://github.com/EveryVoiceTTS/FastSpeech2_lightning/issues/26
-        logger.info(
-            textwrap.dedent(
-                """
+        logger.info(textwrap.dedent("""
             EveryVoice only accepts filelists in PSV format as in:
 
                 basename|characters|language|speaker
@@ -179,9 +177,7 @@ def load_data_from_filelist(
 
             Your filelist did not contain the correct keys so we will assume it is in the plain text format.
             Text can either be defined as 'characters' or 'phones'.
-                    """
-            )
-        )
+            """))
         data = []
         with open(filelist, encoding="utf8") as file:
             for line in file:
