@@ -18,24 +18,7 @@ command(
     short_help="",
 )(app_benchmark)
 
-command(
-    app,
-    name="preprocess",
-    short_help="Preprocess your data",
-    help=f"""
-    # Preprocess Help
-
-    This command will preprocess all of the data you need for use with EveryVoice.
-
-    By default every step of the preprocessor will be done by running:
-    \n\n
-    **everyvoice preprocess text-to-spec config/{TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX}.yaml**
-    \n\n
-    If you only want to process specific things, you can run specific commands by adding them as options for example:
-    \n\n
-    **everyvoice preprocess text-to-spec config/{TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX}.yaml -s energy -s pitch**
-    """,
-)(app_preprocess)
+command(app, name="preprocess")(app_preprocess)
 
 command(
     app,
