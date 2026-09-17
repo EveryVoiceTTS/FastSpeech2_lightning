@@ -283,7 +283,9 @@ def prepare_data(
         )
         import torchaudio
 
-        style_reference_audio, style_reference_sr = torchaudio.load(style_reference)
+        style_reference_audio, style_reference_sr = torchaudio.load(
+            str(style_reference)
+        )
         if style_reference_sr != model.config.preprocessing.audio.input_sampling_rate:
             style_reference_audio = torchaudio.functional.resample(
                 style_reference_audio,
