@@ -25,9 +25,11 @@ def train(**kwargs):
         from ..model import FastSpeech2
         from ..type_definitions_heavy import Stats
 
-    config_args = kwargs["config_args"]
-    config_file = kwargs["config_file"]
-    config = load_config_base_command(FastSpeech2Config, config_args, config_file)
+    config = load_config_base_command(
+        model_config=FastSpeech2Config,
+        config_args=kwargs.pop("config_args"),
+        config_file=kwargs.pop("config_file"),
+    )
     lang2id, speaker2id = lookuptables_from_config(config)
 
     # TODO: What about when we are fine-tuning? Do the bins in the Variance Adaptor not change? https://github.com/EveryVoiceTTS/FastSpeech2_lightning/issues/28
@@ -37,7 +39,7 @@ def train(**kwargs):
     model_kwargs = {"lang2id": lang2id, "speaker2id": speaker2id, "stats": stats}
 
     train_base_command(
-        model_config=FastSpeech2Config,
+        config=config,
         model=FastSpeech2,
         data_module=FastSpeech2DataModule,
         monitor="validation/total_loss",
