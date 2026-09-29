@@ -37,23 +37,19 @@ def validate_data_keys_with_model_keys(
     """
     if multi:
         if None in data_keys:
-            print(
+            raise typer.BadParameter(
                 f"You have not specified a {key} for all your sentences."
-                f" Available values are {model_keys}",
-                file=sys.stderr,
+                f" Available values are {model_keys}"
             )
-            sys.exit(1)
 
         extras = data_keys.difference(model_keys)
         if extras:
             is_or_are_not = (
                 f"are not {key}s that are" if len(data_keys) > 1 else f"is not a {key}"
             )
-            print(
-                f"You provided {data_keys} which {is_or_are_not} supported by the model {model_keys or {}}.",
-                file=sys.stderr,
+            raise typer.BadParameter(
+                f"You provided {data_keys} which {is_or_are_not} supported by the model {model_keys or {}}."
             )
-            sys.exit(1)
     else:
         # NOTE: Even in non multiX, the model has a default value.
         # Looking at a filelist.psv
@@ -62,12 +58,10 @@ def validate_data_keys_with_model_keys(
         # TODO: Instead, should we check that `data_keys == model_keys`?
         extras = data_keys.difference(model_keys | {None})
         if extras:
-            print(
+            raise typer.BadParameter(
                 f"The current model doesn't support multiple {key}s but your data has {key}s {extras}.\n"
-                f"Please retrain your model with multi{'lingual' if key == 'language' else key} set to True.",
-                file=sys.stderr,
+                f"Please retrain your model with multi{'lingual' if key == 'language' else key} set to True."
             )
-            sys.exit(1)
 
 
 def get_text_split_params(
@@ -595,25 +589,20 @@ def synthesize(  # noqa: C901
 
     # Do argument error checking before doing expensive imports
     if texts and filelist:
-        print(
-            "Got arguments for both text and a filelist - this will only process the text."
-            " Please re-run without providing text if you want to run batch synthesis on the provided file.",
-            file=sys.stderr,
+        raise typer.BadParameter(
+            "Got arguments for both --text and --filelist, which are mutually exclusive."
         )
     if not texts and not filelist:
-        print("You must define either --text or --filelist", file=sys.stderr)
-        sys.exit(1)
+        raise typer.BadParameter("You must define either --text or --filelist")
 
     # output to .wav will require a valid spec-to-wav model
     if (
         SynthesizeOutputFormats.wav in output_type
         or SynthesizeOutputFormats.readalong_html in output_type
     ) and not vocoder_path:
-        print(
-            "Missing --vocoder-path option, which is required when the output type includes 'wav' or 'offline-ras'.",
-            file=sys.stderr,
+        raise typer.BadParameter(
+            "Missing --vocoder-path option, which is required when the output type includes 'wav' or 'offline-ras'."
         )
-        sys.exit(1)
 
     with spinner():
         import torch
@@ -634,7 +623,7 @@ def synthesize(  # noqa: C901
     device = get_device_from_accelerator(accelerator)
 
     # Load checkpoints
-    print(f"Loading checkpoint from {model_path}", file=sys.stderr)
+    logger.info(f"Loading checkpoint from {model_path}")
 
     from everyvoice.base_cli.helpers import inference_base_command
     from pydantic import ValidationError
