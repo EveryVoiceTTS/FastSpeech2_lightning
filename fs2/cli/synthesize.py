@@ -631,8 +631,7 @@ def synthesize(  # noqa: C901
     try:
         model: FastSpeech2 = FastSpeech2.load_from_checkpoint(model_path).to(device)  # type: ignore
     except (TypeError, ValidationError) as e:
-        logger.error(f"Unable to load {model_path}: {e}")
-        sys.exit(1)
+        raise typer.BadParameter(f"Unable to load {model_path}: {e}")
     model.eval()
 
     inference_base_command(model, **kwargs)
@@ -650,8 +649,7 @@ def synthesize(  # noqa: C901
                 vocoder_ckpt, device
             )
         except (TypeError, ValidationError) as e:
-            logger.error(f"Unable to load {vocoder_path}: {e}")
-            sys.exit(1)
+            raise typer.BadParameter(f"Unable to load {vocoder_path}: {e}")
         # We can't just use model.global_step because it gets reset by lightning
         vocoder_global_step = get_global_step(vocoder_path)
     else:

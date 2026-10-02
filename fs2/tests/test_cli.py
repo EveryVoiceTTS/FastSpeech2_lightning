@@ -2,8 +2,6 @@
 To run just this test: pytest path/to/test_cli.py
 """
 
-import io
-from contextlib import redirect_stderr
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
@@ -16,8 +14,9 @@ from everyvoice.config.type_definitions import (
     TargetTrainingTextRepresentationLevel,
 )
 from everyvoice.tests.preprocessed_audio_fixture import PreprocessedAudioFixture
-from everyvoice.tests.stubs import TEST_DATA_DIR, mute_logger, temp_chdir
+from everyvoice.tests.stubs import TEST_DATA_DIR, flatten_log, mute_logger, temp_chdir
 from everyvoice.utils import generic_psv_filelist_reader
+from typer import BadParameter
 from typer.testing import CliRunner
 
 from ..cli.check_data_heavy import check_data_from_filelist
@@ -68,10 +67,10 @@ class TestSynthesize:
                     str(model),
                 ),
             )
+            assert result.exit_code != 0
             assert (
-                "Got arguments for both text and a filelist - this will only process the text."
-                " Please re-run without providing text if you want to run batch synthesis"
-                in result.output
+                "Got arguments for both --text and --filelist, which are mutually exclusive."
+                in flatten_log(result.output)
             )
 
     def test_no_filelist_nor_text(self):
@@ -86,7 +85,10 @@ class TestSynthesize:
                     str(model),
                 ),
             )
-            assert "You must define either --text or --filelist" in result.output
+            assert result.exit_code != 0
+            assert "You must define either --text or --filelist" in flatten_log(
+                result.output
+            )
 
     def mock_synthesis(self, *_args, **_kwargs):
         print(_kwargs["model"].config)
@@ -249,7 +251,7 @@ class TestPrepareSynthesizeData:
             speaker="bar",
             duration_control=1.0,
             style_reference=None,
-            filelist=Path(),  # Does not get used in this test
+            filelist=None,
             model=MockModelForPrepare(
                 lang2id={"foo": 1},
                 speaker2id={"bar": 2},
@@ -280,7 +282,7 @@ class TestPrepareSynthesizeData:
             speaker="bar",
             duration_control=1.0,
             style_reference=None,
-            filelist=Path(__file__).parent / "data/filelist.psv",
+            filelist=None,
             model=MockModelForPrepare(
                 lang2id={"foo": 1},
                 speaker2id={"bar": 2},
@@ -362,30 +364,27 @@ class TestValidateDataWithModel:
         config = FastSpeech2Config(contact=CONTACT)
         config.model.multilingual = True
         model_languages = {"L1", "L2"}
-        f = io.StringIO()
-        with pytest.raises(SystemExit), redirect_stderr(f):
+        with pytest.raises(
+            BadParameter,
+            match=f"You provided {set((language,))} which is not a language supported by the model {model_languages}.",
+        ):
             validate_data_keys_with_model_keys(
                 data_keys={language},
                 model_keys=model_languages,
                 key="language",
                 multi=bool(model_languages),
             )
-        assert (
-            f"You provided {set((language,))} which is not a language supported by the model {model_languages}."
-            in f.getvalue()
-        )
         language_two = "ALSO_UNSUPPORTED"
-        with pytest.raises(SystemExit), redirect_stderr(f):
+        with pytest.raises(
+            BadParameter,
+            match=f"You provided {set((language, language_two))} which are not languages that are supported by the model {model_languages}.",
+        ):
             validate_data_keys_with_model_keys(
                 data_keys={language, language_two},
                 model_keys=model_languages,
                 key="language",
                 multi=bool(model_languages),
             )
-        assert (
-            f"You provided {set((language, language_two))} which are not languages that are supported by the model {model_languages}."
-            in f.getvalue()
-        )
 
     def test_not_multilingual_with_language(self):
         """
@@ -395,15 +394,15 @@ class TestValidateDataWithModel:
         config = FastSpeech2Config(contact=CONTACT)
         config.model.multilingual = False
         model_languages = DEFAULT_LANG2ID
-        f = io.StringIO()
-        with pytest.raises(SystemExit), redirect_stderr(f):
+        with pytest.raises(
+            BadParameter, match="The current model doesn't support multiple languages"
+        ):
             validate_data_keys_with_model_keys(
                 data_keys={language},
                 model_keys=model_languages,
                 key="language",
                 multi=bool(model_languages),
             )
-        assert "The current model doesn't support multiple languages" in f.getvalue()
 
     def test_multispeaker_invalid_speaker(self):
         """
@@ -413,18 +412,16 @@ class TestValidateDataWithModel:
         config = FastSpeech2Config(contact=CONTACT)
         config.model.multispeaker = True
         model_speakers = {"S1", "S2"}
-        f = io.StringIO()
-        with pytest.raises(SystemExit), redirect_stderr(f):
+        with pytest.raises(
+            BadParameter,
+            match=f"You provided {set((speaker,))} which is not a speaker supported by the model {model_speakers}.",
+        ):
             validate_data_keys_with_model_keys(
                 data_keys={speaker},
                 model_keys=model_speakers,
                 key="speaker",
                 multi=bool(model_speakers),
             )
-        assert (
-            f"You provided {set((speaker,))} which is not a speaker supported by the model {model_speakers}."
-            in f.getvalue()
-        )
 
     def test_not_multispeaker_with_speaker(self):
         """
@@ -434,15 +431,15 @@ class TestValidateDataWithModel:
         config = FastSpeech2Config(contact=CONTACT)
         config.model.multispeaker = False
         model_speakers = DEFAULT_SPEAKER2ID
-        f = io.StringIO()
-        with pytest.raises(SystemExit), redirect_stderr(f):
+        with pytest.raises(
+            BadParameter, match="The current model doesn't support multiple speakers"
+        ):
             validate_data_keys_with_model_keys(
                 data_keys={speaker},
                 model_keys=model_speakers,
                 key="speaker",
                 multi=bool(model_speakers),
             )
-        assert "The current model doesn't support multiple speakers" in f.getvalue()
 
 
 class TestCLI(PreprocessedAudioFixture):
