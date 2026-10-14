@@ -29,8 +29,6 @@ from ..config import FastSpeech2Config
 from ..model import FastSpeech2
 from ..type_definitions_heavy import Stats, StatsInfo
 
-DEFAULT_LANG2ID: set = set()
-DEFAULT_SPEAKER2ID: set = set()
 CONTACT = ContactInformation(
     contact_name="Test Runner", contact_email="info@everyvoice.ca"
 )
@@ -132,12 +130,12 @@ class MockModelForPrepare:
 
     def __init__(
         self,
-        lang2id,
-        speaker2id,
-        filelist_loader,
-        multilingual,
-        multispeaker,
-        target_text_representation_level,
+        lang2id={"foo": 1},
+        speaker2id={"bar": 2},
+        filelist_loader=generic_psv_filelist_reader,
+        multilingual=True,
+        multispeaker=True,
+        target_text_representation_level=TargetTrainingTextRepresentationLevel.characters,
         text_config=TextConfig(boundaries={"foo": {"strong": ".!?", "weak": ",;:"}}),
     ):
         self.lang2id = lang2id
@@ -170,14 +168,7 @@ class TestPrepareSynthesizeData:
             duration_control=1.0,
             style_reference=None,
             filelist=Path(__file__).parent / "data/filelist.psv",
-            model=MockModelForPrepare(
-                lang2id={"foo": 1},
-                speaker2id={"bar": 2},
-                filelist_loader=generic_psv_filelist_reader,
-                multilingual=True,
-                multispeaker=True,
-                target_text_representation_level=TargetTrainingTextRepresentationLevel.characters,
-            ),
+            model=MockModelForPrepare(),
             text_representation=DatasetTextRepresentation.characters,
         )
         assert len(data) == 11
@@ -194,14 +185,7 @@ class TestPrepareSynthesizeData:
             duration_control=1.0,
             style_reference=None,
             filelist=Path(__file__).parent / "data/filelist.psv",
-            model=MockModelForPrepare(
-                lang2id={"foo": 1},
-                speaker2id={"bar": 2},
-                filelist_loader=generic_psv_filelist_reader,
-                multilingual=True,
-                multispeaker=True,
-                target_text_representation_level=TargetTrainingTextRepresentationLevel.characters,
-            ),
+            model=MockModelForPrepare(),
             text_representation=DatasetTextRepresentation.characters,
         )
         assert (
@@ -218,14 +202,7 @@ class TestPrepareSynthesizeData:
             duration_control=1.0,
             style_reference=None,
             filelist=Path(__file__).parent / "data/filelist.txt",
-            model=MockModelForPrepare(
-                lang2id={"foo": 1},
-                speaker2id={"bar": 2},
-                filelist_loader=generic_psv_filelist_reader,
-                multilingual=True,
-                multispeaker=True,
-                target_text_representation_level=TargetTrainingTextRepresentationLevel.characters,
-            ),
+            model=MockModelForPrepare(),
             text_representation=DatasetTextRepresentation.characters,
         )
         assert (
@@ -250,14 +227,7 @@ class TestPrepareSynthesizeData:
             duration_control=1.0,
             style_reference=None,
             filelist=Path(),  # Does not get used in this test
-            model=MockModelForPrepare(
-                lang2id={"foo": 1},
-                speaker2id={"bar": 2},
-                filelist_loader=generic_psv_filelist_reader,
-                multilingual=True,
-                multispeaker=True,
-                target_text_representation_level=TargetTrainingTextRepresentationLevel.characters,
-            ),
+            model=MockModelForPrepare(),
             text_representation=DatasetTextRepresentation.characters,
         )
         assert len(data) == 2
@@ -282,12 +252,6 @@ class TestPrepareSynthesizeData:
             style_reference=None,
             filelist=Path(__file__).parent / "data/filelist.psv",
             model=MockModelForPrepare(
-                lang2id={"foo": 1},
-                speaker2id={"bar": 2},
-                filelist_loader=generic_psv_filelist_reader,
-                multilingual=True,
-                multispeaker=True,
-                target_text_representation_level=TargetTrainingTextRepresentationLevel.characters,
                 text_config=TextConfig(
                     split_text=False,
                     boundaries={"foo": {"strong": ".!?", "weak": ",;:"}},
@@ -394,7 +358,7 @@ class TestValidateDataWithModel:
         language = "L3"
         config = FastSpeech2Config(contact=CONTACT)
         config.model.multilingual = False
-        model_languages = DEFAULT_LANG2ID
+        model_languages = set()
         f = io.StringIO()
         with pytest.raises(SystemExit), redirect_stderr(f):
             validate_data_keys_with_model_keys(
@@ -433,7 +397,7 @@ class TestValidateDataWithModel:
         speaker = "s3"
         config = FastSpeech2Config(contact=CONTACT)
         config.model.multispeaker = False
-        model_speakers = DEFAULT_SPEAKER2ID
+        model_speakers = set()
         f = io.StringIO()
         with pytest.raises(SystemExit), redirect_stderr(f):
             validate_data_keys_with_model_keys(
@@ -445,17 +409,7 @@ class TestValidateDataWithModel:
         assert "The current model doesn't support multiple speakers" in f.getvalue()
 
 
-class TestCLI(PreprocessedAudioFixture):
-    """
-    Validate that all subcommands are accessible.
-    """
-
-    subcommands = ("benchmark", "preprocess", "synthesize", "train")
-
-    @pytest.fixture(autouse=True)
-    def setup_runner(self):
-        self.runner = CliRunner()
-
+class TestCheckData(PreprocessedAudioFixture):
     def test_check_data(self):
         filelist = generic_psv_filelist_reader(TEST_DATA_DIR / "metadata.psv")
         checked_data = check_data_from_filelist(
@@ -468,13 +422,24 @@ class TestCLI(PreprocessedAudioFixture):
         assert checked_data[0]["pesq"] < 5.0
         assert checked_data[0]["duration"] == pytest.approx(5.17, abs=0.01)
 
+
+class TestCLI:
+    """
+    Validate that all subcommands are accessible.
+    """
+
+    subcommands = ("benchmark", "preprocess", "synthesize", "train")
+
+    def setup_method(self):
+        self.runner = CliRunner()
+
     def test_commands_present(self, subtests):
         """
         Each subcommand is present in the the command's help message.
         """
         result = self.runner.invoke(app, ["--help"])
         for command in self.subcommands:
-            with subtests.test(msg=f"Looking for {command}"):
+            with subtests.test(msg=command):
                 assert command in result.stdout
 
     def test_command_help_messages(self, subtests):
@@ -482,7 +447,7 @@ class TestCLI(PreprocessedAudioFixture):
         Each subcommand has its help message.
         """
         for subcommand in self.subcommands:
-            with subtests.test(msg=f"Looking for {subcommand}'s help"):
+            with subtests.test(msg=subcommand):
                 result = self.runner.invoke(app, [subcommand, "--help"])
                 assert result.exit_code == 0
                 result = self.runner.invoke(app, [subcommand, "-h"])

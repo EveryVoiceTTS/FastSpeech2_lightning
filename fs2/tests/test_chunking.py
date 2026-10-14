@@ -4,6 +4,7 @@ from string import ascii_lowercase
 from tempfile import TemporaryDirectory
 from typing import Callable
 
+import pytest
 import torch
 from everyvoice.config.shared_types import ContactInformation
 from everyvoice.config.text_config import TextConfig
@@ -11,10 +12,20 @@ from everyvoice.config.type_definitions import SynthesizeOutputFormats
 from everyvoice.text.text_processor import TextProcessor
 from pydub import AudioSegment
 from pympi import TextGrid
-from pytest import fixture
 
 from ..config import FastSpeech2Config, FastSpeech2TrainingConfig
 from ..prediction_writing_callback import get_synthesis_output_callbacks
+
+
+def run_batch_end(writer, outputs, batch, idx):
+    writer.on_predict_batch_end(
+        _trainer=None,
+        _pl_module=None,
+        outputs=outputs,
+        batch=batch,
+        _batch_idx=idx,
+        _dataloader_idx=idx,
+    )
 
 
 class TestDuplicateFilename:
@@ -64,17 +75,10 @@ class TestDuplicateFilename:
                 vocoder_config=vocoder.config,
                 vocoder_global_step=10,
             )
+            writer = next(iter(writers.values()))
 
             # Batch 1
-            writer = next(iter(writers.values()))
-            writer.on_predict_batch_end(
-                _trainer=None,
-                _pl_module=None,
-                outputs=self.outputs,
-                batch=self.batch1,
-                _batch_idx=0,
-                _dataloader_idx=0,
-            )
+            run_batch_end(writer, self.outputs, self.batch1, 0)
             output_dir = writer.save_dir
             # print(output_dir, *output_dir.glob("**"))  # For debugging
             assert output_dir.exists()
@@ -91,9 +95,8 @@ TEXT_CONFIG = TextConfig(symbols={"ascii": list(ascii_lowercase)})
 TEXT_PROCESSOR = TextProcessor(TEXT_CONFIG)
 
 
-@fixture(scope="session")
-def test_callback(tmp_path_factory, stubbed_vocoder) -> Callable:
-    tmp_dir = tmp_path_factory.mktemp("chunking-test-callback")
+@pytest.fixture()
+def make_callbacks(tmp_path, stubbed_vocoder) -> Callable:
     vocoder, vocoder_path = stubbed_vocoder
     config = FastSpeech2Config(
         contact=ContactInformation(
@@ -107,7 +110,7 @@ def test_callback(tmp_path_factory, stubbed_vocoder) -> Callable:
         config=config,
         device=torch.device("cpu"),
         global_step=77,
-        output_dir=tmp_dir,
+        output_dir=tmp_path,
         output_key="output",
         vocoder_model=vocoder,
         vocoder_config=vocoder.config,
@@ -165,36 +168,21 @@ class TestWritingWav(ChunkingTestBase):
     Testing chunking when writing wav files.
     """
 
-    def test_wav_chunks(self, test_callback):
+    def test_wav_chunks(self, make_callbacks):
         """
         Tests the correctness of the output of .wavs for chunked text over multiple batches.
         """
-        writers = test_callback([SynthesizeOutputFormats.wav])
+        writers = make_callbacks([SynthesizeOutputFormats.wav])
+        writer = next(iter(writers.values()))
 
         # Batch 1
-        writer = next(iter(writers.values()))
-        writer.on_predict_batch_end(
-            _trainer=None,
-            _pl_module=None,
-            outputs=self.outputs,
-            batch=self.batch1,
-            _batch_idx=0,
-            _dataloader_idx=0,
-        )
+        run_batch_end(writer, self.outputs, self.batch1, 0)
         output_dir = writer.save_dir
         # print(output_dir, *output_dir.glob("**"))  # For debugging
         assert output_dir.exists()
 
         # Batch 2
-        writer = next(iter(writers.values()))
-        writer.on_predict_batch_end(
-            _trainer=None,
-            _pl_module=None,
-            outputs=self.outputs,
-            batch=self.batch2,
-            _batch_idx=1,
-            _dataloader_idx=1,
-        )
+        run_batch_end(writer, self.outputs, self.batch2, 1)
 
         # Test that the correctly named files were outputted
         assert (output_dir / "one--S1--L1--ckpt=77--v_ckpt=10--pred.wav").exists()
@@ -222,36 +210,21 @@ class TestWritingWav(ChunkingTestBase):
 
 
 class TestWritingSpec(ChunkingTestBase):
-    def test_spec_chunks(self, test_callback):
+    def test_spec_chunks(self, make_callbacks):
         """
         Tests the correctness of the output of spectrograms for chunked text over multiple batches.
         """
-        writers = test_callback([SynthesizeOutputFormats.spec])
+        writers = make_callbacks([SynthesizeOutputFormats.spec])
+        writer = next(iter(writers.values()))
 
         # Batch 1
-        writer = next(iter(writers.values()))
-        writer.on_predict_batch_end(
-            _trainer=None,
-            _pl_module=None,
-            outputs=self.outputs,
-            batch=self.batch1,
-            _batch_idx=0,
-            _dataloader_idx=0,
-        )
+        run_batch_end(writer, self.outputs, self.batch1, 0)
         output_dir = writer.save_dir
         # print(output_dir, *output_dir.glob("**"))  # For debugging
         assert output_dir.exists()
 
         # Batch 2
-        writer = next(iter(writers.values()))
-        writer.on_predict_batch_end(
-            _trainer=None,
-            _pl_module=None,
-            outputs=self.outputs,
-            batch=self.batch2,
-            _batch_idx=1,
-            _dataloader_idx=1,
-        )
+        run_batch_end(writer, self.outputs, self.batch2, 1)
 
         # Test that the correctly named files were outputted
         assert (output_dir / "one--S1--L1--spec-pred-22050-mel-librosa.pt").exists()
@@ -273,36 +246,21 @@ class TestWritingSpec(ChunkingTestBase):
 
 
 class TestWritingTextGrid(ChunkingTestBase):
-    def test_textgrid_chunks(self, test_callback):
+    def test_textgrid_chunks(self, make_callbacks):
         """
         Tests the correctness of the output of TextGrid files for chunked text over multiple batches.
         """
-        writers = test_callback([SynthesizeOutputFormats.textgrid])
+        writers = make_callbacks([SynthesizeOutputFormats.textgrid])
+        writer = next(iter(writers.values()))
 
         # Batch 1
-        writer = next(iter(writers.values()))
-        writer.on_predict_batch_end(
-            _trainer=None,
-            _pl_module=None,
-            outputs=self.outputs,
-            batch=self.batch1,
-            _batch_idx=0,
-            _dataloader_idx=0,
-        )
+        run_batch_end(writer, self.outputs, self.batch1, 0)
         output_dir = writer.save_dir
         # print(output_dir, *output_dir.glob("**/*"))  # For debugging
         assert output_dir.exists()
 
         # Batch 2
-        writer = next(iter(writers.values()))
-        writer.on_predict_batch_end(
-            _trainer=None,
-            _pl_module=None,
-            outputs=self.outputs,
-            batch=self.batch2,
-            _batch_idx=1,
-            _dataloader_idx=1,
-        )
+        run_batch_end(writer, self.outputs, self.batch2, 1)
         # Test that the correctly named files were outputted
         assert (output_dir / "one--S1--L1--22050-mel-librosa.TextGrid").exists()
         assert (
@@ -316,8 +274,7 @@ class TestWritingTextGrid(ChunkingTestBase):
         tiers = list(tg.get_tiers())
 
         phones = [interval[2] for interval in tiers[0].get_all_intervals()]
-        for phone, char in zip(list(phones), list("one")):
-            assert phone == char
+        assert phones == list("one")
 
         words = tiers[2].get_all_intervals()
         assert len(words) == 1
@@ -330,8 +287,7 @@ class TestWritingTextGrid(ChunkingTestBase):
         tiers = list(tg.get_tiers())
 
         phones = [interval[2] for interval in tiers[0].get_all_intervals()]
-        for phone, char in zip(list(phones), list("twothreefour")):
-            assert phone == char
+        assert phones == list("twothreefour")
 
         words = tiers[2].get_all_intervals()
         assert len(words) == 3
@@ -341,33 +297,18 @@ class TestWritingTextGrid(ChunkingTestBase):
 
 
 class TestWritingReadAlongXML(ChunkingTestBase):
-    def test_writing_readalong(self, subtests, test_callback):
-        writers = test_callback([SynthesizeOutputFormats.readalong_xml])
+    def test_writing_readalong(self, subtests, make_callbacks):
+        writers = make_callbacks([SynthesizeOutputFormats.readalong_xml])
+        writer = next(iter(writers.values()))
 
         # Batch 1
-        writer = next(iter(writers.values()))
-        writer.on_predict_batch_end(
-            _trainer=None,
-            _pl_module=None,
-            outputs=self.outputs,
-            batch=self.batch1,
-            _batch_idx=0,
-            _dataloader_idx=0,
-        )
+        run_batch_end(writer, self.outputs, self.batch1, 0)
         output_dir = writer.save_dir
 
         assert output_dir.exists()
 
         # Batch 2
-        writer = next(iter(writers.values()))
-        writer.on_predict_batch_end(
-            _trainer=None,
-            _pl_module=None,
-            outputs=self.outputs,
-            batch=self.batch2,
-            _batch_idx=1,
-            _dataloader_idx=1,
-        )
+        run_batch_end(writer, self.outputs, self.batch2, 1)
 
         # Test that the correctly named files were outputted
         # print(output_dir, *output_dir.glob("**/*"))  # For debugging
@@ -386,19 +327,12 @@ class TestWritingReadAlongXML(ChunkingTestBase):
 
 
 class TestWritingReadAlongHTML(ChunkingTestBase):
-    def test_writing_readalong(self, subtests, test_callback) -> None:
-        writers = test_callback([SynthesizeOutputFormats.readalong_html])
+    def test_writing_readalong(self, subtests, make_callbacks) -> None:
+        writers = make_callbacks([SynthesizeOutputFormats.readalong_html])
 
         for writer in writers.values():
             for batch, idx in ((self.batch1, 1), (self.batch2, 2)):
-                writer.on_predict_batch_end(
-                    _trainer=None,
-                    _pl_module=None,
-                    outputs=self.outputs,
-                    batch=batch,
-                    _batch_idx=idx,
-                    _dataloader_idx=idx,
-                )
+                run_batch_end(writer, self.outputs, batch, idx)
                 output_dir = writer.save_dir
                 assert output_dir.exists()
 

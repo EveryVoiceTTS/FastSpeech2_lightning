@@ -23,6 +23,24 @@ class TestLoadingModel:
     data_dir = Path(__file__).parent / "data"
     config_dir = data_dir / "config"
 
+    def _basic_fs2_model(self, version=None):
+        model = FastSpeech2(
+            FastSpeech2Config.load_config_from_path(
+                self.config_dir / f"{TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX}.yaml"
+            ),
+            stats=Stats(
+                pitch=StatsInfo(min=0, max=1, std=2, mean=3, norm_min=4, norm_max=5),
+                energy=StatsInfo(
+                    min=7, max=8, std=9, mean=10, norm_min=11, norm_max=12
+                ),
+            ),
+            lang2id={"foo": 0, "bar": 1},
+            speaker2id={"baz": 0, "qux": 1},
+        )
+        if version is not None:
+            model._VERSION = version
+        return model
+
     def test_wrong_model_type(self):
         """
         Detecting wrong model type in checkpoint.
@@ -32,21 +50,7 @@ class TestLoadingModel:
         from pytorch_lightning.callbacks import ModelCheckpoint
 
         with tempfile.TemporaryDirectory() as tmpdir_str:
-            model = FastSpeech2(
-                FastSpeech2Config.load_config_from_path(
-                    self.config_dir / f"{TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX}.yaml"
-                ),
-                stats=Stats(
-                    pitch=StatsInfo(
-                        min=0, max=1, std=2, mean=3, norm_min=4, norm_max=5
-                    ),
-                    energy=StatsInfo(
-                        min=7, max=8, std=9, mean=10, norm_min=11, norm_max=12
-                    ),
-                ),
-                lang2id={"foo": 0, "bar": 1},
-                speaker2id={"baz": 0, "qux": 1},
-            )
+            model = self._basic_fs2_model()
             trainer = Trainer(
                 default_root_dir=tmpdir_str,
                 enable_progress_bar=False,
@@ -83,23 +87,8 @@ class TestLoadingModel:
         from pytorch_lightning.callbacks import ModelCheckpoint
 
         with tempfile.TemporaryDirectory() as tmpdir_str:
-            model = FastSpeech2(
-                FastSpeech2Config.load_config_from_path(
-                    self.config_dir / f"{TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX}.yaml"
-                ),
-                stats=Stats(
-                    pitch=StatsInfo(
-                        min=0, max=1, std=2, mean=3, norm_min=4, norm_max=5
-                    ),
-                    energy=StatsInfo(
-                        min=7, max=8, std=9, mean=10, norm_min=11, norm_max=12
-                    ),
-                ),
-                lang2id={"foo": 0, "bar": 1},
-                speaker2id={"baz": 0, "qux": 1},
-            )
             BAD_VERSION = "BAD_VERSION"
-            model._VERSION = BAD_VERSION
+            model = self._basic_fs2_model(version=BAD_VERSION)
             trainer = Trainer(
                 default_root_dir=tmpdir_str,
                 enable_progress_bar=False,
@@ -128,23 +117,8 @@ class TestLoadingModel:
         from pytorch_lightning.callbacks import ModelCheckpoint
 
         with tempfile.TemporaryDirectory() as tmpdir_str:
-            model = FastSpeech2(
-                FastSpeech2Config.load_config_from_path(
-                    self.config_dir / f"{TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX}.yaml"
-                ),
-                stats=Stats(
-                    pitch=StatsInfo(
-                        min=0, max=1, std=2, mean=3, norm_min=4, norm_max=5
-                    ),
-                    energy=StatsInfo(
-                        min=7, max=8, std=9, mean=10, norm_min=11, norm_max=12
-                    ),
-                ),
-                lang2id={"foo": 0, "bar": 1},
-                speaker2id={"baz": 0, "qux": 1},
-            )
             BAD_VERSION = "100.0"
-            model._VERSION = BAD_VERSION
+            model = self._basic_fs2_model(version=BAD_VERSION)
             trainer = Trainer(
                 default_root_dir=tmpdir_str,
                 enable_progress_bar=False,
@@ -277,7 +251,9 @@ class TestLoadingModel:
         assert new_weights.shape == model.text_input_layer.weight.shape
         x_index = model.text_processor.symbols.index("x")
         assert torch.equal(new_weights[x_index], old_weights[x_old_index])
-        assert any("p" in log and "q" in log for log in logs)
+        log = "".join(logs)
+        for s in ("embeddings will be dropped", "'p'", "'q'"):
+            assert s in log
 
     def test_check_and_upgrade_checkpoint_uses_realized_symbols(self):
         """Once a checkpoint carries realized_symbols (persisted at save
