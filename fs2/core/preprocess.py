@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .config import FastSpeech2Config
+    from ..config import FastSpeech2Config
 
 
 def load_config(
@@ -17,11 +17,13 @@ def load_config(
 
         from ..config import FastSpeech2Config
 
-    return load_config_base_command(
+    config = load_config_base_command(
         model_config=FastSpeech2Config,
         config_file=config_file,
         config_args=config_args,
     )
+    assert isinstance(config, FastSpeech2Config)
+    return config
 
 
 PREPROCESS_CATEGORIES = ["audio", "spec", "attn", "text", "pitch", "energy"]
