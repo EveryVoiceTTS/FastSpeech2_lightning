@@ -1,8 +1,12 @@
 import multiprocessing as mp
 from pathlib import Path
 
+import torch
+from everyvoice.config.type_definitions import DatasetTextRepresentation
+
 from . import core
 from .config import FastSpeech2Config
+from .model import FastSpeech2
 
 
 def load_config(
@@ -75,3 +79,39 @@ def train(
         nodes=nodes,
         strategy=strategy,
     )
+
+
+def synthesize(
+    model: FastSpeech2,
+    texts: list[str],
+    *,
+    language: str | None = None,
+    duration_control: float = 1.0,
+    style_reference: Path | None = None,
+    speaker: str | None = None,
+    accelerator: str = "auto",
+    devices: str | int = "auto",
+    text_representation: str | DatasetTextRepresentation = "characters",
+    teacher_forcing_directory: Path | None = None,
+    batch_size: int = 4,
+    num_workers: int = 4,
+) -> list[torch.Tensor]:
+    """Synthesize one or more utterences in texts using model.
+
+    Returns MEL spectrograms. Pass them through a Vocoder to generate wavs.
+
+    Args:
+        model (FastSpeech2): the model/checkpoint to use for synthesis
+        texts (list[str]]): a list of sentences/utterences to synthesize
+        language (str|None): language to use in a multi-lingual model
+        duration_control (float): systhesis speaking rate, multiplies durations so
+            lower numbers produce quicker speaking rates
+        style_reference (Path|None): audio file containing a style reference; model
+            must have been trainined with the global style token module to use this
+        speaker (str|None): speaker to use in a multi-speaker model
+
+    Returns: torch.Tensor: synthesized mel spectrogram"""
+    return []
+
+
+synthesize()
