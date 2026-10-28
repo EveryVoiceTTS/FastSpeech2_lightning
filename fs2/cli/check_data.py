@@ -12,8 +12,6 @@ from everyvoice.base_cli.interfaces import (
 from everyvoice.config.type_definitions import DatasetTextRepresentation
 from everyvoice.utils import generic_psv_filelist_reader, spinner
 
-from .synthesize import get_global_step, synthesize_helper
-
 
 def check_data_command(  # noqa: C901
     config_file: Annotated[
@@ -115,9 +113,13 @@ def check_data_command(  # noqa: C901
         from everyvoice.preprocessor import Preprocessor
         from everyvoice.utils.heavy import get_device_from_accelerator
 
+        from ..core.synthesize import (
+            get_global_step,
+            load_data_from_filelist,
+            synthesize_helper,
+        )
         from ..model import FastSpeech2
         from .check_data_heavy import check_data_from_filelist
-        from .synthesize import load_data_from_filelist
 
     config = load_unknown_config(config_file)
     preprocessor = Preprocessor(config)

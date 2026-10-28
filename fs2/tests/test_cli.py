@@ -21,10 +21,10 @@ from typer.testing import CliRunner
 
 from ..cli.check_data_heavy import check_data_from_filelist
 from ..cli.cli import app
-from ..cli.synthesize import get_text_split_params
-from ..cli.synthesize import prepare_data as prepare_synthesize_data
-from ..cli.synthesize import validate_data_keys_with_model_keys
 from ..config import FastSpeech2Config
+from ..core.synthesize import get_text_split_params
+from ..core.synthesize import prepare_data as prepare_synthesize_data
+from ..core.synthesize import validate_data_keys_with_model_keys
 from ..model import FastSpeech2
 from ..type_definitions_heavy import Stats, StatsInfo
 
@@ -101,7 +101,7 @@ class TestSynthesize:
                 with (
                     mock.patch(
                         self.__module__.replace(
-                            "tests.test_cli", "cli.synthesize.synthesize_helper"
+                            "tests.test_cli", "core.synthesize.synthesize_helper"
                         ),
                         side_effect=self.mock_synthesis,
                     ),
