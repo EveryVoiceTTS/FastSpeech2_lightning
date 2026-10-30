@@ -24,7 +24,9 @@ def preprocess(
         [cat.value for cat in PreprocessCategories],
         "-s",
         "--steps",
-        help="Which steps of the preprocessor to use. If none are provided, all steps will be performed.",
+        metavar="<step>",
+        help="Which steps of the preprocessor to use. If none are provided, all steps will be performed. One of: "
+        + ", ".join(step.value for step in PreprocessCategories),
     ),
     **kwargs,
 ):
