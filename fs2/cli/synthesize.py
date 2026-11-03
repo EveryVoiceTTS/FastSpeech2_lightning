@@ -525,9 +525,10 @@ def synthesize(  # noqa: C901
     text_representation: Annotated[
         DatasetTextRepresentation,
         typer.Option(
-            metavar="<repr.>",
-            help="The representation of the text you are synthesizing. Can be either 'characters', 'phones', or 'arpabet'. The input type must be compatible with your model. One of: "
-            + ", ".join(rep.value for rep in DatasetTextRepresentation),
+            metavar="<repr…>",
+            help="The representation of the text you are synthesizing. One of: '**"
+            + "**', '**".join(rep.value for rep in DatasetTextRepresentation)
+            + "**'. The input type must be compatible with your model.",
         ),
     ] = DatasetTextRepresentation.characters,
     output_type: Annotated[
@@ -536,8 +537,8 @@ def synthesize(  # noqa: C901
             "-O",
             "--output-type",
             metavar="<format>",
-            help="""Which format(s) to synthesize to.
-        Multiple formats can be provided by repeating `--output-type`.
+            help=f"""Which format(s) to synthesize to: '**{"**', '**".join(format.value for format in SynthesizeOutputFormats)}**'.
+        Multiple formats can be provided by repeating **--output-type**.
 
 
         '**wav**' is the default and will synthesize to a playable audio file. Requires --vocoder-path.
