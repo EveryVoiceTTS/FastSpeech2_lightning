@@ -5,6 +5,12 @@ from merge_args import merge_args
 
 @merge_args(train_base_command_interface)
 def train(**kwargs):
+    """Train your Text-to-Spec (FastSpeech2) model
+
+    For example:
+
+    **fs2l train config/everyvoice-text-to-spec.yaml**
+    """
     with spinner():
         import json
 
