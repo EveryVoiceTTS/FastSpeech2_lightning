@@ -7,6 +7,7 @@ from typing import Annotated, Any, Optional
 
 import typer
 from everyvoice import logger
+from everyvoice.base_cli.checkpoint import check_file_not_empty, load_checkpoint
 from everyvoice.base_cli.interfaces import (
     inference_base_command_interface,
     typer_directory_option,
@@ -620,7 +621,6 @@ def synthesize(  # noqa: C901
         sys.exit(1)
 
     with spinner():
-        import torch
         from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
             load_hifigan_from_checkpoint,
         )
@@ -638,15 +638,15 @@ def synthesize(  # noqa: C901
     device = get_device_from_accelerator(accelerator)
 
     # Load checkpoints
-    print(f"Loading checkpoint from {model_path}", file=sys.stderr)
+    logger.info(f"Loading checkpoint from '{model_path}'")
 
     from everyvoice.base_cli.helpers import inference_base_command
-    from pydantic import ValidationError
 
     try:
+        check_file_not_empty(model_path)
         model: FastSpeech2 = FastSpeech2.load_from_checkpoint(model_path).to(device)  # type: ignore
-    except (TypeError, ValidationError) as e:
-        logger.error(f"Unable to load {model_path}: {e}")
+    except Exception as e:
+        logger.error(f"Unable to load '{model_path}': {e}")
         sys.exit(1)
     model.eval()
 
@@ -659,12 +659,12 @@ def synthesize(  # noqa: C901
     # load vocoder
     if vocoder_path is not None:
         logger.info(f"Loading Vocoder from {vocoder_path}")
-        vocoder_ckpt = torch.load(vocoder_path, map_location=device, weights_only=True)
         try:
+            vocoder_ckpt = load_checkpoint(vocoder_path, device=device, minimal=False)
             vocoder_model, vocoder_config = load_hifigan_from_checkpoint(
                 vocoder_ckpt, device
             )
-        except (TypeError, ValidationError) as e:
+        except Exception as e:
             logger.error(f"Unable to load {vocoder_path}: {e}")
             sys.exit(1)
         # We can't just use model.global_step because it gets reset by lightning
