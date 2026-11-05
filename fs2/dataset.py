@@ -9,7 +9,7 @@ from everyvoice.config.type_definitions import (
     TargetTrainingTextRepresentationLevel,
 )
 from everyvoice.dataloader import BaseDataModule
-from everyvoice.exceptions import InvalidConfiguration
+from everyvoice.exceptions import ConfigError
 from everyvoice.preprocessor import Preprocessor
 from everyvoice.text.lookups import LookupTable, lookuptables_from_config
 from everyvoice.text.text_processor import TextProcessor
@@ -157,7 +157,7 @@ class FastSpeechDataset(Dataset):
                     basename, speaker, language, "duration", "duration.pt"
                 )
             except FileNotFoundError as e:
-                raise InvalidConfiguration(
+                raise ConfigError(
                     "You set model.learn_alignment = false, an advanced configuration which requires providing text/audio alignments before training the text-to-spec model, but those alignments were not found."
                 ) from e
         else:

@@ -61,4 +61,8 @@ def preprocess(
         raise e
     except (EveryVoiceError, Exception) as e:
         logger.error(f"{e.__class__.__name__}: {e}")
-        sys.exit(1)
+        if kwargs.get("debug", False):
+            raise e
+        else:
+            logger.info("Rerun with --debug to see the full stack trace.")
+            sys.exit(1)

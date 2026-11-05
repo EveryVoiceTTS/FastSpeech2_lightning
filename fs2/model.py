@@ -1,4 +1,3 @@
-import sys
 from pathlib import Path
 from typing import Optional
 
@@ -8,6 +7,7 @@ import torch
 import torchaudio
 from everyvoice import logger
 from everyvoice.config.type_definitions import TargetTrainingTextRepresentationLevel
+from everyvoice.exceptions import ModelError
 from everyvoice.model.feature_prediction.config import FeaturePredictionConfig
 from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
     load_hifigan_from_checkpoint,
@@ -171,10 +171,9 @@ class FastSpeech2(pl.LightningModule):
         self.speaker_embedding = None
         if self.config.model.multispeaker:
             if len(self.speaker2id) == 0:
-                logger.error(
+                raise ModelError(
                     "Your model is multispeaker but speaker2id LookupTable is empty"
                 )
-                sys.exit(1)
             self.speaker_embedding = nn.Embedding(
                 len(self.speaker2id),
                 self.config.model.encoder.input_dim,
@@ -182,10 +181,9 @@ class FastSpeech2(pl.LightningModule):
         self.language_embedding = None
         if self.config.model.multilingual:
             if len(self.lang2id) == 0:
-                logger.error(
+                raise ModelError(
                     "Your model is multilingual but language2id LookupTable is empty"
                 )
-                sys.exit(1)
             self.language_embedding = nn.Embedding(
                 len(self.lang2id), self.config.model.encoder.input_dim
             )

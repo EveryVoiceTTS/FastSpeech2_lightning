@@ -122,10 +122,9 @@ def check_data_command(  # noqa: C901
     config = load_unknown_config(config_file)
     preprocessor = Preprocessor(config)
     if not any((isinstance(config, x) for x in MODEL_CONFIGS)):
-        print(
-            "Sorry, your file does not appear to be a valid model configuration. Please choose another model config file."
+        raise typer.BadParameter(
+            f"Sorry, your config file '{config_file}' does not appear to be a valid model configuration. Please choose another model config file."
         )
-        sys.exit(1)
 
     output_dir.mkdir(exist_ok=True, parents=True)
 
