@@ -76,15 +76,11 @@ class TestSynthesize:
             tmpdir = Path(tmpdir)
             model = tmpdir / "model"
             model.touch()
-            result = self.runner.invoke(
-                app,
-                (
-                    "synthesize",
-                    str(model),
-                ),
-            )
+            result = self.runner.invoke(app, ("synthesize", str(model)))
             assert result.exit_code != 0
-            assert "You must define either --text or --filelist" in result.output
+            assert "You must define either --text or --filelist" in flatten_log(
+                result.output
+            )
 
     def mock_synthesis(self, *_args, **_kwargs):
         print(_kwargs["model"].config)
