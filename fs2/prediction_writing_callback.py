@@ -42,7 +42,7 @@ def get_synthesis_output_callbacks(
     return_scores=False,
     simple_filenames: bool = False,
     loss_fn: Optional[Callable[..., dict[str, torch.Tensor]]] = None,
-) -> dict[SynthesizeOutputFormats | str, Callback]:
+) -> dict[SynthesizeOutputFormats | str, OutputWriter]:
     """
     Given a list of desired output file formats, return the proper callbacks
     that will generate those files.
@@ -50,7 +50,7 @@ def get_synthesis_output_callbacks(
     loss_fn is required when return_scores is True: pass the model's loss
     module, e.g., model.loss.
     """
-    callbacks: dict[SynthesizeOutputFormats | str, Callback] = {}
+    callbacks: dict[SynthesizeOutputFormats | str, OutputWriter] = {}
     if return_scores:
         if loss_fn is None:
             raise ValueError("loss_fn is required to calculate scores.")
@@ -127,7 +127,7 @@ def get_synthesis_output_callbacks(
     return callbacks
 
 
-class _OutputWriterMixin:
+class OutputWriter:
     """Common interface for the synthesis output writers.
 
     Subclasses implement write_batch() and, if needed, finalize(). The
@@ -165,7 +165,7 @@ class _OutputWriterMixin:
         self.finalize()
 
 
-class PredictionWritingCallbackBase(_OutputWriterMixin, BasePredictionWritingCallback):
+class PredictionWritingCallbackBase(OutputWriter, BasePredictionWritingCallback):
     def __init__(
         self,
         config: FastSpeech2Config,
@@ -185,7 +185,7 @@ class PredictionWritingCallbackBase(_OutputWriterMixin, BasePredictionWritingCal
         self.config = config
 
 
-class ScorerCallback(_OutputWriterMixin, Callback):
+class ScorerCallback(OutputWriter, Callback):
     """
     This callback runs inference on a provided text-to-spec model and saves the resulting losses to disk.
     """

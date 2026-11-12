@@ -120,41 +120,52 @@ def synthesize(
         style_reference (Path|None): audio file containing a style reference; model
             must have been trainined with the global style token module to use this
         speaker (str|None): speaker to use in a multi-speaker model
-        accelerator: see train() documentation
-        devices: see train() documentation
+        accelerator: see train() documentation; determines the device to run on
+        devices: ignored, synthesis runs on a single device
         text_representation: the representation of the utterances in texts
-        teacher_forcing_directory: TODO
-        batch_size (int): internal to pytorch_lightning, how many utterances get processed at once; there must be enough accelerator RAM to process a batch in parallel
-        macro_batch_size (int): external to pytorch_lightning, how many utterances we give it to process; there must be enough main RAM to hold the synthesis results of a macro batch in memory
+        teacher_forcing_directory: TODO, currently ignored
+        batch_size (int): how many utterances get processed at once; there must be enough accelerator RAM to process a batch in parallel
+        macro_batch_size (int): deprecated and ignored: results are now produced one batch at a time
         num_workers: number of workers to process the data
 
-    Returns: TODO"""
+    Yields: the model outputs for each batch of batch_size utterances, moved to the CPU.
+    """
 
+    import torch
     from everyvoice.utils.heavy import get_device_from_accelerator
+    from lightning_fabric.utilities.apply_func import move_data_to_device
 
-    for batch_start in range(0, len(texts), macro_batch_size):
-        macro_batch_texts = texts[batch_start : batch_start + macro_batch_size]
-        _, predictions, _ = core.synthesize_helper(
-            model=model,
-            texts=macro_batch_texts,
-            style_reference=style_reference,
-            language=language,
-            speaker=speaker,
-            duration_control=duration_control,
-            global_step=0,
-            output_type=[],
-            text_representation=DatasetTextRepresentation(text_representation),
-            accelerator=accelerator,
-            devices=str(devices),
-            device=get_device_from_accelerator(accelerator),
-            batch_size=4,
-            num_workers=4,
-            filelist=None,
-            filelist_data=None,
-            output_dir=Path("synthesis_output"),
-            teacher_forcing_directory=None,
-            return_predictions=True,
-        )
+    from .core.synthesize import (
+        check_text_representation,
+        iter_synthesis,
+        prepare_data,
+        warn_if_multiple_devices,
+    )
 
-        assert predictions is not None
-        yield from predictions
+    if not texts:
+        return
+
+    text_representation = DatasetTextRepresentation(text_representation)
+    warn_if_multiple_devices(devices)
+    check_text_representation(model, text_representation)
+    data = prepare_data(
+        texts=texts,
+        language=language,
+        speaker=speaker,
+        filelist=None,
+        model=model,
+        text_representation=text_representation,
+        duration_control=duration_control,
+        style_reference=style_reference,
+    )
+    batches = iter_synthesis(
+        model,
+        data,
+        get_device_from_accelerator(accelerator),
+        style_reference=style_reference is not None,
+        batch_size=batch_size,
+        num_workers=num_workers,
+    )
+    cpu = torch.device("cpu")
+    for outputs, _batch in batches:
+        yield move_data_to_device(outputs, cpu)

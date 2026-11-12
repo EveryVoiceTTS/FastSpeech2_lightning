@@ -1,7 +1,8 @@
+import math
 import sys
 import textwrap
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -18,10 +19,10 @@ from everyvoice.utils import slugify, truncate_basename
 
 if TYPE_CHECKING:
     import torch.device
-    from pytorch_lightning.callbacks import Callback
-    from pytorch_lightning.utilities.types import _PREDICT_OUTPUT
+    from torch.utils.data import DataLoader
 
     from ..model import FastSpeech2, FastSpeech2Config
+    from ..prediction_writing_callback import OutputWriter
 
 
 def validate_data_keys_with_model_keys(
@@ -315,6 +316,127 @@ def load_model(model_path: Path, device: "torch.device") -> "FastSpeech2":
     return model
 
 
+def check_text_representation(
+    model: "FastSpeech2", text_representation: DatasetTextRepresentation
+) -> None:
+    """Raise ValueError if text_representation is incompatible with the model."""
+    if (
+        model.config.model.target_text_representation_level
+        == TargetTrainingTextRepresentationLevel.characters
+        and text_representation != DatasetTextRepresentation.characters
+    ):
+        raise ValueError(
+            f"Your model was trained on {model.config.model.target_text_representation_level} but you provided {text_representation.value} which is incompatible."
+        )
+
+
+def warn_if_multiple_devices(devices: str | int) -> None:
+    """Synthesis runs on a single device: warn if more than one was requested.
+
+    devices follows the PyTorch Lightning conventions: "auto", a number of
+    devices ("-1" meaning all of them), or a comma-separated list of device ids.
+    """
+    devices_str = str(devices).strip()
+    if "," in devices_str:
+        requested = len([d for d in devices_str.split(",") if d.strip()])
+    else:
+        try:
+            requested = int(devices_str)
+        except ValueError:  # "auto" or anything else Lightning might accept
+            return
+    if requested == -1 or requested > 1:
+        logger.warning(
+            f"Synthesis only uses a single device, ignoring devices={devices!r}."
+        )
+
+
+def make_synthesis_dataloader(
+    model: "FastSpeech2",
+    data: list[dict[str, Any]],
+    *,
+    teacher_forcing: bool = False,
+    style_reference: bool = False,
+    batch_size: int = 4,
+    num_workers: int = 0,
+) -> "DataLoader":
+    """Create the DataLoader that tokenizes and collates data for synthesis.
+
+    Batches are produced in the order of data, without shuffling.
+    With teacher_forcing, model.config.preprocessing.save_dir must point to
+    the preprocessed data to force the output to match.
+    """
+    from functools import partial
+
+    from torch.utils.data import DataLoader
+
+    from ..dataset import FastSpeech2DataModule, FastSpeechDataset
+
+    dataset = FastSpeechDataset(
+        data,
+        model.config,
+        model.lang2id,
+        model.speaker2id,
+        teacher_forcing=teacher_forcing,
+        inference=True,
+        style_reference=style_reference,
+    )
+    return DataLoader(
+        dataset,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        shuffle=False,
+        drop_last=False,
+        pin_memory=False,
+        collate_fn=partial(
+            FastSpeech2DataModule.collate_method,
+            learn_alignment=model.config.model.learn_alignment,
+        ),
+    )
+
+
+def iter_synthesis(
+    model: "FastSpeech2",
+    data: list[dict[str, Any]],
+    device: "torch.device",
+    *,
+    teacher_forcing: bool = False,
+    style_reference: bool = False,
+    batch_size: int = 4,
+    num_workers: int = 0,
+) -> Iterator[tuple[dict[str, Any], dict[str, Any]]]:
+    """Run the model's forward pass in inference mode over data, one batch at a time.
+
+    Args:
+        model: the text-to-spec model; it gets moved to device and set to eval mode
+        data: the utterances to synthesize, as produced by prepare_data()
+        device: the device to run on
+        teacher_forcing, style_reference, batch_size, num_workers:
+            see make_synthesis_dataloader()
+
+    Yields: (outputs, batch) for each batch, with the tensors left on device.
+        Batches come in the order of data, which the output writers rely on
+        to reassemble chunked texts.
+    """
+    import torch
+    from lightning_fabric.utilities.apply_func import move_data_to_device
+
+    model.to(device)
+    model.eval()
+    dataloader = make_synthesis_dataloader(
+        model,
+        data,
+        teacher_forcing=teacher_forcing,
+        style_reference=style_reference,
+        batch_size=batch_size,
+        num_workers=num_workers,
+    )
+    for batch in dataloader:
+        batch = move_data_to_device(batch, device)
+        with torch.no_grad():
+            outputs = model(batch, inference=True)
+        yield outputs, batch
+
+
 def synthesize_helper(
     model: "FastSpeech2",
     texts: Optional[list[str]],
@@ -325,8 +447,8 @@ def synthesize_helper(
     global_step: int,
     output_type: Sequence[SynthesizeOutputFormats],
     text_representation: DatasetTextRepresentation,
-    accelerator: str,
-    devices: str,
+    accelerator: str,  # unused: device is what matters, kept for compatibility
+    devices: str,  # unused: synthesis runs on a single device
     device: "torch.device",  # set to: get_device_from_accelerator(accelerator)
     batch_size: int,
     num_workers: int,
@@ -339,34 +461,26 @@ def synthesize_helper(
     vocoder_config=None,
     return_scores=False,
     simple_filenames: bool = False,
-    return_predictions: bool = False,
 ) -> tuple[
     "FastSpeech2Config",
-    "_PREDICT_OUTPUT | None",
-    dict[SynthesizeOutputFormats | str, "Callback"],
+    dict[SynthesizeOutputFormats | str, "OutputWriter"],
 ]:
     """This is a helper to perform synthesis once the model has been loaded.
     It allows us to use the same command for synthesis via the CLI and
     via the gradio demo.
 
+    Synthesis runs on the single device `device`. TODO: remove accelerator
+    and devices, or use them to support multiple devices.
+
     Returns: a tuple of:
         config: the config that was used -- model.config, modified in place
-        predictions: if return_predictions, the accumulated MEL spectrograms
-        callbacks: the callbacks created to handle the output_types specified
+        writers: the output writers created to handle the output_types specified
     """
-
+    import torch
     from tqdm import tqdm
 
-    from ..dataset import FastSpeech2SynthesisDataModule
-
-    if (
-        model.config.model.target_text_representation_level
-        == TargetTrainingTextRepresentationLevel.characters
-        and text_representation != DatasetTextRepresentation.characters
-    ):
-        raise ValueError(
-            f"Your model was trained on {model.config.model.target_text_representation_level} but you provided {text_representation.value} which is incompatible."
-        )
+    warn_if_multiple_devices(devices)
+    check_text_representation(model, text_representation)
 
     sources = sum(1 if source else 0 for source in (filelist_data, filelist, texts))
     if sources != 1:
@@ -406,11 +520,22 @@ def synthesize_helper(
                 (1 / trigram_counter[n]) for n in ngrams(tokens, 3)
             )
 
-    from pytorch_lightning import Trainer
+    if teacher_forcing_directory is not None:
+        teacher_forcing = True
+        model.config.preprocessing.save_dir = teacher_forcing_directory
+    else:
+        if return_scores:
+            raise ValueError(
+                "In order to return the scores, we also need access to the directory containing your ground truth audio and preprocessed data. Please pass this in using the --teacher-forcing-directory option. e.g. --teacher-forcing-directory ./preprocessed"
+            )
+        teacher_forcing = False
+    # overwrite batch_size and num_workers
+    model.config.training.batch_size = batch_size
+    model.config.training.train_data_workers = num_workers
 
     from ..prediction_writing_callback import get_synthesis_output_callbacks
 
-    callbacks = get_synthesis_output_callbacks(
+    writers = get_synthesis_output_callbacks(
         output_type=output_type,
         output_dir=output_dir,
         config=model.config,
@@ -424,55 +549,25 @@ def synthesize_helper(
         simple_filenames=simple_filenames,
         loss_fn=model.loss,
     )
-    trainer = Trainer(
-        logger=False,  # We don't need to log things to tensorboard during inference
-        accelerator=accelerator,
-        devices=devices,
-        max_epochs=model.config.training.max_epochs,
-        callbacks=list(callbacks.values()),
-    )
-    if teacher_forcing_directory is not None:
-        teacher_forcing = True
-        model.config.preprocessing.save_dir = teacher_forcing_directory
-    else:
-        if return_scores:
-            raise ValueError(
-                "In order to return the scores, we also need access to the directory containing your ground truth audio and preprocessed data. Please pass this in using the --teacher-forcing-directory option. e.g. --teacher-forcing-directory ./preprocessed"
-            )
-        teacher_forcing = False
-    # overwrite batch_size and num_workers
-    model.config.training.batch_size = batch_size
-    model.config.training.train_data_workers = num_workers
-    if 0:
-        slice_size = 128
-        for slice in range(0, len(data), slice_size):
-            trainer.predict(
-                model,
-                FastSpeech2SynthesisDataModule(
-                    model.config,
-                    data[slice : slice + slice_size],
-                    model.lang2id,
-                    model.speaker2id,
-                    teacher_forcing=teacher_forcing,
-                    style_reference=style_reference is not None,
-                ),
-                return_predictions=return_predictions,
-            )
-        return
 
-    return (
-        model.config,
-        trainer.predict(
-            model,
-            FastSpeech2SynthesisDataModule(
-                model.config,
-                data,
-                model.lang2id,
-                model.speaker2id,
-                teacher_forcing=teacher_forcing,
-                style_reference=style_reference is not None,
-            ),
-            return_predictions=return_predictions,
-        ),
-        callbacks,
+    batches = iter_synthesis(
+        model,
+        data,
+        device,
+        teacher_forcing=teacher_forcing,
+        style_reference=style_reference is not None,
+        batch_size=batch_size,
+        num_workers=num_workers,
     )
+    # Like trainer.predict() did, run the writers (including the vocoder) in
+    # inference mode too.
+    with torch.inference_mode():
+        for outputs, batch in tqdm(
+            batches, desc="Synthesizing", total=math.ceil(len(data) / batch_size)
+        ):
+            for writer in writers.values():
+                writer.write_batch(outputs, batch)
+        for writer in writers.values():
+            writer.finalize()
+
+    return model.config, writers
