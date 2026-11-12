@@ -17,15 +17,8 @@ from ..config import FastSpeech2Config, FastSpeech2TrainingConfig
 from ..prediction_writing_callback import get_synthesis_output_callbacks
 
 
-def run_batch_end(writer, outputs, batch, idx):
-    writer.on_predict_batch_end(
-        _trainer=None,
-        _pl_module=None,
-        outputs=outputs,
-        batch=batch,
-        _batch_idx=idx,
-        _dataloader_idx=idx,
-    )
+def run_batch_end(writer, outputs, batch, _idx):
+    writer.write_batch(outputs, batch)
 
 
 class TestDuplicateFilename:

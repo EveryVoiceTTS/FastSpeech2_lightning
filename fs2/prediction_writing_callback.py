@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from csv import DictWriter
 from pathlib import Path
 from typing import Any, Optional
@@ -41,18 +41,25 @@ def get_synthesis_output_callbacks(
     vocoder_global_step: Optional[int] = None,
     return_scores=False,
     simple_filenames: bool = False,
+    loss_fn: Optional[Callable[..., dict[str, torch.Tensor]]] = None,
 ) -> dict[SynthesizeOutputFormats | str, Callback]:
     """
     Given a list of desired output file formats, return the proper callbacks
     that will generate those files.
+
+    loss_fn is required when return_scores is True: pass the model's loss
+    module, e.g., model.loss.
     """
     callbacks: dict[SynthesizeOutputFormats | str, Callback] = {}
     if return_scores:
+        if loss_fn is None:
+            raise ValueError("loss_fn is required to calculate scores.")
         callbacks["score"] = ScorerCallback(
             config=config,
             global_step=global_step,
             output_dir=output_dir,
             output_key=output_key,
+            loss_fn=loss_fn,
         )
     if (
         SynthesizeOutputFormats.wav in output_type
@@ -120,7 +127,45 @@ def get_synthesis_output_callbacks(
     return callbacks
 
 
-class PredictionWritingCallbackBase(BasePredictionWritingCallback):
+class _OutputWriterMixin:
+    """Common interface for the synthesis output writers.
+
+    Subclasses implement write_batch() and, if needed, finalize(). The
+    on_predict_*_end methods are Lightning Callback hooks that just delegate to
+    them, so the writers can be driven either by trainer.predict() or directly.
+    """
+
+    def write_batch(
+        self,
+        outputs: dict[str, torch.Tensor | None],
+        batch: dict[str, Any],
+    ) -> None:  # pragma: no cover
+        """Process one batch of model outputs, writing files as needed."""
+        raise NotImplementedError
+
+    def finalize(self) -> None:
+        """Called once after the last batch has been processed."""
+
+    def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
+        self,
+        _trainer,
+        _pl_module,
+        outputs: dict[str, torch.Tensor | None],
+        batch: dict[str, Any],
+        _batch_idx: int,
+        _dataloader_idx: int = 0,
+    ):
+        self.write_batch(outputs, batch)
+
+    def on_predict_epoch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
+        self,
+        _trainer,
+        _pl_module,
+    ):
+        self.finalize()
+
+
+class PredictionWritingCallbackBase(_OutputWriterMixin, BasePredictionWritingCallback):
     def __init__(
         self,
         config: FastSpeech2Config,
@@ -140,7 +185,7 @@ class PredictionWritingCallbackBase(BasePredictionWritingCallback):
         self.config = config
 
 
-class ScorerCallback(Callback):
+class ScorerCallback(_OutputWriterMixin, Callback):
     """
     This callback runs inference on a provided text-to-spec model and saves the resulting losses to disk.
     """
@@ -151,11 +196,13 @@ class ScorerCallback(Callback):
         global_step: int,
         output_dir: Path,
         output_key: str,
+        loss_fn: Callable[..., dict[str, torch.Tensor]],
     ):
         self.global_step = global_step
         self.save_dir = output_dir
         self.output_key = output_key
         self.config = config
+        self.loss_fn = loss_fn
         logger.info(f"Saving pytorch output to {self.save_dir}")
         self.scores: list[dict] = []
 
@@ -169,11 +216,7 @@ class ScorerCallback(Callback):
     def sort_scores(self):
         self.scores.sort(key=lambda x: (-x["total"], x["trigram_coverage_score"]))
 
-    def on_predict_epoch_end(
-        self,
-        _trainer,
-        model,
-    ):
+    def finalize(self) -> None:
         self.sort_scores()
         with open(self._get_filename(), "w") as f:
             fieldnames = [
@@ -195,17 +238,15 @@ class ScorerCallback(Callback):
             for score in self.scores:
                 writer.writerow(score)
 
-    def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
+    def write_batch(
         self,
-        _trainer,
-        model,
         outputs: dict[str, torch.Tensor | None],
         batch: dict[str, Any],
-        _batch_idx: int,
-        _dataloader_idx: int = 0,
-    ):
+    ) -> None:
         with torch.no_grad():
-            losses = model.loss(outputs, batch, model.current_epoch)
+            # current_epoch=0: this is what model.current_epoch is during
+            # inference, it only affects the attn_bin loss warmup.
+            losses = self.loss_fn(outputs, batch, 0)
         score = {k: float(v) for k, v in losses.items()}
         score["basename"] = batch["basename"][0]
         score["speaker"] = batch["speaker"][0]
@@ -244,15 +285,11 @@ class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
         self.chunk_basenames: list[str] = []  # Accumulates per-chunk basenames
         self.full_spec = torch.tensor(())  # Accumulates full input before saving file
 
-    def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
+    def write_batch(
         self,
-        _trainer,
-        _pl_module,
         outputs: dict[str, torch.Tensor | None],
         batch: dict[str, Any],
-        _batch_idx: int,
-        _dataloader_idx: int = 0,
-    ):
+    ) -> None:
         assert self.output_key in outputs and outputs[self.output_key] is not None
         assert "tgt_lens" in outputs and outputs["tgt_lens"] is not None
 
@@ -404,15 +441,11 @@ class PredictionWritingAlignedTextCallback(PredictionWritingCallbackBase):
                 current_word_duration = 0
         return xmax_seconds, phones, words
 
-    def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
+    def write_batch(
         self,
-        _trainer,
-        _pl_module,
         outputs: dict[str, torch.Tensor | None],
         batch: dict[str, Any],
-        _batch_idx: int,
-        _dataloader_idx: int = 0,
-    ):
+    ) -> None:
         assert self.output_key in outputs and outputs[self.output_key] is not None
         assert (
             "duration_prediction" in outputs
@@ -711,15 +744,11 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
 
         return wavs, sr
 
-    def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
+    def write_batch(
         self,
-        _trainer,
-        _pl_module,
         outputs: dict[str, torch.Tensor | None],
         batch: dict[str, Any],
-        _batch_idx: int,
-        _dataloader_idx: int = 0,
-    ):
+    ) -> None:
         logger.trace("Generating waveform...")
 
         wavs, sr = self.synthesize_audio(outputs)

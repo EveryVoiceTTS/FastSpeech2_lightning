@@ -420,6 +420,7 @@ def synthesize_helper(
         vocoder_global_step=vocoder_global_step,
         return_scores=return_scores,
         simple_filenames=simple_filenames,
+        loss_fn=model.loss,
     )
     trainer = Trainer(
         logger=False,  # We don't need to log things to tensorboard during inference

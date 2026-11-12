@@ -1,6 +1,9 @@
+from csv import DictReader
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
+import pytest
 import torch
 from everyvoice.config.shared_types import ContactInformation
 from everyvoice.config.type_definitions import SynthesizeOutputFormats
@@ -62,6 +65,102 @@ class WritingTestBase:
     }
 
 
+class TestCallbackHooks(WritingTestBase):
+    """
+    The Lightning Callback hooks must delegate to write_batch() and finalize().
+    """
+
+    def test_hooks_delegate(self):
+        with TemporaryDirectory() as tmp_dir:
+            writers = get_synthesis_output_callbacks(
+                [SynthesizeOutputFormats.spec],
+                config=FastSpeech2Config(contact=self.contact),
+                global_step=77,
+                output_dir=Path(tmp_dir),
+                output_key=self.output_key,
+                device=torch.device("cpu"),
+            )
+            writer = next(iter(writers.values()))
+            with (
+                patch.object(writer, "write_batch") as mock_write_batch,
+                patch.object(writer, "finalize") as mock_finalize,
+            ):
+                writer.on_predict_batch_end(None, None, self.outputs, self.batch, 0, 0)
+                mock_write_batch.assert_called_once_with(self.outputs, self.batch)
+                mock_finalize.assert_not_called()
+                writer.on_predict_epoch_end(None, None)
+                mock_finalize.assert_called_once_with()
+
+
+class TestScorer:
+    contact = ContactInformation(
+        contact_name="Test Runner", contact_email="info@everyvoice.ca"
+    )
+
+    @staticmethod
+    def make_batch(basename: str) -> dict:
+        return {
+            "basename": [basename],
+            "speaker": ["spk1"],
+            "language": ["lngA"],
+            "raw_text": [f"text for {basename}"],
+            "phone_coverage_score": [0.5],
+            "trigram_coverage_score": [0.25],
+        }
+
+    def test_loss_fn_required(self):
+        with TemporaryDirectory() as tmp_dir:
+            with pytest.raises(ValueError, match="loss_fn"):
+                get_synthesis_output_callbacks(
+                    [],
+                    config=FastSpeech2Config(contact=self.contact),
+                    global_step=77,
+                    output_dir=Path(tmp_dir),
+                    output_key="output",
+                    device=torch.device("cpu"),
+                    return_scores=True,
+                )
+
+    def test_write_batch_and_finalize(self):
+        totals = {"low": 1.0, "high": 3.0, "mid": 2.0}
+        calls = []
+
+        def fake_loss_fn(outputs, batch, current_epoch):
+            calls.append(current_epoch)
+            loss_names = ("duration", "spec", "postnet", "attn_ctc", "attn_bin")
+            losses = {name: torch.tensor(0.1) for name in loss_names}
+            losses["total"] = torch.tensor(totals[batch["basename"][0]])
+            return losses
+
+        with TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            writers = get_synthesis_output_callbacks(
+                [],
+                config=FastSpeech2Config(contact=self.contact),
+                global_step=77,
+                output_dir=tmp_path,
+                output_key="output",
+                device=torch.device("cpu"),
+                return_scores=True,
+                loss_fn=fake_loss_fn,
+            )
+            assert list(writers.keys()) == ["score"]
+            scorer = writers["score"]
+            for basename in totals:
+                scorer.write_batch({}, self.make_batch(basename))
+            assert calls == [0, 0, 0]
+
+            scores_file = tmp_path / "scores-77.psv"
+            assert not scores_file.exists()
+            scorer.finalize()
+            with open(scores_file, encoding="utf8") as f:
+                rows = list(DictReader(f, delimiter="|"))
+            # sorted by decreasing total loss
+            assert [row["basename"] for row in rows] == ["high", "mid", "low"]
+            assert rows[0]["total"] == "3.0"
+            assert rows[0]["raw_text"] == "text for high"
+
+
 class TestWritingSpec(WritingTestBase):
     """
     Testing the callback that writes pt files.
@@ -83,14 +182,7 @@ class TestWritingSpec(WritingTestBase):
                 device=torch.device("cpu"),
             )
             writer = next(iter(writers.values()))
-            writer.on_predict_batch_end(
-                _trainer=None,
-                _pl_module=None,
-                outputs=self.outputs,
-                batch=self.batch,
-                _batch_idx=0,
-                _dataloader_idx=0,
-            )
+            writer.write_batch(self.outputs, self.batch)
             output_dir = writer.save_dir
             # print(output_dir, *output_dir.glob("**/*"))  # For debugging
             assert output_dir.exists()
@@ -117,14 +209,7 @@ class TestWritingSpec(WritingTestBase):
                 simple_filenames=True,
             )
             writer = next(iter(writers.values()))
-            writer.on_predict_batch_end(
-                _trainer=None,
-                _pl_module=None,
-                outputs=self.outputs,
-                batch=self.batch,
-                _batch_idx=0,
-                _dataloader_idx=0,
-            )
+            writer.write_batch(self.outputs, self.batch)
             output_dir = writer.save_dir
             assert (output_dir / "short.pt").exists()
             assert (output_dir / "spk2_utt002.pt").exists()
@@ -151,14 +236,7 @@ class TestWritingTextGrid(WritingTestBase):
                 device=torch.device("cpu"),
             )
             writer = next(iter(writers.values()))
-            writer.on_predict_batch_end(
-                _trainer=None,
-                _pl_module=None,
-                outputs=self.outputs,
-                batch=self.batch,
-                _batch_idx=0,
-                _dataloader_idx=0,
-            )
+            writer.write_batch(self.outputs, self.batch)
             output_dir = writer.save_dir
             # print(output_dir, *output_dir.glob("**/*"))  # For debugging
             assert output_dir.exists()
@@ -198,14 +276,7 @@ class TestWritingReadAlong(WritingTestBase):
                 device=torch.device("cpu"),
             )
             writer = next(iter(writers.values()))
-            writer.on_predict_batch_end(
-                _trainer=None,
-                _pl_module=None,
-                outputs=self.outputs,
-                batch=self.batch,
-                _batch_idx=0,
-                _dataloader_idx=0,
-            )
+            writer.write_batch(self.outputs, self.batch)
             output_dir = writer.save_dir
 
             # print(output_dir, *output_dir.glob("**/*"))  # For debugging
@@ -247,14 +318,7 @@ class TestWritingOfflineRAS(WritingTestBase):
                 vocoder_global_step=10,
             )
             for writer in writers.values():
-                writer.on_predict_batch_end(
-                    _trainer=None,
-                    _pl_module=None,
-                    outputs=self.outputs,
-                    batch=self.batch,
-                    _batch_idx=0,
-                    _dataloader_idx=0,
-                )
+                writer.write_batch(self.outputs, self.batch)
                 output_dir = writer.save_dir
 
             # print(output_dir, *output_dir.glob("**/*"))  # For debugging
@@ -304,14 +368,7 @@ class TestWritingWav(WritingTestBase):
                 vocoder_global_step=10,
             )
             writer = next(iter(writers.values()))
-            writer.on_predict_batch_end(
-                _trainer=None,
-                _pl_module=None,
-                outputs=self.outputs,
-                batch=self.batch,
-                _batch_idx=0,
-                _dataloader_idx=0,
-            )
+            writer.write_batch(self.outputs, self.batch)
             output_dir = writer.save_dir
             # print(output_dir, *output_dir.glob("**/*"))  # For debugging
             assert output_dir.exists()
@@ -348,14 +405,7 @@ class TestWritingWav(WritingTestBase):
                 simple_filenames=True,
             )
             writer = next(iter(writers.values()))
-            writer.on_predict_batch_end(
-                _trainer=None,
-                _pl_module=None,
-                outputs=self.outputs,
-                batch=self.batch,
-                _batch_idx=0,
-                _dataloader_idx=0,
-            )
+            writer.write_batch(self.outputs, self.batch)
             output_dir = writer.save_dir
             assert (output_dir / "short.wav").exists()
             assert (output_dir / "spk2_utt002.wav").exists()
