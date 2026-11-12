@@ -65,11 +65,14 @@ def mas_width1(log_attn_map):
     j = log_p.shape[1] - 1
     for i in range(log_p.shape[0] - 1, 0, -1):
         opt[i, j] = one
+        if j == 0:
+            # The first text token covers all the remaining frames. Checking
+            # this before moving left also handles single-token inputs, which
+            # used to walk j out of bounds (numba does no bounds checking).
+            opt[1:i, j] = one
+            break
         if log_p[i - 1, j - 1] >= log_p[i - 1, j]:
             j -= 1
-            if j == 0:
-                opt[1:i, j] = one
-                break
     opt[0, j] = one
     return opt
 
