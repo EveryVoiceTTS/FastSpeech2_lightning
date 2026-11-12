@@ -308,6 +308,22 @@ class TestPrepareSynthesizeData:
         assert strong_boundaries == "‽"
         assert weak_boundaries == ":?"
 
+        # Missing length stats for the requested representation: use the defaults
+        model.stats = stats.model_copy(update={"character_length": None})
+        split_text, split_params = get_text_split_params(
+            model, language="eng", text_representation="characters"
+        )
+        assert split_text
+        assert split_params[:2] == (100, 200)
+
+        # No stats at all: use the defaults too
+        model.stats = None
+        split_text, split_params = get_text_split_params(
+            model, language="eng", text_representation="phones"
+        )
+        assert split_text
+        assert split_params[:2] == (100, 200)
+
 
 class TestValidateDataWithModel:
     """

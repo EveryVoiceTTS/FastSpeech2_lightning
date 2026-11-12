@@ -75,7 +75,7 @@ def get_text_split_params(
     """
     from everyvoice.config.text_config import TextConfig
 
-    from ..type_definitions_heavy import Stats
+    from ..type_definitions_heavy import Stats, StatsInfo
 
     text_config: TextConfig = model.config.text
 
@@ -84,20 +84,22 @@ def get_text_split_params(
 
     if text_config.split_text:
         # Get desired and max length from Stats
-        if hasattr(model, "stats") and model.stats is not None:
-            stats: Stats = model.stats
+        stats: Stats | None = getattr(model, "stats", None)
+        length_stats: StatsInfo | None = None
+        if stats is not None:
             match text_representation:
                 case DatasetTextRepresentation.characters:
-                    desired_length = stats.character_length.mean  # type: ignore[union-attr]
-                    max_length = stats.character_length.max  # type: ignore[union-attr]
+                    length_stats = stats.character_length
                 case DatasetTextRepresentation.ipa_phones:
-                    desired_length = stats.phone_length.mean  # type: ignore[union-attr]
-                    max_length = stats.phone_length.max  # type: ignore[union-attr]
+                    length_stats = stats.phone_length
                 case DatasetTextRepresentation.arpabet:
                     logger.warning(
                         "Arpabet stats are not yet supported. Chunking with default lengths."
                     )
-        else:
+        if length_stats is not None:
+            desired_length = length_stats.mean
+            max_length = length_stats.max
+        elif stats is None or text_representation != DatasetTextRepresentation.arpabet:
             # This is for unit testing or older models
             logger.warning(
                 f"Length stats for {text_representation} could not be found. Chunking with default lengths."
