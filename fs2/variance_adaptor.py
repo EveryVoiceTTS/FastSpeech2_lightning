@@ -54,6 +54,10 @@ class VariancePredictor(nn.Module):
 
     def forward(self, x, mask=None):
         for m in self.conv:
+            if mask is not None:
+                # Zero the padded positions before each convolution, so padding
+                # doesn't leak into the predictions for the real positions.
+                x = x * mask.unsqueeze(-1)
             x = m(x)
         out = self.linear(x)
         out = out.squeeze(-1)
