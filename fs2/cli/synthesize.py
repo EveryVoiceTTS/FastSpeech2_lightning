@@ -265,7 +265,6 @@ def synthesize(  # noqa: C901
         global_step=global_step,
         output_type=output_type,
         text_representation=text_representation,
-        accelerator=accelerator,
         devices=devices,
         device=device,
         batch_size=batch_size,

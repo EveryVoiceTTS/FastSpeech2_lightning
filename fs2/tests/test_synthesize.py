@@ -75,7 +75,6 @@ class TestSynthesizeHelper:
             global_step=5,
             output_type=[SynthesizeOutputFormats.spec],
             text_representation=DatasetTextRepresentation.characters,
-            accelerator="cpu",
             devices="1",
             device=torch.device("cpu"),
             batch_size=2,

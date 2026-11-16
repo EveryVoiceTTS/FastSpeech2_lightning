@@ -447,7 +447,6 @@ def synthesize_helper(
     global_step: int,
     output_type: Sequence[SynthesizeOutputFormats],
     text_representation: DatasetTextRepresentation,
-    accelerator: str,  # unused: device is what matters, kept for compatibility
     devices: str,  # unused: synthesis runs on a single device
     device: "torch.device",  # set to: get_device_from_accelerator(accelerator)
     batch_size: int,

@@ -203,7 +203,6 @@ def check_data_command(  # noqa: C901
             global_step=global_step,
             output_type=[],
             text_representation=text_representation,
-            accelerator=accelerator,
             devices=devices,
             device=device,
             batch_size=1,
