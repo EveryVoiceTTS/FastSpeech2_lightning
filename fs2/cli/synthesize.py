@@ -108,7 +108,7 @@ def synthesize(  # noqa: C901
         Multiple formats can be provided by repeating **--output-type**.
 
 
-        '**wav**' is the default and will synthesize to a playable audio file. Requires --vocoder-path.
+        '**wav**' is the default and will synthesize to a playable audio file. Requires --vocoder.
 
 
         '**spec**' will generate predicted Mel spectrograms. Tensors are Mel band-oriented (K, T) where K is equal to the number of Mel bands and T is equal to the number of frames.
@@ -120,7 +120,7 @@ def synthesize(  # noqa: C901
         '**readalong-xml**' will generate a ReadAlong from the given text and synthesized audio in XML .readalong format (see https://github.com/ReadAlongs).
 
 
-        '**readalong-html**' will generate a single file Offline HTML ReadAlong that can be further edited in the ReadAlong Studio Editor, and opened by itself. Also implies '--output-type wav'. Requires --vocoder-path.
+        '**readalong-html**' will generate a single file Offline HTML ReadAlong that can be further edited in the ReadAlong Studio Editor, and opened by itself. Also implies '--output-type wav'. Requires --vocoder.
         """,
         ),
     ] = [SynthesizeOutputFormats.wav],
@@ -135,9 +135,18 @@ def synthesize(  # noqa: C901
     vocoder_path: Annotated[
         Path | None,
         typer_file_option(
+            "--vocoder",
+            "-V",
+            help="The path to a trained vocoder (aka spec-to-wav model).",
+        ),
+    ] = None,
+    vocoder_path_old: Annotated[
+        Path | None,
+        typer_file_option(
             "--vocoder-path",
             "-v",
-            help="The path to a trained vocoder (aka spec-to-wav model).",
+            hidden=True,
+            help="hidden alias for --vocoder|-V, kept for backwards compatibility",
         ),
     ] = None,
     batch_size: Annotated[
@@ -163,7 +172,18 @@ def synthesize(  # noqa: C901
 ):
     """Given some text and a trained model, generate some audio. i.e. perform typical speech synthesis"""
     # TODO: allow for changing of language/speaker and variance control
+    from everyvoice import logger
 
+    if vocoder_path_old is not None:
+        if vocoder_path is not None:
+            raise typer.BadParameter(
+                "Cannot specify both old --vocoder-path|-v and its replacement --vocoder|-V"
+            )
+        else:
+            logger.warning(
+                "--vocoder-path|-v has been replaced by --vocoder|-V, proceeding, use the new name to hide this warning."
+            )
+            vocoder_path = vocoder_path_old
     # Do argument error checking before doing expensive imports
     if texts and filelist:
         raise typer.BadParameter(
@@ -178,13 +198,12 @@ def synthesize(  # noqa: C901
         or SynthesizeOutputFormats.readalong_html in output_type
     ) and not vocoder_path:
         raise typer.BadParameter(
-            "Missing --vocoder-path option, which is required when the output type includes 'wav' or 'offline-ras'."
+            "Missing --vocoder option, which is required when the output type includes 'wav' or 'offline-ras'."
         )
 
     from everyvoice.utils import spinner
 
     with spinner():
-        from everyvoice import logger
         from everyvoice.base_cli.checkpoint import load_checkpoint
         from everyvoice.base_cli.helpers import inference_base_command
         from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
