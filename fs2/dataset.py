@@ -359,35 +359,3 @@ class FastSpeech2DataModule(BaseDataModule):
             torch.save(self.train_dataset, self.train_path)
             torch.save(self.val_dataset, self.val_path)
             self.prepared = True
-
-
-class FastSpeech2SynthesisDataModule(FastSpeech2DataModule):
-    def __init__(
-        self,
-        config: FastSpeech2Config,
-        data: list[dict],
-        lang2id: LookupTable,
-        speaker2id: LookupTable,
-        teacher_forcing: bool = False,
-        style_reference=False,
-    ):
-        super().__init__(
-            config=config,
-            inference=True,
-            teacher_forcing=teacher_forcing,
-            style_reference=style_reference,
-        )
-        self.inference = True
-        self.data = data
-        self.collate_fn = partial(
-            self.collate_method, learn_alignment=config.model.learn_alignment
-        )
-        self.use_weighted_sampler = config.training.use_weighted_sampler
-        self.batch_size = config.training.batch_size
-        self.load_dataset(data)
-        self.predict_dataset_length = len(self.predict_dataset)
-        self.lang2id = lang2id
-        self.speaker2id = speaker2id
-
-    def load_dataset(self, data):
-        self.predict_dataset = data
