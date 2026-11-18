@@ -164,7 +164,7 @@ def check_data_command(  # noqa: C901
     # We could misuse the trainer's API and use the private variable
     # trainer._accelerator_connector._accelerator_flag but that value is
     # computed when instantiating a trainer and that is exactly when we need
-    # the information to create the callbacks.
+    # the information to create the writers.
     device = get_device_from_accelerator(accelerator)
 
     # Load checkpoints

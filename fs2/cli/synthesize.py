@@ -98,7 +98,7 @@ def synthesize(  # noqa: C901
             + "**'. The input type must be compatible with your model.",
         ),
     ] = DatasetTextRepresentation.characters,
-    output_type: Annotated[
+    output_types: Annotated[
         list[SynthesizeOutputFormats],
         typer.Option(
             "-O",
@@ -194,8 +194,8 @@ def synthesize(  # noqa: C901
 
     # output to .wav will require a valid spec-to-wav model
     if (
-        SynthesizeOutputFormats.wav in output_type
-        or SynthesizeOutputFormats.readalong_html in output_type
+        SynthesizeOutputFormats.wav in output_types
+        or SynthesizeOutputFormats.readalong_html in output_types
     ) and not vocoder_path:
         raise typer.BadParameter(
             "Missing --vocoder option, which is required when the output type includes 'wav' or 'offline-ras'."
@@ -220,7 +220,7 @@ def synthesize(  # noqa: C901
     # We could misuse the trainer's API and use the private variable
     # trainer._accelerator_connector._accelerator_flag but that value is
     # computed when instantiating a trainer and that is exactly when we need
-    # the information to create the callbacks.
+    # the information to create the writers.
     device = get_device_from_accelerator(accelerator)
 
     # Load checkpoints
@@ -263,7 +263,7 @@ def synthesize(  # noqa: C901
         speaker=speaker,
         duration_control=duration_control,
         global_step=global_step,
-        output_types=output_type,
+        output_types=output_types,
         text_representation=text_representation,
         devices=devices,
         device=device,

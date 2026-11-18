@@ -42,17 +42,17 @@ def get_synthesis_output_writers(
     loss_fn: Optional[Callable[..., dict[str, torch.Tensor]]] = None,
 ) -> dict[SynthesizeOutputFormats | str, "OutputWriter"]:
     """
-    Given a list of desired output file formats, return the proper callbacks
+    Given a list of desired output file formats, return the proper writers
     that will generate those files.
 
     loss_fn is required when return_scores is True: pass the model's loss
     module, e.g., model.loss.
     """
-    callbacks: dict[SynthesizeOutputFormats | str, OutputWriter] = {}
+    writers: dict[SynthesizeOutputFormats | str, OutputWriter] = {}
     if return_scores:
         if loss_fn is None:
             raise ValueError("loss_fn is required to calculate scores.")
-        callbacks["score"] = ScorerWriter(
+        writers["score"] = ScorerWriter(
             config=config,
             global_step=global_step,
             output_dir=output_dir,
@@ -71,7 +71,7 @@ def get_synthesis_output_writers(
             raise ValueError(
                 "We cannot synthesize waveforms without a vocoder. Please ensure that a vocoder is specified."
             )
-        callbacks[SynthesizeOutputFormats.wav] = WavPredictionWriter(
+        writers[SynthesizeOutputFormats.wav] = WavPredictionWriter(
             config=config,
             device=device,
             global_step=global_step,
@@ -83,7 +83,7 @@ def get_synthesis_output_writers(
             simple_filenames=simple_filenames,
         )
     if SynthesizeOutputFormats.spec in output_types:
-        callbacks[SynthesizeOutputFormats.spec] = SpecPredictionWriter(
+        writers[SynthesizeOutputFormats.spec] = SpecPredictionWriter(
             config=config,
             global_step=global_step,
             output_dir=output_dir,
@@ -91,7 +91,7 @@ def get_synthesis_output_writers(
             simple_filenames=simple_filenames,
         )
     if SynthesizeOutputFormats.textgrid in output_types:
-        callbacks[SynthesizeOutputFormats.textgrid] = TextGridPredictionWriter(
+        writers[SynthesizeOutputFormats.textgrid] = TextGridPredictionWriter(
             config=config,
             global_step=global_step,
             output_dir=output_dir,
@@ -99,7 +99,7 @@ def get_synthesis_output_writers(
             simple_filenames=simple_filenames,
         )
     if SynthesizeOutputFormats.readalong_xml in output_types:
-        callbacks[SynthesizeOutputFormats.readalong_xml] = ReadAlongPredictionWriter(
+        writers[SynthesizeOutputFormats.readalong_xml] = ReadAlongPredictionWriter(
             config=config,
             global_step=global_step,
             output_dir=output_dir,
@@ -107,18 +107,18 @@ def get_synthesis_output_writers(
             simple_filenames=simple_filenames,
         )
     if SynthesizeOutputFormats.readalong_html in output_types:
-        wav_callback = callbacks[SynthesizeOutputFormats.wav]
-        assert isinstance(wav_callback, WavPredictionWriter)
-        callbacks[SynthesizeOutputFormats.readalong_html] = OfflineRASPredictionWriter(
+        wav_writer = writers[SynthesizeOutputFormats.wav]
+        assert isinstance(wav_writer, WavPredictionWriter)
+        writers[SynthesizeOutputFormats.readalong_html] = OfflineRASPredictionWriter(
             config=config,
             global_step=global_step,
             output_dir=output_dir,
             output_key=output_key,
-            wav_writer=wav_callback,
+            wav_writer=wav_writer,
             simple_filenames=simple_filenames,
         )
 
-    return callbacks
+    return writers
 
 
 class OutputWriter:
@@ -555,7 +555,7 @@ class TextGridPredictionWriter(AlignedTextPredictionWriter):
 
 class ReadAlongPredictionWriter(AlignedTextPredictionWriter):
     """
-    This callback runs inference on a provided text-to-spec model and saves the resulting readalong of the predicted durations to disk. Combined with the .wav output, this can be loaded in the ReadAlongs Web-Component for viewing.
+    This writer runs inference on a provided text-to-spec model and saves the resulting readalong of the predicted durations to disk. Combined with the .wav output, this can be loaded in the ReadAlongs Web-Component for viewing.
     """
 
     def __init__(
