@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import Callable, Sequence
 from csv import DictWriter
 from pathlib import Path
@@ -42,7 +40,7 @@ def get_synthesis_output_writers(
     return_scores=False,
     simple_filenames: bool = False,
     loss_fn: Optional[Callable[..., dict[str, torch.Tensor]]] = None,
-) -> dict[SynthesizeOutputFormats | str, OutputWriter]:
+) -> dict[SynthesizeOutputFormats | str, "OutputWriter"]:
     """
     Given a list of desired output file formats, return the proper callbacks
     that will generate those files.
@@ -619,7 +617,7 @@ class OfflineRASPredictionWriter(AlignedTextPredictionWriter):
         global_step: int,
         output_dir: Path,
         output_key: str,
-        wav_writer: WavPredictionWriter,
+        wav_writer: "WavPredictionWriter",
         simple_filenames: bool = False,
     ):
         super().__init__(
