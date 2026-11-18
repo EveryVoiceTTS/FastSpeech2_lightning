@@ -201,7 +201,7 @@ def check_data_command(  # noqa: C901
             speaker=None,
             duration_control=1.0,
             global_step=global_step,
-            output_type=[],
+            output_types=[],
             text_representation=text_representation,
             devices=devices,
             device=device,

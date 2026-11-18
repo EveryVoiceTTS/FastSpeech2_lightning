@@ -445,7 +445,7 @@ def synthesize_helper(
     speaker: Optional[str],
     duration_control: Optional[float],
     global_step: int,
-    output_type: Sequence[SynthesizeOutputFormats],
+    output_types: Sequence[SynthesizeOutputFormats],
     text_representation: DatasetTextRepresentation,
     devices: str,  # unused: synthesis runs on a single device
     device: "torch.device",  # set to: get_device_from_accelerator(accelerator)
@@ -532,10 +532,10 @@ def synthesize_helper(
     model.config.training.batch_size = batch_size
     model.config.training.train_data_workers = num_workers
 
-    from ..prediction_writing_callback import get_synthesis_output_callbacks
+    from ..prediction_writing_callback import get_synthesis_output_writers
 
-    writers = get_synthesis_output_callbacks(
-        output_type=output_type,
+    writers = get_synthesis_output_writers(
+        output_types=output_types,
         output_dir=output_dir,
         config=model.config,
         output_key=model.output_key,
@@ -549,7 +549,7 @@ def synthesize_helper(
         loss_fn=model.loss,
     )
 
-    batches = iter_synthesis(
+    batch_generator = iter_synthesis(
         model,
         data,
         device,
@@ -562,7 +562,9 @@ def synthesize_helper(
     # inference mode too.
     with torch.inference_mode():
         for outputs, batch in tqdm(
-            batches, desc="Synthesizing", total=math.ceil(len(data) / batch_size)
+            batch_generator,
+            desc="Synthesizing",
+            total=math.ceil(len(data) / batch_size),
         ):
             for writer in writers.values():
                 writer.write_batch(outputs, batch)

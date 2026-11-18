@@ -29,8 +29,8 @@ from readalongs.api import (
 from .config import FastSpeech2Config
 
 
-def get_synthesis_output_callbacks(
-    output_type: Sequence[SynthesizeOutputFormats],
+def get_synthesis_output_writers(
+    output_types: Sequence[SynthesizeOutputFormats],
     output_dir: Path,
     config: FastSpeech2Config,
     output_key: str,
@@ -62,8 +62,8 @@ def get_synthesis_output_callbacks(
             loss_fn=loss_fn,
         )
     if (
-        SynthesizeOutputFormats.wav in output_type
-        or SynthesizeOutputFormats.readalong_html in output_type
+        SynthesizeOutputFormats.wav in output_types
+        or SynthesizeOutputFormats.readalong_html in output_types
     ):
         if (
             vocoder_model is None
@@ -84,7 +84,7 @@ def get_synthesis_output_callbacks(
             vocoder_global_step=vocoder_global_step,
             simple_filenames=simple_filenames,
         )
-    if SynthesizeOutputFormats.spec in output_type:
+    if SynthesizeOutputFormats.spec in output_types:
         callbacks[SynthesizeOutputFormats.spec] = PredictionWritingSpecCallback(
             config=config,
             global_step=global_step,
@@ -92,7 +92,7 @@ def get_synthesis_output_callbacks(
             output_key=output_key,
             simple_filenames=simple_filenames,
         )
-    if SynthesizeOutputFormats.textgrid in output_type:
+    if SynthesizeOutputFormats.textgrid in output_types:
         callbacks[SynthesizeOutputFormats.textgrid] = PredictionWritingTextGridCallback(
             config=config,
             global_step=global_step,
@@ -100,7 +100,7 @@ def get_synthesis_output_callbacks(
             output_key=output_key,
             simple_filenames=simple_filenames,
         )
-    if SynthesizeOutputFormats.readalong_xml in output_type:
+    if SynthesizeOutputFormats.readalong_xml in output_types:
         callbacks[SynthesizeOutputFormats.readalong_xml] = (
             PredictionWritingReadAlongCallback(
                 config=config,
@@ -110,7 +110,7 @@ def get_synthesis_output_callbacks(
                 simple_filenames=simple_filenames,
             )
         )
-    if SynthesizeOutputFormats.readalong_html in output_type:
+    if SynthesizeOutputFormats.readalong_html in output_types:
         wav_callback = callbacks[SynthesizeOutputFormats.wav]
         assert isinstance(wav_callback, PredictionWritingWavCallback)
         callbacks[SynthesizeOutputFormats.readalong_html] = (

@@ -10,7 +10,7 @@ from everyvoice.config.type_definitions import SynthesizeOutputFormats
 from pympi import TextGrid
 
 from ..config import FastSpeech2Config, FastSpeech2TrainingConfig
-from ..prediction_writing_callback import get_synthesis_output_callbacks
+from ..prediction_writing_callback import get_synthesis_output_writers
 
 try:
     # Accelerate the failing for fetching bundles online, since we don't
@@ -72,7 +72,7 @@ class TestCallbackHooks(WritingTestBase):
 
     def test_hooks_delegate(self):
         with TemporaryDirectory() as tmp_dir:
-            writers = get_synthesis_output_callbacks(
+            writers = get_synthesis_output_writers(
                 [SynthesizeOutputFormats.spec],
                 config=FastSpeech2Config(contact=self.contact),
                 global_step=77,
@@ -111,7 +111,7 @@ class TestScorer:
     def test_loss_fn_required(self):
         with TemporaryDirectory() as tmp_dir:
             with pytest.raises(ValueError, match="loss_fn"):
-                get_synthesis_output_callbacks(
+                get_synthesis_output_writers(
                     [],
                     config=FastSpeech2Config(contact=self.contact),
                     global_step=77,
@@ -134,7 +134,7 @@ class TestScorer:
 
         with TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
-            writers = get_synthesis_output_callbacks(
+            writers = get_synthesis_output_writers(
                 [],
                 config=FastSpeech2Config(contact=self.contact),
                 global_step=77,
@@ -173,7 +173,7 @@ class TestWritingSpec(WritingTestBase):
         """
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
-            writers = get_synthesis_output_callbacks(
+            writers = get_synthesis_output_writers(
                 [SynthesizeOutputFormats.spec],
                 config=FastSpeech2Config(contact=self.contact),
                 global_step=77,
@@ -199,7 +199,7 @@ class TestWritingSpec(WritingTestBase):
         """
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
-            writers = get_synthesis_output_callbacks(
+            writers = get_synthesis_output_writers(
                 [SynthesizeOutputFormats.spec],
                 config=FastSpeech2Config(contact=self.contact),
                 global_step=77,
@@ -227,7 +227,7 @@ class TestWritingTextGrid(WritingTestBase):
         """
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
-            writers = get_synthesis_output_callbacks(
+            writers = get_synthesis_output_writers(
                 [SynthesizeOutputFormats.textgrid],
                 config=FastSpeech2Config(contact=self.contact),
                 global_step=77,
@@ -267,7 +267,7 @@ class TestWritingReadAlong(WritingTestBase):
     def test_writing_readalong(self, subtests):
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
-            writers = get_synthesis_output_callbacks(
+            writers = get_synthesis_output_writers(
                 [SynthesizeOutputFormats.readalong_xml],
                 config=FastSpeech2Config(contact=self.contact),
                 global_step=77,
@@ -303,7 +303,7 @@ class TestWritingOfflineRAS(WritingTestBase):
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
             vocoder, vocoder_path = stubbed_vocoder
-            writers = get_synthesis_output_callbacks(
+            writers = get_synthesis_output_writers(
                 [SynthesizeOutputFormats.readalong_html],
                 config=FastSpeech2Config(
                     contact=self.contact,
@@ -353,7 +353,7 @@ class TestWritingWav(WritingTestBase):
             tmp_dir = Path(tmp_dir)
             vocoder, vocoder_path = stubbed_vocoder
 
-            writers = get_synthesis_output_callbacks(
+            writers = get_synthesis_output_writers(
                 [SynthesizeOutputFormats.wav],
                 config=FastSpeech2Config(
                     contact=self.contact,
@@ -389,7 +389,7 @@ class TestWritingWav(WritingTestBase):
             tmp_dir = Path(tmp_dir)
             vocoder, vocoder_path = stubbed_vocoder
 
-            writers = get_synthesis_output_callbacks(
+            writers = get_synthesis_output_writers(
                 [SynthesizeOutputFormats.wav],
                 config=FastSpeech2Config(
                     contact=self.contact,

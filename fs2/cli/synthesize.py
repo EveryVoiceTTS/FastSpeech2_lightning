@@ -263,7 +263,7 @@ def synthesize(  # noqa: C901
         speaker=speaker,
         duration_control=duration_control,
         global_step=global_step,
-        output_type=output_type,
+        output_types=output_type,
         text_representation=text_representation,
         devices=devices,
         device=device,

@@ -14,7 +14,7 @@ from pydub import AudioSegment
 from pympi import TextGrid
 
 from ..config import FastSpeech2Config, FastSpeech2TrainingConfig
-from ..prediction_writing_callback import get_synthesis_output_callbacks
+from ..prediction_writing_callback import get_synthesis_output_writers
 
 
 def run_batch_end(writer, outputs, batch, _idx):
@@ -54,7 +54,7 @@ class TestDuplicateFilename:
             tmp_dir = Path(tmp_dir)
             vocoder, vocoder_path = stubbed_vocoder
 
-            writers = get_synthesis_output_callbacks(
+            writers = get_synthesis_output_writers(
                 [SynthesizeOutputFormats.wav],
                 config=FastSpeech2Config(
                     contact=self.contact,
@@ -99,7 +99,7 @@ def make_callbacks(tmp_path, stubbed_vocoder) -> Callable:
         text=TEXT_CONFIG,
     )
     return partial(
-        get_synthesis_output_callbacks,
+        get_synthesis_output_writers,
         config=config,
         device=torch.device("cpu"),
         global_step=77,

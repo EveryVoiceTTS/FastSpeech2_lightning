@@ -104,7 +104,6 @@ def synthesize(
     text_representation: str | DatasetTextRepresentation = "characters",
     teacher_forcing_directory: Path | None = None,
     batch_size: int = 4,
-    macro_batch_size: int = 128,
     num_workers: int = 4,
 ) -> Iterator[dict[str, Any]]:
     """Synthesize one or more utterences in texts using model.
@@ -158,7 +157,7 @@ def synthesize(
         duration_control=duration_control,
         style_reference=style_reference,
     )
-    batches = iter_synthesis(
+    batch_generator = iter_synthesis(
         model,
         data,
         get_device_from_accelerator(accelerator),
@@ -167,5 +166,5 @@ def synthesize(
         num_workers=num_workers,
     )
     cpu = torch.device("cpu")
-    for outputs, _batch in batches:
+    for outputs, _batch in batch_generator:
         yield move_data_to_device(outputs, cpu)
