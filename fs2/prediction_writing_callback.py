@@ -54,7 +54,7 @@ def get_synthesis_output_writers(
     if return_scores:
         if loss_fn is None:
             raise ValueError("loss_fn is required to calculate scores.")
-        callbacks["score"] = ScorerCallback(
+        callbacks["score"] = ScorerWriter(
             config=config,
             global_step=global_step,
             output_dir=output_dir,
@@ -73,7 +73,7 @@ def get_synthesis_output_writers(
             raise ValueError(
                 "We cannot synthesize waveforms without a vocoder. Please ensure that a vocoder is specified."
             )
-        callbacks[SynthesizeOutputFormats.wav] = PredictionWritingWavCallback(
+        callbacks[SynthesizeOutputFormats.wav] = WavPredictionWriter(
             config=config,
             device=device,
             global_step=global_step,
@@ -85,7 +85,7 @@ def get_synthesis_output_writers(
             simple_filenames=simple_filenames,
         )
     if SynthesizeOutputFormats.spec in output_types:
-        callbacks[SynthesizeOutputFormats.spec] = PredictionWritingSpecCallback(
+        callbacks[SynthesizeOutputFormats.spec] = SpecPredictionWriter(
             config=config,
             global_step=global_step,
             output_dir=output_dir,
@@ -93,7 +93,7 @@ def get_synthesis_output_writers(
             simple_filenames=simple_filenames,
         )
     if SynthesizeOutputFormats.textgrid in output_types:
-        callbacks[SynthesizeOutputFormats.textgrid] = PredictionWritingTextGridCallback(
+        callbacks[SynthesizeOutputFormats.textgrid] = TextGridPredictionWriter(
             config=config,
             global_step=global_step,
             output_dir=output_dir,
@@ -101,27 +101,23 @@ def get_synthesis_output_writers(
             simple_filenames=simple_filenames,
         )
     if SynthesizeOutputFormats.readalong_xml in output_types:
-        callbacks[SynthesizeOutputFormats.readalong_xml] = (
-            PredictionWritingReadAlongCallback(
-                config=config,
-                global_step=global_step,
-                output_dir=output_dir,
-                output_key=output_key,
-                simple_filenames=simple_filenames,
-            )
+        callbacks[SynthesizeOutputFormats.readalong_xml] = ReadAlongPredictionWriter(
+            config=config,
+            global_step=global_step,
+            output_dir=output_dir,
+            output_key=output_key,
+            simple_filenames=simple_filenames,
         )
     if SynthesizeOutputFormats.readalong_html in output_types:
         wav_callback = callbacks[SynthesizeOutputFormats.wav]
-        assert isinstance(wav_callback, PredictionWritingWavCallback)
-        callbacks[SynthesizeOutputFormats.readalong_html] = (
-            PredictionWritingOfflineRASCallback(
-                config=config,
-                global_step=global_step,
-                output_dir=output_dir,
-                output_key=output_key,
-                wav_callback=wav_callback,
-                simple_filenames=simple_filenames,
-            )
+        assert isinstance(wav_callback, WavPredictionWriter)
+        callbacks[SynthesizeOutputFormats.readalong_html] = OfflineRASPredictionWriter(
+            config=config,
+            global_step=global_step,
+            output_dir=output_dir,
+            output_key=output_key,
+            wav_writer=wav_callback,
+            simple_filenames=simple_filenames,
         )
 
     return callbacks
@@ -165,7 +161,7 @@ class OutputWriter:
         self.finalize()
 
 
-class PredictionWritingCallbackBase(OutputWriter, BasePredictionWritingCallback):
+class PredictionWriterBase(OutputWriter, BasePredictionWritingCallback):
     def __init__(
         self,
         config: FastSpeech2Config,
@@ -185,9 +181,9 @@ class PredictionWritingCallbackBase(OutputWriter, BasePredictionWritingCallback)
         self.config = config
 
 
-class ScorerCallback(OutputWriter, Callback):
+class ScorerWriter(OutputWriter, Callback):
     """
-    This callback runs inference on a provided text-to-spec model and saves the resulting losses to disk.
+    This writer runs inference on a provided text-to-spec model and saves the resulting losses to disk.
     """
 
     def __init__(
@@ -257,9 +253,9 @@ class ScorerCallback(OutputWriter, Callback):
         self.scores.append(score)
 
 
-class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
+class SpecPredictionWriter(PredictionWriterBase):
     """
-    This callback reassembles text chunks, runs inference on a provided text-to-spec model and saves the resulting Mel spectrograms to disk as pytorch files. These can be used to fine-tune an EveryVoice spec-to-wav model.
+    This writer reassembles text chunks, runs inference on a provided text-to-spec model and saves the resulting Mel spectrograms to disk as pytorch files. These can be used to fine-tune an EveryVoice spec-to-wav model.
     """
 
     def __init__(
@@ -331,9 +327,9 @@ class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
                 self.chunk_basenames = []
 
 
-class PredictionWritingAlignedTextCallback(PredictionWritingCallbackBase):
+class AlignedTextPredictionWriter(PredictionWriterBase):
     """
-    This callback runs inference on a provided text-to-spec model and saves the
+    This writer runs inference on a provided text-to-spec model and saves the
     resulting time-aligned text to file. The output format depends on the subclass's
     implementation of save_aligned_text_to_file.
     """
@@ -499,9 +495,9 @@ class PredictionWritingAlignedTextCallback(PredictionWritingCallbackBase):
                 self.words = []
 
 
-class PredictionWritingTextGridCallback(PredictionWritingAlignedTextCallback):
+class TextGridPredictionWriter(AlignedTextPredictionWriter):
     """
-    This callback runs inference on a provided text-to-spec model and saves the resulting textgrid of the predicted durations to disk. This can be used for evaluation.
+    This writer runs inference on a provided text-to-spec model and saves the resulting textgrid of the predicted durations to disk. This can be used for evaluation.
     """
 
     def __init__(
@@ -559,7 +555,7 @@ class PredictionWritingTextGridCallback(PredictionWritingAlignedTextCallback):
         new_tg.to_file(filename)
 
 
-class PredictionWritingReadAlongCallback(PredictionWritingAlignedTextCallback):
+class ReadAlongPredictionWriter(AlignedTextPredictionWriter):
     """
     This callback runs inference on a provided text-to-spec model and saves the resulting readalong of the predicted durations to disk. Combined with the .wav output, this can be loaded in the ReadAlongs Web-Component for viewing.
     """
@@ -609,9 +605,9 @@ class PredictionWritingReadAlongCallback(PredictionWritingAlignedTextCallback):
             f.write(readalong)
 
 
-class PredictionWritingOfflineRASCallback(PredictionWritingAlignedTextCallback):
+class OfflineRASPredictionWriter(AlignedTextPredictionWriter):
     """
-    This callback runs inference on a provided text-to-spec model and saves the
+    This writer runs inference on a provided text-to-spec model and saves the
     resulting readalong of the predicted durations to disk as a single file
     Offline HTML. This can be loaded in the ReadAlongs Studio-Web Editor for
     further modification.
@@ -623,7 +619,7 @@ class PredictionWritingOfflineRASCallback(PredictionWritingAlignedTextCallback):
         global_step: int,
         output_dir: Path,
         output_key: str,
-        wav_callback: PredictionWritingWavCallback,
+        wav_writer: WavPredictionWriter,
         simple_filenames: bool = False,
     ):
         super().__init__(
@@ -639,7 +635,7 @@ class PredictionWritingOfflineRASCallback(PredictionWritingAlignedTextCallback):
             target_text_representation_level=config.model.target_text_representation_level,
         )
         self.output_key = output_key
-        self.wav_callback = wav_callback
+        self.wav_writer = wav_writer
 
     def save_aligned_text_to_file(
         self,
@@ -658,7 +654,7 @@ class PredictionWritingOfflineRASCallback(PredictionWritingAlignedTextCallback):
                 ras_tokens.append(Token(text=" ", is_word=False))
             ras_tokens.append(Token(text=label, time=start, dur=end - start))
 
-        wav_file_name = self.wav_callback.get_filename(basename, speaker, language)
+        wav_file_name = self.wav_writer.get_filename(basename, speaker, language)
         readalong_html, _readalong_xml = convert_prealigned_text_to_offline_html(
             [ras_tokens],
             wav_file_name,
@@ -670,9 +666,9 @@ class PredictionWritingOfflineRASCallback(PredictionWritingAlignedTextCallback):
             f.write(readalong_html)
 
 
-class PredictionWritingWavCallback(PredictionWritingCallbackBase):
+class WavPredictionWriter(PredictionWriterBase):
     """
-    Given text-to-spec, this callback does spec-to-wav and writes wav files.
+    Given text-to-spec, this writer does spec-to-wav and writes wav files.
     """
 
     def __init__(

@@ -163,13 +163,13 @@ class TestScorer:
 
 class TestWritingSpec(WritingTestBase):
     """
-    Testing the callback that writes pt files.
+    Testing the writer that writes pt files.
     """
 
     def test_filenames_not_truncated(self):
         """
         We limit the file name's length to at most BASENAME_MAX_LENGTH in the CLI,
-        but the callback does not truncate the basenames passed to it
+        but the writer does not truncate the basenames passed to it
         """
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
@@ -217,13 +217,13 @@ class TestWritingSpec(WritingTestBase):
 
 class TestWritingTextGrid(WritingTestBase):
     """
-    Testing the callback that writes TextGrid files.
+    Testing the writer that writes TextGrid files.
     """
 
     def test_filenames_not_truncated(self):
         """
         We limit the file name's length to at most BASENAME_MAX_LENGTH in the CLI,
-        but the callback does not truncate the basenames passed to it
+        but the writer does not truncate the basenames passed to it
         """
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
@@ -261,7 +261,7 @@ class TestWritingTextGrid(WritingTestBase):
 
 class TestWritingReadAlong(WritingTestBase):
     """
-    Testing the callback that writes .readalong files.
+    Testing the writer that writes .readalong files.
     """
 
     def test_writing_readalong(self, subtests):
@@ -296,7 +296,7 @@ class TestWritingReadAlong(WritingTestBase):
 
 class TestWritingOfflineRAS(WritingTestBase):
     """
-    Testing the callback that writes Offline HTML readalong files.
+    Testing the writer that writes Offline HTML readalong files.
     """
 
     def test_writing_offline_ras(self, subtests, stubbed_vocoder):
@@ -340,14 +340,14 @@ class TestWritingOfflineRAS(WritingTestBase):
 
 class TestWritingWav(WritingTestBase):
     """
-    Testing the callback that writes wav files.
-    Note that this test may be expansive.
+    Testing the writer that writes wav files.
+    Note that this test may be expensive.
     """
 
     def test_filenames_not_truncated(self, stubbed_vocoder):
         """
         We limit the file name's length to at most BASENAME_MAX_LENGTH in the CLI,
-        but the callback does not truncate the basenames passed to it
+        but the writer does not truncate the basenames passed to it
         """
         with TemporaryDirectory() as tmp_dir:
             tmp_dir = Path(tmp_dir)
@@ -382,7 +382,7 @@ class TestWritingWav(WritingTestBase):
     def test_simple_filenames(self, stubbed_vocoder):
         """
         With simple_filenames=True, only the basename and extension are used,
-        even though the wav callback embeds extra info (v_ckpt=...) into
+        even though the wav writer embeds extra info (v_ckpt=...) into
         file_extension after __init__.
         """
         with TemporaryDirectory() as tmp_dir:

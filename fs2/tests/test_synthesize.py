@@ -73,7 +73,7 @@ class TestSynthesizeHelper:
             speaker=None,
             duration_control=1.0,
             global_step=5,
-            output_type=[SynthesizeOutputFormats.spec],
+            output_types=[SynthesizeOutputFormats.spec],
             text_representation=DatasetTextRepresentation.characters,
             devices="1",
             device=torch.device("cpu"),
@@ -118,7 +118,7 @@ class TestSynthesizeHelper:
 
     def test_writers_driven_directly(self, model, tmp_path):
         """write_batch is called once per batch, finalize once at the end"""
-        spec_writer_class = prediction_writing_callback.PredictionWritingSpecCallback
+        spec_writer_class = prediction_writing_callback.SpecPredictionWriter
         with (
             patch.object(spec_writer_class, "write_batch") as mock_write_batch,
             patch.object(spec_writer_class, "finalize") as mock_finalize,
