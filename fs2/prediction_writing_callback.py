@@ -146,22 +146,22 @@ class OutputWriter:
     def finalize(self) -> None:
         """Called once after the last batch has been processed."""
 
-    def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
+    def on_predict_batch_end(
         self,
-        _trainer,
-        _pl_module,
+        trainer,
+        pl_module,
         outputs: dict[str, torch.Tensor | None],
         batch: dict[str, Any],
-        _batch_idx: int,
-        _dataloader_idx: int = 0,
-    ):
+        batch_idx: int,
+        dataloader_idx: int = 0,
+    ) -> None:
         self.write_batch(outputs, batch)
 
-    def on_predict_epoch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
+    def on_predict_epoch_end(
         self,
-        _trainer,
-        _pl_module,
-    ):
+        trainer,
+        pl_module,
+    ) -> None:
         self.finalize()
 
 
