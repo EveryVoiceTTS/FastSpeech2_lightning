@@ -14,7 +14,7 @@ from pydub import AudioSegment
 from pympi import TextGrid
 
 from ..config import FastSpeech2Config, FastSpeech2TrainingConfig
-from ..prediction_writing_callback import get_synthesis_output_writers
+from ..prediction_writers import get_synthesis_output_writers
 
 
 def run_batch_end(writer, outputs, batch, _idx):

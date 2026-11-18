@@ -10,7 +10,7 @@ from everyvoice.config.type_definitions import SynthesizeOutputFormats
 from pympi import TextGrid
 
 from ..config import FastSpeech2Config, FastSpeech2TrainingConfig
-from ..prediction_writing_callback import get_synthesis_output_writers
+from ..prediction_writers import get_synthesis_output_writers
 
 try:
     # Accelerate the failing for fetching bundles online, since we don't

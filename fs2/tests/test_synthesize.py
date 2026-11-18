@@ -9,7 +9,7 @@ from everyvoice.config.type_definitions import (
     SynthesizeOutputFormats,
 )
 
-from .. import api, prediction_writing_callback
+from .. import api, prediction_writers
 from ..core import synthesize as core_synthesize
 from ..core.synthesize import iter_synthesis, synthesize_helper
 
@@ -118,7 +118,7 @@ class TestSynthesizeHelper:
 
     def test_writers_driven_directly(self, model, tmp_path):
         """write_batch is called once per batch, finalize once at the end"""
-        spec_writer_class = prediction_writing_callback.SpecPredictionWriter
+        spec_writer_class = prediction_writers.SpecPredictionWriter
         with (
             patch.object(spec_writer_class, "write_batch") as mock_write_batch,
             patch.object(spec_writer_class, "finalize") as mock_finalize,

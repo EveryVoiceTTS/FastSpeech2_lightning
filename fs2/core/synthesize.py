@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from torch.utils.data import DataLoader
 
     from ..model import FastSpeech2, FastSpeech2Config
-    from ..prediction_writing_callback import OutputWriter
+    from ..prediction_writers import OutputWriter
 
 
 def validate_data_keys_with_model_keys(
@@ -532,7 +532,7 @@ def synthesize_helper(
     model.config.training.batch_size = batch_size
     model.config.training.train_data_workers = num_workers
 
-    from ..prediction_writing_callback import get_synthesis_output_writers
+    from ..prediction_writers import get_synthesis_output_writers
 
     writers = get_synthesis_output_writers(
         output_types=output_types,
