@@ -201,11 +201,23 @@ class PostNet(nn.Module):
             )
         )
 
-    def forward(self, x):
+    def forward(self, x, mask=None):
+        """
+        Args:
+            x: shape `(B, T, n_mel_channels)`
+            mask: optional, shape `(B, T)`, true or 1 at valid (non-padded) frames.
+                When given, padded frames are zeroed before each convolution, so
+                padding doesn't leak into the output for the valid frames.
+        """
         x = x.contiguous().transpose(1, 2)
+        frame_mask = None if mask is None else mask.unsqueeze(1).to(x.dtype)
 
         for i in range(len(self.convolutions) - 1):
+            if frame_mask is not None:
+                x = x * frame_mask
             x = F.dropout(torch.tanh(self.convolutions[i](x)), 0.5, self.training)
+        if frame_mask is not None:
+            x = x * frame_mask
         x = F.dropout(self.convolutions[-1](x), 0.5, self.training)
 
         x = x.contiguous().transpose(1, 2)

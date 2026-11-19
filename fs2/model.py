@@ -20,9 +20,9 @@ from everyvoice.text.utils import get_symbols_from_checkpoint_symbol_dict, symbo
 from everyvoice.utils import pydantic_validation_error_shortener
 from everyvoice.utils.heavy import expand
 from torch import nn
-from torchaudio.models import Conformer
 
 from .config import FastSpeech2Config
+from .conformer import MaskedConformer
 from .gst.model import StyleEncoder
 from .layers import PositionalEmbedding, PostNet
 from .loss import FastSpeech2Loss
@@ -132,7 +132,7 @@ class FastSpeech2(pl.LightningModule):
         )
         if self.config.model.use_global_style_token_module:
             self.gst = StyleEncoder(idim=self.config.preprocessing.audio.n_mels)
-        self.encoder = Conformer(
+        self.encoder = MaskedConformer(
             input_dim=self.config.model.encoder.input_dim,
             num_heads=self.config.model.encoder.heads,
             ffn_dim=self.config.model.encoder.feedforward_dim,
@@ -149,7 +149,7 @@ class FastSpeech2(pl.LightningModule):
         else:
             self.variance_adaptor = VarianceAdaptor(self.config, self.stats)
 
-        self.decoder = Conformer(
+        self.decoder = MaskedConformer(
             input_dim=self.config.model.decoder.input_dim,
             num_heads=self.config.model.decoder.heads,
             ffn_dim=self.config.model.decoder.feedforward_dim,
@@ -286,7 +286,9 @@ class FastSpeech2(pl.LightningModule):
         # Postnet
         postnet_output = None
         if self.config.model.use_postnet:
-            postnet_output = output + self.postnet(output)
+            postnet_output = output + self.postnet(
+                output, mask=variance_adaptor_out["target_mask"]
+            )
 
         return {
             "output": output,
