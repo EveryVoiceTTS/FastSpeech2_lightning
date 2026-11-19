@@ -1,7 +1,8 @@
 import sys
-from enum import Enum
+from typing import Annotated
 
 import typer
+from everyvoice.base_cli import make_enum
 from everyvoice.base_cli.interfaces import preprocess_base_command_interface
 from everyvoice.exceptions import EveryVoiceError
 from loguru import logger
@@ -9,27 +10,26 @@ from merge_args import merge_args
 
 from .. import core
 
-PreprocessCategories = Enum(  # type: ignore[misc]
-    "PreprocessCategories",
-    {category: category for category in core.PREPROCESS_CATEGORIES},
-    type=str,
-)
-
 
 @merge_args(preprocess_base_command_interface)
 def preprocess(
-    compute_stats: bool = typer.Option(
-        True, "--stats/--no-stats", "-S", help="Calculate stats for energy and pitch"
-    ),
-    steps: list[PreprocessCategories] = typer.Option(
-        [cat.value for cat in PreprocessCategories],
-        "-s",
-        "--steps",
-        metavar="<step>",
-        help="Which steps of the preprocessor to use. If none are provided, all steps will be performed. One of: '**"
-        + "**', '**".join(step.value for step in PreprocessCategories)
-        + "**'",
-    ),
+    compute_stats: Annotated[
+        bool,
+        typer.Option(
+            "--stats/--no-stats", "-S", help="Calculate stats for energy and pitch"
+        ),
+    ] = True,
+    steps: Annotated[
+        list[make_enum(core.PREPROCESS_CATEGORIES)],  # type: ignore[valid-type]
+        typer.Option(
+            "-s",
+            "--steps",
+            metavar="<step>",
+            help="Which steps of the preprocessor to use. If none are provided, all steps will be performed. One of: '**"
+            + "**', '**".join(core.PREPROCESS_CATEGORIES)
+            + "**'",
+        ),
+    ] = core.PREPROCESS_CATEGORIES,
     **kwargs,
 ):
     """Preprocess data for text-to-spec (FastSpeech2) training
