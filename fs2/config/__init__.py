@@ -25,7 +25,7 @@ from pydantic import (
 )
 
 # FastSpeech2Config's latest version number
-LATEST_VERSION: str = "1.1"
+LATEST_VERSION: str = "1.2"
 
 
 class ConformerConfig(ConfigModel):
@@ -44,6 +44,10 @@ class ConformerConfig(ConfigModel):
     conv_kernel_size: int = Field(
         default=9,
         description="The size of the kernel in each convoluational layer of the Conformer.",
+    )
+    depthwise: bool = Field(
+        default=True,
+        description="Whether the feedforward modules use depthwise separable convolutions (see Pine et al. 2022: https://aclanthology.org/2022.acl-long.507/) instead of position-wise linear layers.",
     )
     dropout: float = Field(default=0.2, description="The amount of dropout to apply.")
 
@@ -277,25 +281,9 @@ class FastSpeech2Config(BaseModelWithContact):
         default=None, description="The path of a text configuration file."
     )
 
-    @model_validator(mode="before")  # type: ignore
-    def load_partials(self: dict[Any, Any], info: ValidationInfo):  # type: ignore[misc]
-        config_path = (
-            info.context.get("config_path", None) if info.context is not None else None
-        )
-        return load_partials(
-            self,
-            ("model", "training", "preprocessing", "text"),
-            config_path=config_path,
-        )
-
-    @staticmethod
-    def load_config_from_path(path: Path) -> "FastSpeech2Config":
-        """Load a config from a path"""
-        config = load_config_from_json_or_yaml_path(path)
-        with init_context({"config_path": path}):
-            config = FastSpeech2Config(**config)
-        return config
-
+    # NOTE: pydantic runs "before" model validators in reverse order of
+    # definition, so defining this one before load_partials means it upgrades
+    # the config after any partial config files have been merged in.
     @model_validator(mode="before")
     @classmethod
     def check_and_upgrade_checkpoint(cls, data: Any) -> Any:
@@ -314,6 +302,39 @@ class FastSpeech2Config(BaseModelWithContact):
             # Converting to 1.0 just requires setting the VERSION field
             data["VERSION"] = "1.0"
 
+        # 1.2 made the Conformer feedforward modules configurable, defaulting
+        # to depthwise separable convolutions. Configs from before 1.2 that
+        # spell out an encoder or decoder describe position-wise feedforward
+        # modules.
+        if ckpt_version < Version("1.2"):
+            data = {**data, "VERSION": "1.2"}
+            model = data.get("model")
+            if isinstance(model, dict):
+                model = dict(model)
+                for name in ("encoder", "decoder"):
+                    if isinstance(model.get(name), dict):
+                        model[name] = {"depthwise": False, **model[name]}
+                data["model"] = model
+
         return data
+
+    @model_validator(mode="before")  # type: ignore
+    def load_partials(self: dict[Any, Any], info: ValidationInfo):  # type: ignore[misc]
+        config_path = (
+            info.context.get("config_path", None) if info.context is not None else None
+        )
+        return load_partials(
+            self,
+            ("model", "training", "preprocessing", "text"),
+            config_path=config_path,
+        )
+
+    @staticmethod
+    def load_config_from_path(path: Path) -> "FastSpeech2Config":
+        """Load a config from a path"""
+        config = load_config_from_json_or_yaml_path(path)
+        with init_context({"config_path": path}):
+            config = FastSpeech2Config(**config)
+        return config
 
     # INPUT_TODO: initialize text with union of symbols from dataset

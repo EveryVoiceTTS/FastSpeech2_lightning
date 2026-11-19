@@ -21,8 +21,8 @@ from everyvoice.utils import pydantic_validation_error_shortener
 from everyvoice.utils.heavy import expand
 from torch import nn
 
-from .config import FastSpeech2Config
-from .conformer import MaskedConformer
+from .config import ConformerConfig, FastSpeech2Config
+from .conformer import Conformer
 from .gst.model import StyleEncoder
 from .layers import PositionalEmbedding, PostNet
 from .loss import FastSpeech2Loss
@@ -73,7 +73,7 @@ def _remap_embedding_weights(
 
 
 class FastSpeech2(pl.LightningModule):
-    _VERSION: str = "1.3"
+    _VERSION: str = "1.4"
 
     def __init__(
         self,
@@ -132,14 +132,7 @@ class FastSpeech2(pl.LightningModule):
         )
         if self.config.model.use_global_style_token_module:
             self.gst = StyleEncoder(idim=self.config.preprocessing.audio.n_mels)
-        self.encoder = MaskedConformer(
-            input_dim=self.config.model.encoder.input_dim,
-            num_heads=self.config.model.encoder.heads,
-            ffn_dim=self.config.model.encoder.feedforward_dim,
-            num_layers=self.config.model.encoder.layers,
-            depthwise_conv_kernel_size=self.config.model.encoder.conv_kernel_size,
-            dropout=self.config.model.encoder.dropout,
-        )
+        self.encoder = self._build_conformer(self.config.model.encoder)
         if self.stats is None:
             logger.error(
                 """Your model doesn't have a value for self.stats either because the file is missing or the checkpoint didn't save them.
@@ -149,14 +142,7 @@ class FastSpeech2(pl.LightningModule):
         else:
             self.variance_adaptor = VarianceAdaptor(self.config, self.stats)
 
-        self.decoder = MaskedConformer(
-            input_dim=self.config.model.decoder.input_dim,
-            num_heads=self.config.model.decoder.heads,
-            ffn_dim=self.config.model.decoder.feedforward_dim,
-            num_layers=self.config.model.decoder.layers,
-            depthwise_conv_kernel_size=self.config.model.decoder.conv_kernel_size,
-            dropout=self.config.model.decoder.dropout,
-        )
+        self.decoder = self._build_conformer(self.config.model.decoder)
 
         self.mel_linear = nn.Linear(
             self.config.model.decoder.input_dim, self.config.preprocessing.audio.n_mels
@@ -189,6 +175,18 @@ class FastSpeech2(pl.LightningModule):
             self.language_embedding = nn.Embedding(
                 len(self.lang2id), self.config.model.encoder.input_dim
             )
+
+    @staticmethod
+    def _build_conformer(config: ConformerConfig) -> Conformer:
+        return Conformer(
+            input_dim=config.input_dim,
+            num_heads=config.heads,
+            ffn_dim=config.feedforward_dim,
+            num_layers=config.layers,
+            depthwise_conv_kernel_size=config.conv_kernel_size,
+            dropout=config.dropout,
+            depthwise_ffn=config.depthwise,
+        )
 
     def forward(self, batch, control=InferenceControl(), inference=False):
         # Add duration control. TODO: currently we just take the first item of the batch
@@ -406,6 +404,12 @@ class FastSpeech2(pl.LightningModule):
                 "We have attempted to update your checkpoint automatically, but if you encounter issues, "
                 "please re-train your model or downgrade everyvoice to the version that was used to train your model."
             )
+
+        # Version 1.4 added depthwise separable feedforward modules to the
+        # Conformers. Lightning builds the model from the checkpoint's config
+        # before calling on_load_checkpoint, so this change is handled by the
+        # config upgrade to FastSpeech2Config version 1.2, which keeps
+        # position-wise feedforward modules for earlier checkpoints.
 
         # From 1.3 onward, checkpoints carry their own realized, ordered symbol
         # list (see on_save_checkpoint), so reconciling against a live-recomputed
