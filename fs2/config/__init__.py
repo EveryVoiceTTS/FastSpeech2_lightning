@@ -144,10 +144,6 @@ class FastSpeech2ModelConfig(ConfigModel):
         default=True,
         description="Advanced. Whether to jointly learn alignments using monotonic alignment search module (See Badlani et. al. 2021: https://arxiv.org/abs/2108.10447). If set to False, you will have to provide text/audio alignments separately in 'preprocessed/duration' before training a text-to-spec (feature prediction) model.",
     )
-    use_global_style_token_module: bool = Field(
-        default=False,
-        description="Whether to use the Global Style Token (GST) module from Style Tokens: Unsupervised Style Modeling, Control and Transfer in End-to-End Speech Synthesis (https://arxiv.org/abs/1803.09017)",
-    )
     max_length: int = Field(
         default=1000,
         description="The maximum length (i.e. number of symbols) for text inputs.",
@@ -302,15 +298,21 @@ class FastSpeech2Config(BaseModelWithContact):
             # Converting to 1.0 just requires setting the VERSION field
             data["VERSION"] = "1.0"
 
-        # 1.2 made the Conformer feedforward modules configurable, defaulting
-        # to depthwise separable convolutions. Configs from before 1.2 that
-        # spell out an encoder or decoder describe position-wise feedforward
-        # modules.
+        # 1.2 removed the Global Style Token module and made the Conformer
+        # feedforward modules configurable, defaulting to depthwise separable
+        # convolutions. Configs from before 1.2 that spell out an encoder or
+        # decoder describe position-wise feedforward modules.
         if ckpt_version < Version("1.2"):
             data = {**data, "VERSION": "1.2"}
             model = data.get("model")
             if isinstance(model, dict):
                 model = dict(model)
+                if model.pop("use_global_style_token_module", False):
+                    raise ValueError(
+                        "The Global Style Token (GST) module is no longer supported. "
+                        "Please re-train your model without it, or downgrade to everyvoice<=0.5.0 "
+                        "to use a model that was trained with it."
+                    )
                 for name in ("encoder", "decoder"):
                     if isinstance(model.get(name), dict):
                         model[name] = {"depthwise": False, **model[name]}

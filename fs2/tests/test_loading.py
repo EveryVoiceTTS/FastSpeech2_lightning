@@ -288,7 +288,7 @@ class TestLoadingModel:
     def test_load_checkpoint_from_before_1_4(self):
         """
         Checkpoints from before version 1.4 have position-wise feedforward
-        modules.
+        modules, and may have the GST module disabled in their config.
         """
         import torch
         from pytorch_lightning import Trainer
@@ -307,6 +307,7 @@ class TestLoadingModel:
             config["VERSION"] = "1.1"
             del config["model"]["encoder"]["depthwise"]
             del config["model"]["decoder"]["depthwise"]
+            config["model"]["use_global_style_token_module"] = False
             torch.save(m, ckpt_fn)
 
             loaded = FastSpeech2.load_from_checkpoint(ckpt_fn)
@@ -360,7 +361,8 @@ class TestLoadingConfig:
     def test_config_upgrade_to_1_2(self):
         """
         Configs from before 1.2 that spell out the encoder and decoder get
-        position-wise feedforward modules. New configs get depthwise ones.
+        position-wise feedforward modules, and may disable the removed GST
+        module, but not enable it. New configs get depthwise ones.
         """
         assert FastSpeech2Config(contact=TEST_CONTACT).model.encoder.depthwise
         arguments = FastSpeech2Config.load_config_from_path(
@@ -369,9 +371,13 @@ class TestLoadingConfig:
         arguments["VERSION"] = "1.1"
         for name in ("encoder", "decoder"):
             del arguments["model"][name]["depthwise"]
+        arguments["model"]["use_global_style_token_module"] = False
         c = FastSpeech2Config(**arguments)
         assert c.VERSION == "1.2"
         assert not c.model.encoder.depthwise and not c.model.decoder.depthwise
+        arguments["model"]["use_global_style_token_module"] = True
+        with raises(ValueError, match=r"no longer supported"):
+            FastSpeech2Config(**arguments)
 
 
 class StubModelWithConfigOnly:

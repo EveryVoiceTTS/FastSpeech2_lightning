@@ -23,7 +23,6 @@ from torch import nn
 
 from .config import ConformerConfig, FastSpeech2Config
 from .conformer import Conformer
-from .gst.model import StyleEncoder
 from .layers import PositionalEmbedding, PostNet
 from .loss import FastSpeech2Loss
 from .noam import NoamLR
@@ -130,8 +129,6 @@ class FastSpeech2(pl.LightningModule):
         self.position_embedding = PositionalEmbedding(
             self.config.model.encoder.input_dim
         )
-        if self.config.model.use_global_style_token_module:
-            self.gst = StyleEncoder(idim=self.config.preprocessing.audio.n_mels)
         self.encoder = self._build_conformer(self.config.model.encoder)
         if self.stats is None:
             logger.error(
@@ -229,16 +226,6 @@ class FastSpeech2(pl.LightningModule):
 
         # Encoder
         x, _ = self.encoder(inputs + enc_pos_emb, src_lens)  # expects B, T, K
-
-        # Add Global Style Token Embedding
-        if self.config.model.use_global_style_token_module:
-            if inference and torch.is_tensor(batch["mel_style_reference"]):
-                style_embs = self.gst(batch["mel_style_reference"])
-            elif inference and not teacher_forcing:
-                style_embs = self.gst.condition_on_gst_tokens(batch["text"].size(0))
-            else:
-                style_embs = self.gst(batch["mel"])
-            x = x + style_embs.unsqueeze(1)
 
         # Speaker Embedding
         if self.config.model.multispeaker and self.speaker_embedding:
@@ -406,10 +393,11 @@ class FastSpeech2(pl.LightningModule):
             )
 
         # Version 1.4 added depthwise separable feedforward modules to the
-        # Conformers. Lightning builds the model from the checkpoint's config
-        # before calling on_load_checkpoint, so this change is handled by the
-        # config upgrade to FastSpeech2Config version 1.2, which keeps
-        # position-wise feedforward modules for earlier checkpoints.
+        # Conformers and removed the GST module. Lightning builds the model
+        # from the checkpoint's config before calling on_load_checkpoint, so
+        # those changes are handled by the config upgrade to FastSpeech2Config
+        # version 1.2, which keeps position-wise feedforward modules for
+        # earlier checkpoints.
 
         # From 1.3 onward, checkpoints carry their own realized, ordered symbol
         # list (see on_save_checkpoint), so reconciling against a live-recomputed
