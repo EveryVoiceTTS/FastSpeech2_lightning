@@ -10,7 +10,7 @@ from everyvoice.text.utils import get_symbols_from_checkpoint_symbol_dict, symbo
 from pytest import raises
 
 from ..cli.synthesize import load_data_from_filelist
-from ..config import FastSpeech2Config
+from ..config import LATEST_VERSION, FastSpeech2Config
 from ..model import FastSpeech2
 from ..type_definitions_heavy import Stats, StatsInfo
 
@@ -285,6 +285,40 @@ class TestLoadingModel:
         assert torch.equal(new_weights[a_index], old_weights[0])
         assert torch.equal(new_weights[b_index], torch.zeros(embedding_dim))
 
+    def test_load_checkpoint_from_before_1_4(self):
+        """
+        Checkpoints from before version 1.4 have position-wise feedforward
+        modules, and may have the GST module disabled in their config.
+        """
+        import torch
+        from pytorch_lightning import Trainer
+
+        from ..conformer import _FeedForwardModule
+
+        with tempfile.TemporaryDirectory() as tmpdir_str:
+            model = self._basic_fs2_model()
+            trainer = Trainer(default_root_dir=tmpdir_str, logger=False)
+            trainer.strategy.connect(model)
+            ckpt_fn = tmpdir_str + "/checkpoint.ckpt"
+            trainer.save_checkpoint(ckpt_fn)
+            m = torch.load(ckpt_fn, weights_only=True)
+            m["model_info"]["version"] = "1.3"
+            config = m["hyper_parameters"]["config"]
+            config["VERSION"] = "1.1"
+            del config["model"]["encoder"]["depthwise"]
+            del config["model"]["decoder"]["depthwise"]
+            config["model"]["use_global_style_token_module"] = False
+            torch.save(m, ckpt_fn)
+
+            loaded = FastSpeech2.load_from_checkpoint(ckpt_fn)
+            assert loaded.config.VERSION == "1.2"
+            for name in ("encoder", "decoder"):
+                assert not getattr(loaded.config.model, name).depthwise
+                layer = getattr(loaded, name).conformer_layers[0]
+                assert isinstance(layer.ffn1, _FeedForwardModule)
+            for key, value in model.state_dict().items():
+                assert torch.equal(loaded.state_dict()[key], value), key
+
 
 class TestLoadingConfig:
     """Test loading configurations"""
@@ -294,7 +328,8 @@ class TestLoadingConfig:
 
     def test_config_versionless(self):
         """
-        Validate that we can load a config that doesn't have a `VERSION` as a version 1.0 config.
+        Validate that we can load a config that doesn't have a `VERSION`, and
+        that it is upgraded to the latest version.
         """
 
         arguments = FastSpeech2Config.load_config_from_path(
@@ -304,7 +339,7 @@ class TestLoadingConfig:
 
         assert "VERSION" not in arguments
         c = FastSpeech2Config(**arguments)
-        assert c.VERSION == "1.0"
+        assert c.VERSION == LATEST_VERSION
 
     def test_config_newer_version(self):
         """
@@ -322,6 +357,27 @@ class TestLoadingConfig:
             match=r"Your config was created with a newer version of EveryVoice, please update your software.",
         ):
             FastSpeech2Config(**reference.model_dump())
+
+    def test_config_upgrade_to_1_2(self):
+        """
+        Configs from before 1.2 that spell out the encoder and decoder get
+        position-wise feedforward modules, and may disable the removed GST
+        module, but not enable it. New configs get depthwise ones.
+        """
+        assert FastSpeech2Config(contact=TEST_CONTACT).model.encoder.depthwise
+        arguments = FastSpeech2Config.load_config_from_path(
+            self.config_dir / f"{TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX}.yaml"
+        ).model_dump()
+        arguments["VERSION"] = "1.1"
+        for name in ("encoder", "decoder"):
+            del arguments["model"][name]["depthwise"]
+        arguments["model"]["use_global_style_token_module"] = False
+        c = FastSpeech2Config(**arguments)
+        assert c.VERSION == "1.2"
+        assert not c.model.encoder.depthwise and not c.model.decoder.depthwise
+        arguments["model"]["use_global_style_token_module"] = True
+        with raises(ValueError, match=r"no longer supported"):
+            FastSpeech2Config(**arguments)
 
 
 class StubModelWithConfigOnly:

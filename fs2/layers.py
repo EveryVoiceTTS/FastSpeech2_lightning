@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from .blocks import ConvNorm, DepthwiseSeparableConv1d
+from .blocks import ConvNorm, DepthwiseSeparableConv1d, MaskedBatchNorm1d
 from .utils.heavy import make_positions
 
 
@@ -166,7 +166,7 @@ class PostNet(nn.Module):
                     dilation=1,
                     w_init_gain="tanh",
                 ),
-                nn.BatchNorm1d(postnet_embedding_dim),
+                MaskedBatchNorm1d(postnet_embedding_dim),
             )
         )
 
@@ -182,7 +182,7 @@ class PostNet(nn.Module):
                         dilation=1,
                         w_init_gain="tanh",
                     ),
-                    nn.BatchNorm1d(postnet_embedding_dim),
+                    MaskedBatchNorm1d(postnet_embedding_dim),
                 )
             )
 
@@ -197,7 +197,7 @@ class PostNet(nn.Module):
                     dilation=1,
                     w_init_gain="linear",
                 ),
-                nn.BatchNorm1d(n_mel_channels),
+                MaskedBatchNorm1d(n_mel_channels),
             )
         )
 
@@ -206,19 +206,22 @@ class PostNet(nn.Module):
         Args:
             x: shape `(B, T, n_mel_channels)`
             mask: optional, shape `(B, T)`, true or 1 at valid (non-padded) frames.
-                When given, padded frames are zeroed before each convolution, so
-                padding doesn't leak into the output for the valid frames.
+                When given, padded frames are zeroed before each convolution and
+                left out of the batch norm statistics, so padding doesn't leak
+                into the output for the valid frames.
         """
         x = x.contiguous().transpose(1, 2)
         frame_mask = None if mask is None else mask.unsqueeze(1).to(x.dtype)
 
-        for i in range(len(self.convolutions) - 1):
+        def conv_norm(i: int, x: torch.Tensor) -> torch.Tensor:
+            conv, norm = self.convolutions[i]
             if frame_mask is not None:
                 x = x * frame_mask
-            x = F.dropout(torch.tanh(self.convolutions[i](x)), 0.5, self.training)
-        if frame_mask is not None:
-            x = x * frame_mask
-        x = F.dropout(self.convolutions[-1](x), 0.5, self.training)
+            return norm(conv(x), mask)
+
+        for i in range(len(self.convolutions) - 1):
+            x = F.dropout(torch.tanh(conv_norm(i, x)), 0.5, self.training)
+        x = F.dropout(conv_norm(len(self.convolutions) - 1, x), 0.5, self.training)
 
         x = x.contiguous().transpose(1, 2)
         return x

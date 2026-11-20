@@ -9,10 +9,11 @@ import torch
 from everyvoice.config.text_config import Symbols, TextConfig
 from everyvoice.tests.stubs import TEST_CONTACT
 from torch.utils.data import DataLoader
-from torchaudio.models import Conformer
+from torchaudio.models import Conformer as TorchaudioConformer
 
+from ..blocks import MaskedBatchNorm1d
 from ..config import FastSpeech2Config
-from ..conformer import MaskedConformer
+from ..conformer import Conformer
 from ..dataset import FastSpeech2DataModule, FastSpeechDataset
 from ..layers import PostNet
 from ..model import FastSpeech2
@@ -34,7 +35,9 @@ def pad_with_garbage(short: torch.Tensor, long: torch.Tensor) -> torch.Tensor:
     return torch.stack([torch.cat([short, padding]), long])
 
 
-def make_conformers(seed=0) -> tuple[Conformer, MaskedConformer]:
+def make_conformers(
+    seed=0, depthwise_ffn=False
+) -> tuple[TorchaudioConformer, Conformer]:
     kwargs: dict[str, Any] = dict(
         input_dim=DIM,
         num_heads=2,
@@ -43,9 +46,9 @@ def make_conformers(seed=0) -> tuple[Conformer, MaskedConformer]:
         depthwise_conv_kernel_size=3,
     )
     torch.manual_seed(seed)
-    conformer = Conformer(**kwargs).eval()
+    conformer = TorchaudioConformer(**kwargs).eval()
     torch.manual_seed(seed)
-    masked = MaskedConformer(**kwargs).eval()
+    masked = Conformer(**kwargs, depthwise_ffn=depthwise_ffn).eval()
     return conformer, masked
 
 
@@ -65,8 +68,9 @@ def test_masked_conformer_is_a_drop_in_replacement():
         torch.testing.assert_close(masked(x, lengths)[0], conformer(x, lengths)[0])
 
 
-def test_masked_conformer_ignores_padding():
-    conformer, masked = make_conformers()
+@pytest.mark.parametrize("depthwise_ffn", [False, True])
+def test_masked_conformer_ignores_padding(depthwise_ffn):
+    conformer, masked = make_conformers(depthwise_ffn=depthwise_ffn)
     short, long = torch.randn(5, DIM), torch.randn(12, DIM)
     batch = pad_with_garbage(short, long)
     lengths = torch.tensor([5, 12])
@@ -78,6 +82,31 @@ def test_masked_conformer_ignores_padding():
         ref_alone = conformer(short.unsqueeze(0), torch.tensor([5]))[0][0]
         ref_batched = conformer(batch, lengths)[0][0, :5]
         assert not torch.allclose(ref_batched, ref_alone)
+
+
+@pytest.mark.parametrize("depthwise_ffn", [False, True])
+def test_masked_conformer_training_ignores_padding(depthwise_ffn):
+    # In training mode, batch norm uses batch statistics: how much padding the
+    # batch has must change neither the outputs nor the running statistics.
+    short, long = torch.randn(5, DIM), torch.randn(12, DIM)
+    lengths = torch.tensor([5, 12])
+    batch = pad_with_garbage(short, long)
+    extra_padding = torch.randn(2, 8, DIM)
+    batches = [batch, torch.cat([batch, extra_padding], dim=1)]
+    outputs, running_stats = [], []
+    for batch in batches:
+        _, masked = make_conformers(depthwise_ffn=depthwise_ffn)
+        masked.train()
+        with torch.no_grad():
+            output = masked(batch, lengths)[0]
+        outputs.append(torch.cat([output[0, :5], output[1, :12]]))
+        norms = [layer.conv_module.sequential[3] for layer in masked.conformer_layers]
+        running_stats.append(
+            [norm.running_mean for norm in norms] + [norm.running_var for norm in norms]
+        )
+    torch.testing.assert_close(outputs[0], outputs[1])
+    for first, second in zip(*running_stats):
+        torch.testing.assert_close(first, second)
 
 
 def test_variance_predictor_ignores_padding():
@@ -106,6 +135,26 @@ def test_postnet_ignores_padding():
         # without a mask, the padding leaks into the valid frames
         unmasked = postnet(pad_with_garbage(short, long))
         assert not torch.allclose(unmasked[0, :5], alone)
+
+
+def test_masked_batch_norm_ignores_padding():
+    short, long = torch.randn(5, DIM) * 3 + 1, torch.randn(12, DIM)
+    batch = pad_with_garbage(short, long).transpose(1, 2)  # (B, C, T)
+    mask = lengths_to_mask([5, 12])
+    valid = torch.cat([short, long]).T.unsqueeze(0)  # (1, C, 5 + 12)
+
+    reference = torch.nn.BatchNorm1d(DIM).train()
+    masked = MaskedBatchNorm1d(DIM).train()
+    expected = reference(valid)
+    output = masked(batch, mask)
+    # Same normalization and running stats as BatchNorm1d on the valid
+    # positions alone, whatever the padding holds.
+    torch.testing.assert_close(output[0, :, :5], expected[0, :, :5])
+    torch.testing.assert_close(output[1], expected[0, :, 5:])
+    torch.testing.assert_close(masked.running_mean, reference.running_mean)
+    torch.testing.assert_close(masked.running_var, reference.running_var)
+    # Without a mask, it's BatchNorm1d.
+    torch.testing.assert_close(masked(batch), reference(batch))
 
 
 @pytest.fixture

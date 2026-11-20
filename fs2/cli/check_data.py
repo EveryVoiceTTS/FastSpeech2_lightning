@@ -37,14 +37,6 @@ def check_data_command(  # noqa: C901
             help="The directory where your synthesized audio should be written",
         ),
     ] = Path("checked_data"),
-    style_reference: Annotated[
-        Path | None,
-        typer_file_option(
-            "--style-reference",
-            "-S",
-            help="The path to an audio file containing a style reference. Your text-to-spec must have been trained with the global style token module to use this feature.",
-        ),
-    ] = None,
     accelerator: str = typer.Option("auto", "--accelerator", "-a"),
     devices: str = typer.Option(
         "auto", "--devices", "-d", help="The number of GPUs to use"
@@ -195,7 +187,6 @@ def check_data_command(  # noqa: C901
         synthesize_helper(
             model=model,
             texts=None,
-            style_reference=style_reference,
             language=None,
             speaker=None,
             duration_control=1.0,

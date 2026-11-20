@@ -166,7 +166,6 @@ class TestPrepareSynthesizeData:
             language="foo",
             speaker="bar",
             duration_control=1.0,
-            style_reference=None,
             filelist=Path(__file__).parent / "data/filelist.psv",
             model=MockModelForPrepare(),
             text_representation=DatasetTextRepresentation.characters,
@@ -183,7 +182,6 @@ class TestPrepareSynthesizeData:
             language="foo",
             speaker="bar",
             duration_control=1.0,
-            style_reference=None,
             filelist=Path(__file__).parent / "data/filelist.psv",
             model=MockModelForPrepare(),
             text_representation=DatasetTextRepresentation.characters,
@@ -200,7 +198,6 @@ class TestPrepareSynthesizeData:
             language=None,
             speaker=None,
             duration_control=1.0,
-            style_reference=None,
             filelist=Path(__file__).parent / "data/filelist.txt",
             model=MockModelForPrepare(),
             text_representation=DatasetTextRepresentation.characters,
@@ -225,7 +222,6 @@ class TestPrepareSynthesizeData:
             language="foo",
             speaker="bar",
             duration_control=1.0,
-            style_reference=None,
             filelist=Path(),  # Does not get used in this test
             model=MockModelForPrepare(),
             text_representation=DatasetTextRepresentation.characters,
@@ -249,7 +245,6 @@ class TestPrepareSynthesizeData:
             language="foo",
             speaker="bar",
             duration_control=1.0,
-            style_reference=None,
             filelist=Path(__file__).parent / "data/filelist.psv",
             model=MockModelForPrepare(
                 text_config=TextConfig(
