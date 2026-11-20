@@ -1,7 +1,6 @@
 from csv import DictReader
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import patch
 
 import pytest
 import torch
@@ -10,7 +9,7 @@ from everyvoice.config.type_definitions import SynthesizeOutputFormats
 from pympi import TextGrid
 
 from ..config import FastSpeech2Config, FastSpeech2TrainingConfig
-from ..prediction_writers import get_synthesis_output_writers
+from ..prediction_writers import OutputWriter, get_synthesis_output_writers
 
 try:
     # Accelerate the failing for fetching bundles online, since we don't
@@ -65,31 +64,33 @@ class WritingTestBase:
     }
 
 
-class TestCallbackHooks(WritingTestBase):
+class TestWriterClasses(WritingTestBase):
     """
-    The Lightning Callback hooks must delegate to write_batch() and finalize().
+    The writers are plain OutputWriters, driven directly, not Lightning callbacks.
     """
 
-    def test_hooks_delegate(self):
+    def test_output_writer_is_abstract(self):
+        with pytest.raises(TypeError):
+            OutputWriter()  # type: ignore[abstract]
+
+    def test_writers_are_not_callbacks(self):
+        from pytorch_lightning.callbacks import Callback
+
         with TemporaryDirectory() as tmp_dir:
             writers = get_synthesis_output_writers(
-                [SynthesizeOutputFormats.spec],
+                [SynthesizeOutputFormats.spec, SynthesizeOutputFormats.textgrid],
                 config=FastSpeech2Config(contact=self.contact),
                 global_step=77,
                 output_dir=Path(tmp_dir),
                 output_key=self.output_key,
                 device=torch.device("cpu"),
+                return_scores=True,
+                loss_fn=lambda *_: {},
             )
-            writer = next(iter(writers.values()))
-            with (
-                patch.object(writer, "write_batch") as mock_write_batch,
-                patch.object(writer, "finalize") as mock_finalize,
-            ):
-                writer.on_predict_batch_end(None, None, self.outputs, self.batch, 0, 0)
-                mock_write_batch.assert_called_once_with(self.outputs, self.batch)
-                mock_finalize.assert_not_called()
-                writer.on_predict_epoch_end(None, None)
-                mock_finalize.assert_called_once_with()
+            assert len(writers) == 3
+            for writer in writers.values():
+                assert isinstance(writer, OutputWriter)
+                assert not isinstance(writer, Callback)
 
 
 class TestScorer:

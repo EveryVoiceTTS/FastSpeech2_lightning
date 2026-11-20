@@ -4,6 +4,7 @@ writers using get_synthesis_output_writers() and how to use them with the
 synthesis generator API.
 """
 
+from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
 from csv import DictWriter
 from pathlib import Path
@@ -14,16 +15,13 @@ import numpy.typing as npt
 import torch
 import torchaudio
 from everyvoice import logger
-from everyvoice.base_cli.prediction_writing_callback import (
-    BasePredictionWritingCallback,
-)
+from everyvoice.base_cli.prediction_writer import BasePredictionWriter
 from everyvoice.config.type_definitions import SynthesizeOutputFormats
 from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import HiFiGANConfig
 from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.model import HiFiGAN
 from everyvoice.text.text_processor import TextProcessor
 from everyvoice.utils import resolve_chunked_basename
 from pympi import TextGrid
-from pytorch_lightning.callbacks import Callback
 from readalongs.api import (
     Token,
     convert_prealigned_text_to_offline_html,
@@ -127,45 +125,28 @@ def get_synthesis_output_writers(
     return writers
 
 
-class OutputWriter:
+class OutputWriter(ABC):
     """Common interface for the synthesis output writers.
 
-    Subclasses implement write_batch() and, if needed, finalize(). The
-    on_predict_*_end methods are Lightning Callback hooks that just delegate to
-    them, so the writers can be driven either by trainer.predict() or directly.
+    Subclasses implement write_batch() and, if needed, finalize(). The caller
+    passes every batch, in order, to write_batch(), then calls finalize() once.
     """
 
+    @abstractmethod
     def write_batch(
         self,
         outputs: dict[str, torch.Tensor | None],
         batch: dict[str, Any],
-    ) -> None:  # pragma: no cover
+    ) -> None:
         """Process one batch of model outputs, writing files as needed."""
-        raise NotImplementedError
 
     def finalize(self) -> None:
         """Called once after the last batch has been processed."""
 
-    def on_predict_batch_end(
-        self,
-        trainer,
-        pl_module,
-        outputs: dict[str, torch.Tensor | None],
-        batch: dict[str, Any],
-        batch_idx: int,
-        dataloader_idx: int = 0,
-    ) -> None:
-        self.write_batch(outputs, batch)
 
-    def on_predict_epoch_end(
-        self,
-        trainer,
-        pl_module,
-    ) -> None:
-        self.finalize()
+class PredictionWriterBase(BasePredictionWriter, OutputWriter):
+    """Output writer that writes one file per utterance, named by get_filename()."""
 
-
-class PredictionWriterBase(OutputWriter, BasePredictionWritingCallback):
     def __init__(
         self,
         config: FastSpeech2Config,
@@ -185,7 +166,7 @@ class PredictionWriterBase(OutputWriter, BasePredictionWritingCallback):
         self.config = config
 
 
-class LossWriter(OutputWriter, Callback):
+class LossWriter(OutputWriter):
     """
     This writer runs inference on a provided text-to-spec model and saves the resulting losses to disk.
     """
@@ -198,6 +179,7 @@ class LossWriter(OutputWriter, Callback):
         output_key: str,
         loss_fn: Callable[..., dict[str, torch.Tensor]],
     ):
+        super().__init__()
         self.global_step = global_step
         self.save_dir = output_dir
         self.output_key = output_key
