@@ -1,3 +1,9 @@
+"""
+TODO Once the synthesis generator API is written, document here how to get
+writers using get_synthesis_output_writers() and how to use them with the
+synthesis generator API.
+"""
+
 from collections.abc import Callable, Sequence
 from csv import DictWriter
 from pathlib import Path
@@ -52,7 +58,7 @@ def get_synthesis_output_writers(
     if return_scores:
         if loss_fn is None:
             raise ValueError("loss_fn is required to calculate scores.")
-        writers["score"] = ScorerWriter(
+        writers["score"] = LossWriter(
             config=config,
             global_step=global_step,
             output_dir=output_dir,
@@ -179,7 +185,7 @@ class PredictionWriterBase(OutputWriter, BasePredictionWritingCallback):
         self.config = config
 
 
-class ScorerWriter(OutputWriter, Callback):
+class LossWriter(OutputWriter, Callback):
     """
     This writer runs inference on a provided text-to-spec model and saves the resulting losses to disk.
     """

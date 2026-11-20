@@ -165,6 +165,9 @@ def synthesize(
         batch_size=batch_size,
         num_workers=num_workers,
     )
+    # TODO Let the user control the output device.
+    # TODO Make sure gradients are not accumulated during synthesis.
+    # TODO Test whether `with torch.no_grad():` is required here or if having it in iter_synthesis suffices.
     cpu = torch.device("cpu")
     for outputs, _batch in batch_generator:
         yield move_data_to_device(outputs, cpu)
