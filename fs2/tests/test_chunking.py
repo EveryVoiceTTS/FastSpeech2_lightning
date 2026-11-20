@@ -14,18 +14,11 @@ from pydub import AudioSegment
 from pympi import TextGrid
 
 from ..config import FastSpeech2Config, FastSpeech2TrainingConfig
-from ..prediction_writing_callback import get_synthesis_output_callbacks
+from ..prediction_writers import get_synthesis_output_writers
 
 
-def run_batch_end(writer, outputs, batch, idx):
-    writer.on_predict_batch_end(
-        _trainer=None,
-        _pl_module=None,
-        outputs=outputs,
-        batch=batch,
-        _batch_idx=idx,
-        _dataloader_idx=idx,
-    )
+def run_batch_end(writer, outputs, batch, _idx):
+    writer.write_batch(outputs, batch)
 
 
 class TestDuplicateFilename:
@@ -61,7 +54,7 @@ class TestDuplicateFilename:
             tmp_dir = Path(tmp_dir)
             vocoder, vocoder_path = stubbed_vocoder
 
-            writers = get_synthesis_output_callbacks(
+            writers = get_synthesis_output_writers(
                 [SynthesizeOutputFormats.wav],
                 config=FastSpeech2Config(
                     contact=self.contact,
@@ -96,7 +89,7 @@ TEXT_PROCESSOR = TextProcessor(TEXT_CONFIG)
 
 
 @pytest.fixture()
-def make_callbacks(tmp_path, stubbed_vocoder) -> Callable:
+def make_writers(tmp_path, stubbed_vocoder) -> Callable:
     vocoder, vocoder_path = stubbed_vocoder
     config = FastSpeech2Config(
         contact=ContactInformation(
@@ -106,7 +99,7 @@ def make_callbacks(tmp_path, stubbed_vocoder) -> Callable:
         text=TEXT_CONFIG,
     )
     return partial(
-        get_synthesis_output_callbacks,
+        get_synthesis_output_writers,
         config=config,
         device=torch.device("cpu"),
         global_step=77,
@@ -168,11 +161,11 @@ class TestWritingWav(ChunkingTestBase):
     Testing chunking when writing wav files.
     """
 
-    def test_wav_chunks(self, make_callbacks):
+    def test_wav_chunks(self, make_writers):
         """
         Tests the correctness of the output of .wavs for chunked text over multiple batches.
         """
-        writers = make_callbacks([SynthesizeOutputFormats.wav])
+        writers = make_writers([SynthesizeOutputFormats.wav])
         writer = next(iter(writers.values()))
 
         # Batch 1
@@ -210,11 +203,11 @@ class TestWritingWav(ChunkingTestBase):
 
 
 class TestWritingSpec(ChunkingTestBase):
-    def test_spec_chunks(self, make_callbacks):
+    def test_spec_chunks(self, make_writers):
         """
         Tests the correctness of the output of spectrograms for chunked text over multiple batches.
         """
-        writers = make_callbacks([SynthesizeOutputFormats.spec])
+        writers = make_writers([SynthesizeOutputFormats.spec])
         writer = next(iter(writers.values()))
 
         # Batch 1
@@ -246,11 +239,11 @@ class TestWritingSpec(ChunkingTestBase):
 
 
 class TestWritingTextGrid(ChunkingTestBase):
-    def test_textgrid_chunks(self, make_callbacks):
+    def test_textgrid_chunks(self, make_writers):
         """
         Tests the correctness of the output of TextGrid files for chunked text over multiple batches.
         """
-        writers = make_callbacks([SynthesizeOutputFormats.textgrid])
+        writers = make_writers([SynthesizeOutputFormats.textgrid])
         writer = next(iter(writers.values()))
 
         # Batch 1
@@ -297,8 +290,8 @@ class TestWritingTextGrid(ChunkingTestBase):
 
 
 class TestWritingReadAlongXML(ChunkingTestBase):
-    def test_writing_readalong(self, subtests, make_callbacks):
-        writers = make_callbacks([SynthesizeOutputFormats.readalong_xml])
+    def test_writing_readalong(self, subtests, make_writers):
+        writers = make_writers([SynthesizeOutputFormats.readalong_xml])
         writer = next(iter(writers.values()))
 
         # Batch 1
@@ -327,8 +320,8 @@ class TestWritingReadAlongXML(ChunkingTestBase):
 
 
 class TestWritingReadAlongHTML(ChunkingTestBase):
-    def test_writing_readalong(self, subtests, make_callbacks) -> None:
-        writers = make_callbacks([SynthesizeOutputFormats.readalong_html])
+    def test_writing_readalong(self, subtests, make_writers) -> None:
+        writers = make_writers([SynthesizeOutputFormats.readalong_html])
 
         for writer in writers.values():
             for batch, idx in ((self.batch1, 1), (self.batch2, 2)):

@@ -12,8 +12,6 @@ from everyvoice.base_cli.interfaces import (
 from everyvoice.config.type_definitions import DatasetTextRepresentation
 from everyvoice.utils import generic_psv_filelist_reader, spinner
 
-from .synthesize import get_global_step, synthesize_helper
-
 
 def check_data_command(  # noqa: C901
     config_file: Annotated[
@@ -115,9 +113,13 @@ def check_data_command(  # noqa: C901
         from everyvoice.preprocessor import Preprocessor
         from everyvoice.utils.heavy import get_device_from_accelerator
 
+        from ..core.synthesize import (
+            get_global_step,
+            load_data_from_filelist,
+            synthesize_helper,
+        )
         from ..model import FastSpeech2
         from .check_data_heavy import check_data_from_filelist
-        from .synthesize import load_data_from_filelist
 
     config = load_unknown_config(config_file)
     preprocessor = Preprocessor(config)
@@ -155,63 +157,63 @@ def check_data_command(  # noqa: C901
             with open(output_dir / "checked-data.json", "w", encoding="utf8") as f:
                 json.dump(stats, f)
 
-    if model_path:
-        # NOTE: We want to be able to put the vocoder on the proper accelerator for
-        # it to be compatible with the vocoder's input device.
-        # We could misuse the trainer's API and use the private variable
-        # trainer._accelerator_connector._accelerator_flag but that value is
-        # computed when instantiating a trainer and that is exactly when we need
-        # the information to create the callbacks.
-        device = get_device_from_accelerator(accelerator)
+    assert model_path, "model_path is a mandatory argument, it cannot be none"
 
-        # Load checkpoints
-        print(f"Loading checkpoint from {model_path}", file=sys.stderr)
+    # NOTE: We want to be able to put the vocoder on the proper accelerator for
+    # it to be compatible with the vocoder's input device.
+    # We could misuse the trainer's API and use the private variable
+    # trainer._accelerator_connector._accelerator_flag but that value is
+    # computed when instantiating a trainer and that is exactly when we need
+    # the information to create the writers.
+    device = get_device_from_accelerator(accelerator)
 
-        from pydantic import ValidationError
+    # Load checkpoints
+    print(f"Loading checkpoint from {model_path}", file=sys.stderr)
 
-        try:
-            model: FastSpeech2 = FastSpeech2.load_from_checkpoint(model_path).to(device)  # type: ignore
-        except (TypeError, ValidationError) as e:
-            logger.error(f"Unable to load {model_path}: {e}")
-            sys.exit(1)
-        model.eval()
+    from pydantic import ValidationError
 
-        if filelist is None:
-            training_filelist = load_data_from_filelist(
-                config.training.training_filelist, model, text_representation
-            )
-            val_filelist = load_data_from_filelist(
-                config.training.training_filelist, model, text_representation
-            )
-            combined_filelist_data = training_filelist + val_filelist
-        else:
-            combined_filelist_data = None
+    try:
+        model: FastSpeech2 = FastSpeech2.load_from_checkpoint(model_path).to(device)  # type: ignore
+    except (TypeError, ValidationError) as e:
+        logger.error(f"Unable to load {model_path}: {e}")
+        sys.exit(1)
+    model.eval()
 
-        # get global step
-        # We can't just use model.global_step because it gets reset by lightning
-        global_step = get_global_step(model_path)
-
-        synthesize_helper(
-            model=model,
-            texts=None,
-            style_reference=style_reference,
-            language=None,
-            speaker=None,
-            duration_control=1.0,
-            global_step=global_step,
-            output_type=[],
-            text_representation=text_representation,
-            accelerator=accelerator,
-            devices=devices,
-            device=device,
-            batch_size=1,
-            num_workers=num_workers,
-            filelist=filelist,
-            filelist_data=combined_filelist_data,
-            teacher_forcing_directory=teacher_forcing_directory,
-            output_dir=output_dir,
-            vocoder_model=None,
-            vocoder_config=None,
-            vocoder_global_step=None,
-            return_scores=True,
+    if filelist is None:
+        training_filelist = load_data_from_filelist(
+            config.training.training_filelist, model, text_representation
         )
+        val_filelist = load_data_from_filelist(
+            config.training.training_filelist, model, text_representation
+        )
+        combined_filelist_data = training_filelist + val_filelist
+    else:
+        combined_filelist_data = None
+
+    # get global step
+    # We can't just use model.global_step because it gets reset by lightning
+    global_step = get_global_step(model_path)
+
+    synthesize_helper(
+        model=model,
+        texts=None,
+        style_reference=style_reference,
+        language=None,
+        speaker=None,
+        duration_control=1.0,
+        global_step=global_step,
+        output_types=[],
+        text_representation=text_representation,
+        devices=devices,
+        device=device,
+        batch_size=1,
+        num_workers=num_workers,
+        filelist=filelist,
+        filelist_data=combined_filelist_data,
+        teacher_forcing_directory=teacher_forcing_directory,
+        output_dir=output_dir,
+        vocoder_model=None,
+        vocoder_config=None,
+        vocoder_global_step=None,
+        return_scores=True,
+    )

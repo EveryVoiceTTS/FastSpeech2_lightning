@@ -1,6 +1,10 @@
-from __future__ import annotations
+"""
+TODO Once the synthesis generator API is written, document here how to get
+writers using get_synthesis_output_writers() and how to use them with the
+synthesis generator API.
+"""
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from csv import DictWriter
 from pathlib import Path
 from typing import Any, Optional
@@ -29,8 +33,8 @@ from readalongs.api import (
 from .config import FastSpeech2Config
 
 
-def get_synthesis_output_callbacks(
-    output_type: Sequence[SynthesizeOutputFormats],
+def get_synthesis_output_writers(
+    output_types: Sequence[SynthesizeOutputFormats],
     output_dir: Path,
     config: FastSpeech2Config,
     output_key: str,
@@ -41,22 +45,29 @@ def get_synthesis_output_callbacks(
     vocoder_global_step: Optional[int] = None,
     return_scores=False,
     simple_filenames: bool = False,
-) -> dict[SynthesizeOutputFormats | str, Callback]:
+    loss_fn: Optional[Callable[..., dict[str, torch.Tensor]]] = None,
+) -> dict[SynthesizeOutputFormats | str, "OutputWriter"]:
     """
-    Given a list of desired output file formats, return the proper callbacks
+    Given a list of desired output file formats, return the proper writers
     that will generate those files.
+
+    loss_fn is required when return_scores is True: pass the model's loss
+    module, e.g., model.loss.
     """
-    callbacks: dict[SynthesizeOutputFormats | str, Callback] = {}
+    writers: dict[SynthesizeOutputFormats | str, OutputWriter] = {}
     if return_scores:
-        callbacks["score"] = ScorerCallback(
+        if loss_fn is None:
+            raise ValueError("loss_fn is required to calculate scores.")
+        writers["score"] = LossWriter(
             config=config,
             global_step=global_step,
             output_dir=output_dir,
             output_key=output_key,
+            loss_fn=loss_fn,
         )
     if (
-        SynthesizeOutputFormats.wav in output_type
-        or SynthesizeOutputFormats.readalong_html in output_type
+        SynthesizeOutputFormats.wav in output_types
+        or SynthesizeOutputFormats.readalong_html in output_types
     ):
         if (
             vocoder_model is None
@@ -66,7 +77,7 @@ def get_synthesis_output_callbacks(
             raise ValueError(
                 "We cannot synthesize waveforms without a vocoder. Please ensure that a vocoder is specified."
             )
-        callbacks[SynthesizeOutputFormats.wav] = PredictionWritingWavCallback(
+        writers[SynthesizeOutputFormats.wav] = WavPredictionWriter(
             config=config,
             device=device,
             global_step=global_step,
@@ -77,50 +88,84 @@ def get_synthesis_output_callbacks(
             vocoder_global_step=vocoder_global_step,
             simple_filenames=simple_filenames,
         )
-    if SynthesizeOutputFormats.spec in output_type:
-        callbacks[SynthesizeOutputFormats.spec] = PredictionWritingSpecCallback(
+    if SynthesizeOutputFormats.spec in output_types:
+        writers[SynthesizeOutputFormats.spec] = SpecPredictionWriter(
             config=config,
             global_step=global_step,
             output_dir=output_dir,
             output_key=output_key,
             simple_filenames=simple_filenames,
         )
-    if SynthesizeOutputFormats.textgrid in output_type:
-        callbacks[SynthesizeOutputFormats.textgrid] = PredictionWritingTextGridCallback(
+    if SynthesizeOutputFormats.textgrid in output_types:
+        writers[SynthesizeOutputFormats.textgrid] = TextGridPredictionWriter(
             config=config,
             global_step=global_step,
             output_dir=output_dir,
             output_key=output_key,
             simple_filenames=simple_filenames,
         )
-    if SynthesizeOutputFormats.readalong_xml in output_type:
-        callbacks[SynthesizeOutputFormats.readalong_xml] = (
-            PredictionWritingReadAlongCallback(
-                config=config,
-                global_step=global_step,
-                output_dir=output_dir,
-                output_key=output_key,
-                simple_filenames=simple_filenames,
-            )
+    if SynthesizeOutputFormats.readalong_xml in output_types:
+        writers[SynthesizeOutputFormats.readalong_xml] = ReadAlongPredictionWriter(
+            config=config,
+            global_step=global_step,
+            output_dir=output_dir,
+            output_key=output_key,
+            simple_filenames=simple_filenames,
         )
-    if SynthesizeOutputFormats.readalong_html in output_type:
-        wav_callback = callbacks[SynthesizeOutputFormats.wav]
-        assert isinstance(wav_callback, PredictionWritingWavCallback)
-        callbacks[SynthesizeOutputFormats.readalong_html] = (
-            PredictionWritingOfflineRASCallback(
-                config=config,
-                global_step=global_step,
-                output_dir=output_dir,
-                output_key=output_key,
-                wav_callback=wav_callback,
-                simple_filenames=simple_filenames,
-            )
+    if SynthesizeOutputFormats.readalong_html in output_types:
+        wav_writer = writers[SynthesizeOutputFormats.wav]
+        assert isinstance(wav_writer, WavPredictionWriter)
+        writers[SynthesizeOutputFormats.readalong_html] = OfflineRASPredictionWriter(
+            config=config,
+            global_step=global_step,
+            output_dir=output_dir,
+            output_key=output_key,
+            wav_writer=wav_writer,
+            simple_filenames=simple_filenames,
         )
 
-    return callbacks
+    return writers
 
 
-class PredictionWritingCallbackBase(BasePredictionWritingCallback):
+class OutputWriter:
+    """Common interface for the synthesis output writers.
+
+    Subclasses implement write_batch() and, if needed, finalize(). The
+    on_predict_*_end methods are Lightning Callback hooks that just delegate to
+    them, so the writers can be driven either by trainer.predict() or directly.
+    """
+
+    def write_batch(
+        self,
+        outputs: dict[str, torch.Tensor | None],
+        batch: dict[str, Any],
+    ) -> None:  # pragma: no cover
+        """Process one batch of model outputs, writing files as needed."""
+        raise NotImplementedError
+
+    def finalize(self) -> None:
+        """Called once after the last batch has been processed."""
+
+    def on_predict_batch_end(
+        self,
+        trainer,
+        pl_module,
+        outputs: dict[str, torch.Tensor | None],
+        batch: dict[str, Any],
+        batch_idx: int,
+        dataloader_idx: int = 0,
+    ) -> None:
+        self.write_batch(outputs, batch)
+
+    def on_predict_epoch_end(
+        self,
+        trainer,
+        pl_module,
+    ) -> None:
+        self.finalize()
+
+
+class PredictionWriterBase(OutputWriter, BasePredictionWritingCallback):
     def __init__(
         self,
         config: FastSpeech2Config,
@@ -140,9 +185,9 @@ class PredictionWritingCallbackBase(BasePredictionWritingCallback):
         self.config = config
 
 
-class ScorerCallback(Callback):
+class LossWriter(OutputWriter, Callback):
     """
-    This callback runs inference on a provided text-to-spec model and saves the resulting losses to disk.
+    This writer runs inference on a provided text-to-spec model and saves the resulting losses to disk.
     """
 
     def __init__(
@@ -151,11 +196,13 @@ class ScorerCallback(Callback):
         global_step: int,
         output_dir: Path,
         output_key: str,
+        loss_fn: Callable[..., dict[str, torch.Tensor]],
     ):
         self.global_step = global_step
         self.save_dir = output_dir
         self.output_key = output_key
         self.config = config
+        self.loss_fn = loss_fn
         logger.info(f"Saving pytorch output to {self.save_dir}")
         self.scores: list[dict] = []
 
@@ -169,11 +216,7 @@ class ScorerCallback(Callback):
     def sort_scores(self):
         self.scores.sort(key=lambda x: (-x["total"], x["trigram_coverage_score"]))
 
-    def on_predict_epoch_end(
-        self,
-        _trainer,
-        model,
-    ):
+    def finalize(self) -> None:
         self.sort_scores()
         with open(self._get_filename(), "w") as f:
             fieldnames = [
@@ -195,17 +238,15 @@ class ScorerCallback(Callback):
             for score in self.scores:
                 writer.writerow(score)
 
-    def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
+    def write_batch(
         self,
-        _trainer,
-        model,
         outputs: dict[str, torch.Tensor | None],
         batch: dict[str, Any],
-        _batch_idx: int,
-        _dataloader_idx: int = 0,
-    ):
+    ) -> None:
         with torch.no_grad():
-            losses = model.loss(outputs, batch, model.current_epoch)
+            # current_epoch=0: this is what model.current_epoch is during
+            # inference, it only affects the attn_bin loss warmup.
+            losses = self.loss_fn(outputs, batch, 0)
         score = {k: float(v) for k, v in losses.items()}
         score["basename"] = batch["basename"][0]
         score["speaker"] = batch["speaker"][0]
@@ -216,9 +257,9 @@ class ScorerCallback(Callback):
         self.scores.append(score)
 
 
-class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
+class SpecPredictionWriter(PredictionWriterBase):
     """
-    This callback reassembles text chunks, runs inference on a provided text-to-spec model and saves the resulting Mel spectrograms to disk as pytorch files. These can be used to fine-tune an EveryVoice spec-to-wav model.
+    This writer reassembles text chunks, runs inference on a provided text-to-spec model and saves the resulting Mel spectrograms to disk as pytorch files. These can be used to fine-tune an EveryVoice spec-to-wav model.
     """
 
     def __init__(
@@ -244,15 +285,11 @@ class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
         self.chunk_basenames: list[str] = []  # Accumulates per-chunk basenames
         self.full_spec = torch.tensor(())  # Accumulates full input before saving file
 
-    def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
+    def write_batch(
         self,
-        _trainer,
-        _pl_module,
         outputs: dict[str, torch.Tensor | None],
         batch: dict[str, Any],
-        _batch_idx: int,
-        _dataloader_idx: int = 0,
-    ):
+    ) -> None:
         assert self.output_key in outputs and outputs[self.output_key] is not None
         assert "tgt_lens" in outputs and outputs["tgt_lens"] is not None
 
@@ -294,9 +331,9 @@ class PredictionWritingSpecCallback(PredictionWritingCallbackBase):
                 self.chunk_basenames = []
 
 
-class PredictionWritingAlignedTextCallback(PredictionWritingCallbackBase):
+class AlignedTextPredictionWriter(PredictionWriterBase):
     """
-    This callback runs inference on a provided text-to-spec model and saves the
+    This writer runs inference on a provided text-to-spec model and saves the
     resulting time-aligned text to file. The output format depends on the subclass's
     implementation of save_aligned_text_to_file.
     """
@@ -404,15 +441,11 @@ class PredictionWritingAlignedTextCallback(PredictionWritingCallbackBase):
                 current_word_duration = 0
         return xmax_seconds, phones, words
 
-    def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
+    def write_batch(
         self,
-        _trainer,
-        _pl_module,
         outputs: dict[str, torch.Tensor | None],
         batch: dict[str, Any],
-        _batch_idx: int,
-        _dataloader_idx: int = 0,
-    ):
+    ) -> None:
         assert self.output_key in outputs and outputs[self.output_key] is not None
         assert (
             "duration_prediction" in outputs
@@ -466,9 +499,9 @@ class PredictionWritingAlignedTextCallback(PredictionWritingCallbackBase):
                 self.words = []
 
 
-class PredictionWritingTextGridCallback(PredictionWritingAlignedTextCallback):
+class TextGridPredictionWriter(AlignedTextPredictionWriter):
     """
-    This callback runs inference on a provided text-to-spec model and saves the resulting textgrid of the predicted durations to disk. This can be used for evaluation.
+    This writer runs inference on a provided text-to-spec model and saves the resulting textgrid of the predicted durations to disk. This can be used for evaluation.
     """
 
     def __init__(
@@ -526,9 +559,9 @@ class PredictionWritingTextGridCallback(PredictionWritingAlignedTextCallback):
         new_tg.to_file(filename)
 
 
-class PredictionWritingReadAlongCallback(PredictionWritingAlignedTextCallback):
+class ReadAlongPredictionWriter(AlignedTextPredictionWriter):
     """
-    This callback runs inference on a provided text-to-spec model and saves the resulting readalong of the predicted durations to disk. Combined with the .wav output, this can be loaded in the ReadAlongs Web-Component for viewing.
+    This writer runs inference on a provided text-to-spec model and saves the resulting readalong of the predicted durations to disk. Combined with the .wav output, this can be loaded in the ReadAlongs Web-Component for viewing.
     """
 
     def __init__(
@@ -576,9 +609,9 @@ class PredictionWritingReadAlongCallback(PredictionWritingAlignedTextCallback):
             f.write(readalong)
 
 
-class PredictionWritingOfflineRASCallback(PredictionWritingAlignedTextCallback):
+class OfflineRASPredictionWriter(AlignedTextPredictionWriter):
     """
-    This callback runs inference on a provided text-to-spec model and saves the
+    This writer runs inference on a provided text-to-spec model and saves the
     resulting readalong of the predicted durations to disk as a single file
     Offline HTML. This can be loaded in the ReadAlongs Studio-Web Editor for
     further modification.
@@ -590,7 +623,7 @@ class PredictionWritingOfflineRASCallback(PredictionWritingAlignedTextCallback):
         global_step: int,
         output_dir: Path,
         output_key: str,
-        wav_callback: PredictionWritingWavCallback,
+        wav_writer: "WavPredictionWriter",
         simple_filenames: bool = False,
     ):
         super().__init__(
@@ -606,7 +639,7 @@ class PredictionWritingOfflineRASCallback(PredictionWritingAlignedTextCallback):
             target_text_representation_level=config.model.target_text_representation_level,
         )
         self.output_key = output_key
-        self.wav_callback = wav_callback
+        self.wav_writer = wav_writer
 
     def save_aligned_text_to_file(
         self,
@@ -625,7 +658,7 @@ class PredictionWritingOfflineRASCallback(PredictionWritingAlignedTextCallback):
                 ras_tokens.append(Token(text=" ", is_word=False))
             ras_tokens.append(Token(text=label, time=start, dur=end - start))
 
-        wav_file_name = self.wav_callback.get_filename(basename, speaker, language)
+        wav_file_name = self.wav_writer.get_filename(basename, speaker, language)
         readalong_html, _readalong_xml = convert_prealigned_text_to_offline_html(
             [ras_tokens],
             wav_file_name,
@@ -637,9 +670,9 @@ class PredictionWritingOfflineRASCallback(PredictionWritingAlignedTextCallback):
             f.write(readalong_html)
 
 
-class PredictionWritingWavCallback(PredictionWritingCallbackBase):
+class WavPredictionWriter(PredictionWriterBase):
     """
-    Given text-to-spec, this callback does spec-to-wav and writes wav files.
+    Given text-to-spec, this writer does spec-to-wav and writes wav files.
     """
 
     def __init__(
@@ -711,15 +744,11 @@ class PredictionWritingWavCallback(PredictionWritingCallbackBase):
 
         return wavs, sr
 
-    def on_predict_batch_end(  # pyright: ignore [reportIncompatibleMethodOverride]
+    def write_batch(
         self,
-        _trainer,
-        _pl_module,
         outputs: dict[str, torch.Tensor | None],
         batch: dict[str, Any],
-        _batch_idx: int,
-        _dataloader_idx: int = 0,
-    ):
+    ) -> None:
         logger.trace("Generating waveform...")
 
         wavs, sr = self.synthesize_audio(outputs)

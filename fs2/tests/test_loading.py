@@ -9,8 +9,8 @@ from everyvoice.text.lookups import LookupTable
 from everyvoice.text.utils import get_symbols_from_checkpoint_symbol_dict, symbol_sorter
 from pytest import raises
 
-from ..cli.synthesize import load_data_from_filelist
 from ..config import FastSpeech2Config
+from ..core.synthesize import load_data_from_filelist
 from ..model import FastSpeech2
 from ..type_definitions_heavy import Stats, StatsInfo
 
@@ -345,7 +345,7 @@ class TestLoadingData:
                 f.write(file_contents)
             data = load_data_from_filelist(
                 data_file,
-                StubModelWithConfigOnly(),
+                StubModelWithConfigOnly(),  # type: ignore[arg-type]
                 DatasetTextRepresentation.characters,
             )
             return data
