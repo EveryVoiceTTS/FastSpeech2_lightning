@@ -8,6 +8,7 @@ from everyvoice.config.type_definitions import (
     DatasetTextRepresentation,
     SynthesizeOutputFormats,
 )
+from everyvoice.tests.grad_checks import assert_no_grad_tracking, assert_no_param_grads
 
 from .. import api, prediction_writers
 from ..core import synthesize as core_synthesize
@@ -61,6 +62,19 @@ class TestIterSynthesis:
         assert outputs1[model.output_key].device == torch.device("cpu")
         assert batch1["text"].device == torch.device("cpu")
         assert not outputs1[model.output_key].requires_grad
+
+    def test_no_grad_tracking(self, model):
+        assert any(param.requires_grad for param in model.parameters())
+        for i, (outputs, batch) in enumerate(
+            iter_synthesis(
+                model, deepcopy(CHUNKED_DATA), torch.device("cpu"), batch_size=2
+            )
+        ):
+            # no_grad must not leak out to the code consuming the iterator
+            assert torch.is_grad_enabled()
+            assert_no_grad_tracking(outputs, f"batch {i} outputs")
+            assert_no_grad_tracking(batch, f"batch {i} batch")
+        assert_no_param_grads(model, "fs2 model")
 
 
 class TestSynthesizeHelper:
