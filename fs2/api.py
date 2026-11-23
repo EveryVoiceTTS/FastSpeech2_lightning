@@ -1,12 +1,17 @@
 import multiprocessing as mp
+from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
-from typing import Any, Iterator
+from typing import TYPE_CHECKING
 
 from everyvoice.config.type_definitions import DatasetTextRepresentation
 
 from . import core
 from .config import FastSpeech2Config
 from .model import FastSpeech2
+from .synthesis_types import SynthesisBatch, Utterance
+
+if TYPE_CHECKING:
+    import torch
 
 
 def load_config(
@@ -93,62 +98,65 @@ def load_model(
 
 def synthesize(
     model: FastSpeech2,
-    texts: list[str],
+    texts: Sequence[str] | str,
     *,
     language: str | None = None,
+    speaker: str | None = None,
     duration_control: float = 1.0,
     style_reference: Path | None = None,
-    speaker: str | None = None,
-    accelerator: str = "auto",
-    devices: str | int = "auto",
     text_representation: str | DatasetTextRepresentation = "characters",
-    teacher_forcing_directory: Path | None = None,
+    split_text: bool | None = None,
+    desired_length: int | None = None,
+    max_length: int | None = None,
     batch_size: int = 4,
-    num_workers: int = 4,
-) -> Iterator[dict[str, Any]]:
-    """Synthesize one or more utterences in texts using model.
+    num_workers: int = 0,
+) -> Iterator[SynthesisBatch]:
+    """Synthesize the utterances in texts with model, one batch at a time.
 
-    Returns MEL spectrograms. Pass them through a Vocoder to generate wavs.
+    Long texts are split into chunks, which are synthesized separately, in order.
+    Each batch holds chunks in the order of texts, and can mix chunks from
+    different texts.
+
+    Filter the result through unbatch() to get one Utterance per chunk, without
+    padding. The tensors of each batch stay on the model's device.
 
     Args:
-        model (FastSpeech2): the model/checkpoint to use for synthesis
-        texts (list[str]]): a list of utterences to synthesize
-        language (str|None): language to use in a multi-lingual model
-        duration_control (float): synthesis speaking rate, multiplies durations, so
-            lower numbers produce quicker speaking rates
-        style_reference (Path|None): audio file containing a style reference; model
-            must have been trainined with the global style token module to use this
-        speaker (str|None): speaker to use in a multi-speaker model
-        accelerator: see train() documentation; determines the device to run on
-        devices: ignored, synthesis runs on a single device
+        model (FastSpeech2): the model to use, see load_model(); synthesis runs on
+            the device the model is on
+        texts (Sequence[str] | str): the utterances to synthesize, or a single one
+        language (str|None): language to use in a multilingual model
+        speaker (str|None): speaker to use in a multispeaker model
+        duration_control (float): multiplies durations, so lower numbers produce
+            quicker speaking rates
+        style_reference (Path|None): audio file containing a style reference; the
+            model must have been trained with the global style token module
         text_representation: the representation of the utterances in texts
-        teacher_forcing_directory: TODO, currently ignored
-        batch_size (int): how many utterances get processed at once; there must be enough accelerator RAM to process a batch in parallel
-        macro_batch_size (int): deprecated and ignored: results are now produced one batch at a time
-        num_workers: number of workers to process the data
+        split_text (bool|None): whether to split long texts into chunks; None means
+            use the model's configuration (text.split_text)
+        desired_length, max_length (int|None): the desired and maximum chunk
+            lengths; None means use the lengths seen in the training data
+        batch_size (int): how many chunks to process at once; there must be enough
+            accelerator RAM to process a batch in parallel
+        num_workers (int): number of worker processes to prepare the data; 0 means
+            prepare it in the main process
 
-    Yields: the model outputs for each batch of batch_size utterances, moved to the CPU.
+    Yields: a SynthesisBatch for each batch of up to batch_size chunks.
     """
-
-    import torch
-    from everyvoice.utils.heavy import get_device_from_accelerator
-    from lightning_fabric.utilities.apply_func import move_data_to_device
-
     from .core.synthesize import (
         check_text_representation,
         iter_synthesis,
         prepare_data,
-        warn_if_multiple_devices,
     )
 
+    if isinstance(texts, str):
+        texts = [texts]
     if not texts:
         return
 
     text_representation = DatasetTextRepresentation(text_representation)
-    warn_if_multiple_devices(devices)
     check_text_representation(model, text_representation)
     data = prepare_data(
-        texts=texts,
+        texts=list(texts),
         language=language,
         speaker=speaker,
         filelist=None,
@@ -156,18 +164,34 @@ def synthesize(
         text_representation=text_representation,
         duration_control=duration_control,
         style_reference=style_reference,
+        split_text=split_text,
+        desired_length=desired_length,
+        max_length=max_length,
     )
-    batch_generator = iter_synthesis(
+    for outputs, batch in iter_synthesis(
         model,
         data,
-        get_device_from_accelerator(accelerator),
+        model.device,
         style_reference=style_reference is not None,
         batch_size=batch_size,
         num_workers=num_workers,
-    )
-    # TODO Let the user control the output device.
-    # TODO Make sure gradients are not accumulated during synthesis.
-    # TODO Test whether `with torch.no_grad():` is required here or if having it in iter_synthesis suffices.
-    cpu = torch.device("cpu")
-    for outputs, _batch in batch_generator:
-        yield move_data_to_device(outputs, cpu)
+    ):
+        yield SynthesisBatch(outputs=outputs, batch=batch, output_key=model.output_key)
+
+
+def unbatch(
+    batches: Iterable[SynthesisBatch],
+    device: "torch.device | str | None" = "cpu",
+) -> Iterator[Utterance]:
+    """Split each batch from synthesize() into one Utterance per chunk, without padding.
+
+    Args:
+        batches: as yielded by synthesize()
+        device: where to put the tensors of each Utterance; None leaves them on
+            the model's device
+
+    Yields: one Utterance per chunk of input text, in the order of the texts.
+    """
+    from .core.synthesize import unbatch_synthesis
+
+    yield from unbatch_synthesis(batches, device)

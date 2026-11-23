@@ -324,6 +324,34 @@ class TestPrepareSynthesizeData:
         assert split_text
         assert split_params[:2] == (100, 200)
 
+        # Lengths given by the caller override the stats
+        model.stats = stats
+        split_text, split_params = get_text_split_params(
+            model,
+            language="eng",
+            text_representation="phones",
+            desired_length=7,
+            max_length=9,
+        )
+        assert split_text
+        assert split_params == (7, 9, "‽", ":?")
+
+        # split_text given by the caller overrides the config, both ways
+        split_text, _ = get_text_split_params(
+            model, language="eng", text_representation="phones", split_text=False
+        )
+        assert not split_text
+        model.config.text.split_text = False
+        split_text, split_params = get_text_split_params(
+            model, language="eng", text_representation="phones"
+        )
+        assert not split_text
+        split_text, split_params = get_text_split_params(
+            model, language="eng", text_representation="phones", split_text=True
+        )
+        assert split_text
+        assert split_params == (3, 5, "‽", ":?")
+
 
 class TestValidateDataWithModel:
     """

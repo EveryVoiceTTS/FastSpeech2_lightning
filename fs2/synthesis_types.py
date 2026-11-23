@@ -1,0 +1,65 @@
+"""Types yielded by the fs2 synthesis API (see api.synthesize and api.unbatch).
+
+Deliberately light: torch is only imported for type checking.
+"""
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import torch
+
+
+@dataclass
+class SynthesisBatch:
+    """The model's outputs for one batch of input chunks, still padded.
+
+    Attributes:
+        outputs: the model's forward() outputs, e.g. outputs[output_key] is the
+            [B, T (frames), K (mel bands)] spectrogram batch, "tgt_lens" the
+            number of frames of each item, "duration_rounded" the number of frames
+            of each input token
+        batch: the model's input batch, with the metadata needed downstream:
+            "raw_text", "basename", "speaker", "language", "index",
+            "chunk_index", "is_last_input_chunk", and "src_lens", the number of
+            input tokens of each item
+        output_key: the key of the spectrogram in outputs ("postnet_output", or
+            "output" for models without a postnet)
+    """
+
+    outputs: dict[str, Any]
+    batch: dict[str, Any]
+    output_key: str
+
+    def __len__(self) -> int:
+        return len(self.batch["basename"])
+
+
+@dataclass
+class Utterance:
+    """One synthesized chunk of input text, without padding.
+
+    Attributes:
+        index: which input text this is a chunk of (its position in the texts
+            given to api.synthesize)
+        chunk_index: the position of this chunk within its input text
+        is_last_chunk: whether this is the last chunk of its input text
+        text: the text of this chunk
+        basename, speaker, language: as used to synthesize this chunk
+        spec: the spectrogram, [K (mel bands), T (frames)], the same layout as the
+            spec files written by EveryVoice
+        tokens: the input token ids, [N (tokens)]
+        durations: the number of frames of each input token, [N (tokens)];
+            durations.sum() == spec.size(-1)
+    """
+
+    index: int
+    chunk_index: int
+    is_last_chunk: bool
+    text: str
+    basename: str
+    speaker: str
+    language: str
+    spec: "torch.Tensor"
+    tokens: "torch.Tensor"
+    durations: "torch.Tensor"

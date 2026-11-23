@@ -298,6 +298,8 @@ class FastSpeech2(pl.LightningModule):
             "attn_hard": variance_adaptor_out["attn_hard"],
             "duration_prediction": variance_adaptor_out["duration_prediction"],
             "duration_target": variance_adaptor_out["duration_target"],
+            # Frames per input token actually used to build the output
+            "duration_rounded": variance_adaptor_out["duration_rounded"],
             "energy_prediction": variance_adaptor_out["energy_prediction"],
             "energy_target": variance_adaptor_out["energy_target"],
             "pitch_prediction": variance_adaptor_out["pitch_prediction"],

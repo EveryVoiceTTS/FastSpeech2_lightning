@@ -357,7 +357,13 @@ class TestLoadingData:
     def test_load_twolines(self):
         data = self.write_and_load("test line 1\ntest line 2\n")
         assert len(data) == 2
+        assert [(d["index"], d["chunk_index"]) for d in data] == [(0, 0), (1, 0)]
 
     def test_load_psv(self):
         data = self.write_and_load("characters|language\nfoo|eng\nbar|eng\nbaz|fra\n")
         assert len(data) == 3
+        assert [(d["index"], d["chunk_index"]) for d in data] == [
+            (0, 0),
+            (1, 0),
+            (2, 0),
+        ]

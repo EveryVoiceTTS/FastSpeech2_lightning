@@ -2,7 +2,7 @@ import math
 import sys
 import textwrap
 from collections import Counter
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
     from ..model import FastSpeech2, FastSpeech2Config
     from ..prediction_writers import OutputWriter
+    from ..synthesis_types import SynthesisBatch, Utterance
 
 
 def validate_data_keys_with_model_keys(
@@ -70,20 +71,32 @@ def get_text_split_params(
     model: "FastSpeech2",
     language: str | None,
     text_representation: DatasetTextRepresentation,
+    split_text: bool | None = None,
+    desired_length: int | None = None,
+    max_length: int | None = None,
 ) -> tuple[bool, tuple[int, int, str, str]]:
     """
     Calculates the parameters for text splitting (desired_length, max_length, strong_boundaries, weak_boundaries)
+
+    Args:
+        split_text: whether to split long texts into chunks; None means use the
+            model's text config (text.split_text)
+        desired_length, max_length: override the chunk lengths, which otherwise
+            come from the model's length statistics, or default to 100 and 200
     """
     from everyvoice.config.text_config import TextConfig
 
     from ..type_definitions_heavy import Stats, StatsInfo
 
     text_config: TextConfig = model.config.text
+    if split_text is not None and split_text != text_config.split_text:
+        # resolve_split_params() only looks up boundaries when text.split_text is set
+        text_config = text_config.model_copy(update={"split_text": split_text})
 
-    desired_length: float = 100
-    max_length: float = 200
+    stats_desired_length: float = 100
+    stats_max_length: float = 200
 
-    if text_config.split_text:
+    if text_config.split_text and (desired_length is None or max_length is None):
         # Get desired and max length from Stats
         stats: Stats | None = getattr(model, "stats", None)
         length_stats: StatsInfo | None = None
@@ -98,8 +111,8 @@ def get_text_split_params(
                         "Arpabet stats are not yet supported. Chunking with default lengths."
                     )
         if length_stats is not None:
-            desired_length = length_stats.mean
-            max_length = length_stats.max
+            stats_desired_length = length_stats.mean
+            stats_max_length = length_stats.max
         elif stats is None or text_representation != DatasetTextRepresentation.arpabet:
             # This is for unit testing or older models
             logger.warning(
@@ -109,8 +122,10 @@ def get_text_split_params(
     return resolve_split_params(
         text_config,
         language,
-        desired_length=int(desired_length),
-        max_length=int(max_length),
+        desired_length=int(
+            stats_desired_length if desired_length is None else desired_length
+        ),
+        max_length=int(stats_max_length if max_length is None else max_length),
     )
 
 
@@ -122,19 +137,33 @@ def load_data_from_filelist(
     speaker: str | None = None,
     default_language: str | None = None,
     default_speaker: str | None = None,
+    split_text: bool | None = None,
+    desired_length: int | None = None,
+    max_length: int | None = None,
 ):
+    """Load and chunk the utterances in filelist.
+
+    Each chunk gets "index" (the row or line number in filelist, counting from 0)
+    and "chunk_index" (its position within that text).
+    See get_text_split_params() for split_text, desired_length and max_length.
+    """
     if default_language is None:
         default_language = next(iter(model.lang2id.keys()), None)
     if default_speaker is None:
         default_speaker = next(iter(model.speaker2id.keys()), None)
 
     split_text, split_params = get_text_split_params(
-        model, language or default_language, text_representation
+        model,
+        language or default_language,
+        text_representation,
+        split_text=split_text,
+        desired_length=desired_length,
+        max_length=max_length,
     )
 
     try:
         data = []
-        for d in model.config.training.filelist_loader(filelist):
+        for index, d in enumerate(model.config.training.filelist_loader(filelist)):
             # Chunk longer texts, for better longform audio synthesis
             line = d[text_representation.value]
             chunks = chunk_text(line, *split_params) if split_text else [line]
@@ -149,6 +178,8 @@ def load_data_from_filelist(
                         "language": language or d.get("language", default_language),
                         "speaker": speaker or d.get("speaker", default_speaker),
                         "is_last_input_chunk": (i == len(chunks) - 1),
+                        "index": index,
+                        "chunk_index": i,
                     }
                 )
 
@@ -177,7 +208,7 @@ def load_data_from_filelist(
             """))
         data = []
         with open(filelist, encoding="utf8") as file:
-            for line in file:
+            for index, line in enumerate(file):
                 # Chunk longer texts, for better longform audio synthesis
                 chunks = chunk_text(line, *split_params) if split_text else [line]
                 for i, chunk in enumerate(chunks):
@@ -188,6 +219,8 @@ def load_data_from_filelist(
                             "language": language or default_language,
                             "speaker": speaker or default_speaker,
                             "is_last_input_chunk": (i == len(chunks) - 1),
+                            "index": index,
+                            "chunk_index": i,
                         }
                     )
                 print(f"Processing text: {chunks}", file=sys.stderr)
@@ -203,8 +236,16 @@ def prepare_data(
     text_representation: DatasetTextRepresentation,
     duration_control: float,
     style_reference: Path | None,
+    split_text: bool | None = None,
+    desired_length: int | None = None,
+    max_length: int | None = None,
 ) -> list[dict[str, Any]]:
-    """"""
+    """Build the list of items to synthesize, one per chunk of input text.
+
+    Each item has "index", the position of its text in texts (or its row or line
+    in filelist), and "chunk_index", its position among that text's chunks.
+    See get_text_split_params() for split_text, desired_length and max_length.
+    """
     data: list[dict[str, Any]]
     # NOTE: The wizard adds a default speaker=`default` to the data.
     # It also asks for a language that the user choses from a list which then becomes the default lanaguage, like `und`.
@@ -212,15 +253,18 @@ def prepare_data(
     DEFAULT_LANGUAGE = next(iter(model.lang2id.keys()), None)
     DEFAULT_SPEAKER = next(iter(model.speaker2id.keys()), None)
 
+    split_kwargs: dict[str, Any] = dict(
+        split_text=split_text, desired_length=desired_length, max_length=max_length
+    )
     split_text, split_params = get_text_split_params(
-        model, language or DEFAULT_LANGUAGE, text_representation
+        model, language or DEFAULT_LANGUAGE, text_representation, **split_kwargs
     )
 
     if (texts and filelist) or (not texts and not filelist):
         raise ValueError("Provide exactly one of filelist or texts")
     if texts:
         data = []
-        for text in texts:
+        for index, text in enumerate(texts):
             # Chunk longer texts, for better longform audio synthesis
             chunks = chunk_text(text, *split_params) if split_text else [text]
             for i, chunk in enumerate(chunks):
@@ -233,6 +277,8 @@ def prepare_data(
                         "is_last_input_chunk": (
                             i == len(chunks) - 1
                         ),  # True if end of a text_input, False otherwise
+                        "index": index,
+                        "chunk_index": i,
                     }
                 )
             print(f"Processing text: {chunks}", file=sys.stderr)
@@ -246,6 +292,7 @@ def prepare_data(
             speaker,
             DEFAULT_LANGUAGE,
             DEFAULT_SPEAKER,
+            **split_kwargs,
         )
 
     validate_data_keys_with_model_keys(
@@ -435,6 +482,48 @@ def iter_synthesis(
         with torch.no_grad():
             outputs = model(batch, inference=True)
         yield outputs, batch
+
+
+def unbatch_synthesis(
+    batches: Iterable["SynthesisBatch"],
+    device: "torch.device | str | None" = "cpu",
+) -> Iterator["Utterance"]:
+    """Split each SynthesisBatch into one Utterance per item, removing the padding.
+
+    Args:
+        batches: as yielded by api.synthesize()
+        device: where to put the tensors of each Utterance; None leaves them where
+            they are. They are copied either way, so an Utterance doesn't keep its
+            whole padded batch in memory.
+    """
+    import torch
+
+    from ..synthesis_types import Utterance
+
+    def copy_to_device(tensor: torch.Tensor) -> torch.Tensor:
+        return tensor.to(
+            device=device, copy=True, memory_format=torch.contiguous_format
+        )
+
+    for synthesis_batch in batches:
+        outputs, batch = synthesis_batch.outputs, synthesis_batch.batch
+        specs = outputs[synthesis_batch.output_key]
+        for i in range(len(synthesis_batch)):
+            n_frames = int(outputs["tgt_lens"][i])
+            n_tokens = int(batch["src_lens"][i])
+            yield Utterance(
+                index=int(batch["index"][i]),
+                chunk_index=int(batch["chunk_index"][i]),
+                is_last_chunk=bool(batch["is_last_input_chunk"][i]),
+                text=batch["raw_text"][i],
+                basename=batch["basename"][i],
+                speaker=batch["speaker"][i],
+                language=batch["language"][i],
+                # [T, K] -> [K, T]
+                spec=copy_to_device(specs[i, :n_frames].transpose(0, 1)),
+                tokens=copy_to_device(batch["text"][i, :n_tokens]),
+                durations=copy_to_device(outputs["duration_rounded"][i, :n_tokens]),
+            )
 
 
 def synthesize_helper(
