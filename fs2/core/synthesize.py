@@ -526,6 +526,71 @@ def unbatch_synthesis(
             )
 
 
+def combine_utterance_chunks(
+    utterances: Iterable["Utterance"],
+) -> Iterator["Utterance"]:
+    """Combine the chunks of each input text into a single Utterance.
+
+    Each combined Utterance is yielded as soon as its last chunk comes in. Its
+    spec, tokens and durations are the concatenation of its chunks'; its text is
+    their texts joined with single spaces (chunking strips the whitespace between
+    chunks); its basename is the one shared by all chunks, or else a slug of its
+    text, as the output writers do. It has chunk_index 0 and is_last_chunk True,
+    like a text that was not split. A text with a single chunk is yielded as is.
+
+    Args:
+        utterances: as yielded by unbatch_synthesis(): the chunks of each text must
+            be consecutive and in order, and the last one must come in.
+
+    Raises:
+        ValueError: if utterances doesn't respect the conditions above.
+    """
+    import dataclasses
+
+    import torch
+    from everyvoice.utils import resolve_chunked_basename
+
+    def combine(chunks: list["Utterance"]) -> "Utterance":
+        if len(chunks) == 1:
+            return chunks[0]
+        first = chunks[0]
+        text = " ".join(chunk.text for chunk in chunks)
+        return dataclasses.replace(
+            first,
+            is_last_chunk=True,
+            text=text,
+            basename=resolve_chunked_basename(
+                [chunk.basename for chunk in chunks], text
+            ),
+            spec=torch.cat([chunk.spec for chunk in chunks], dim=-1),
+            tokens=torch.cat([chunk.tokens for chunk in chunks]),
+            durations=torch.cat([chunk.durations for chunk in chunks]),
+        )
+
+    pending: list["Utterance"] = []
+    for utterance in utterances:
+        expected_chunk_index = len(pending)
+        if pending and utterance.index != pending[0].index:
+            raise ValueError(
+                f"Text {pending[0].index} is missing its last chunk: got a chunk of "
+                f"text {utterance.index} after its chunk {pending[-1].chunk_index}."
+            )
+        if utterance.chunk_index != expected_chunk_index:
+            raise ValueError(
+                f"Chunks of text {utterance.index} are out of order: expected chunk "
+                f"{expected_chunk_index}, got chunk {utterance.chunk_index}."
+            )
+        pending.append(utterance)
+        if utterance.is_last_chunk:
+            yield combine(pending)
+            pending = []
+    if pending:
+        raise ValueError(
+            f"Text {pending[0].index} is missing its last chunk: the input ended "
+            f"after its chunk {pending[-1].chunk_index}."
+        )
+
+
 def synthesize_helper(
     model: "FastSpeech2",
     texts: Optional[list[str]],

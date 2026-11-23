@@ -195,3 +195,25 @@ def unbatch(
     from .core.synthesize import unbatch_synthesis
 
     yield from unbatch_synthesis(batches, device)
+
+
+def combine_chunks(utterances: Iterable[Utterance]) -> Iterator[Utterance]:
+    """Combine the chunks of each input text from unbatch() into one Utterance.
+
+    Each combined Utterance is yielded as soon as the last chunk of its text comes
+    in. Its spec, tokens and durations are its chunks' concatenated; its text is
+    its chunks' texts joined with single spaces. Texts that were not split pass
+    through unchanged.
+
+    Args:
+        utterances: as yielded by unbatch()
+
+    Yields: one Utterance per input text, in the order of the texts.
+
+    Raises:
+        ValueError: if a text's chunks are missing, out of order, or interleaved
+            with another text's.
+    """
+    from .core.synthesize import combine_utterance_chunks
+
+    yield from combine_utterance_chunks(utterances)

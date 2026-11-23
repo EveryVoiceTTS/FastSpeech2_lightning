@@ -10,11 +10,12 @@ from everyvoice.config.type_definitions import (
     SynthesizeOutputFormats,
 )
 from everyvoice.tests.grad_checks import assert_no_grad_tracking, assert_no_param_grads
+from everyvoice.utils import slugify, truncate_basename
 
 from .. import api, prediction_writers
 from ..core import synthesize as core_synthesize
 from ..core.synthesize import iter_synthesis, synthesize_helper
-from ..synthesis_types import SynthesisBatch
+from ..synthesis_types import SynthesisBatch, Utterance
 
 
 @pytest.fixture()
@@ -269,3 +270,115 @@ class TestApiUnbatch:
 
     def test_empty(self):
         assert list(api.unbatch([])) == []
+
+
+def make_utterance(
+    index: int,
+    chunk_index: int,
+    is_last_chunk: bool,
+    basename: str = "base",
+    n_frames: int = 3,
+) -> Utterance:
+    """A small hand-made Utterance: 2 tokens, n_frames frames of 4 mel bands."""
+    return Utterance(
+        index=index,
+        chunk_index=chunk_index,
+        is_last_chunk=is_last_chunk,
+        text=f"text {index} chunk {chunk_index}",
+        basename=basename,
+        speaker="default",
+        language="default",
+        spec=torch.full((4, n_frames), float(chunk_index)),
+        tokens=torch.tensor([index, chunk_index]),
+        durations=torch.tensor([n_frames - 1, 1]),
+    )
+
+
+class TestApiCombineChunks:
+    def test_combines_chunks(self, api_model):
+        texts = [SHORT_TEXT, LONG_TEXT, "another one"]
+        batches = api.synthesize(api_model, texts, batch_size=2, **CHUNKING)
+        chunks = list(api.unbatch(batches))
+        assert len(chunks) == 5
+        combined = list(api.combine_chunks(chunks))
+
+        assert [u.index for u in combined] == [0, 1, 2]
+        assert all(u.chunk_index == 0 and u.is_last_chunk for u in combined)
+        # Texts that weren't split pass through unchanged
+        assert combined[0] is chunks[0]
+        assert combined[2] is chunks[4]
+
+        long = combined[1]
+        long_chunks = chunks[1:4]
+        assert long.text == LONG_TEXT
+        assert long.basename == truncate_basename(slugify(LONG_TEXT))
+        # Same as the writers, which join chunk texts without spaces
+        assert long.basename == truncate_basename(
+            slugify("".join(c.text for c in long_chunks))
+        )
+        assert torch.equal(long.spec, torch.cat([c.spec for c in long_chunks], -1))
+        assert torch.equal(long.tokens, torch.cat([c.tokens for c in long_chunks]))
+        assert torch.equal(
+            long.durations, torch.cat([c.durations for c in long_chunks])
+        )
+        assert int(long.durations.sum()) == long.spec.size(-1)
+
+    def test_shared_basename_is_kept(self):
+        chunks = [
+            make_utterance(0, 0, False, "utt1"),
+            make_utterance(0, 1, True, "utt1"),
+        ]
+        (combined,) = api.combine_chunks(chunks)
+        assert combined.basename == "utt1"
+        assert combined.text == "text 0 chunk 0 text 0 chunk 1"
+        assert combined.spec.shape == (4, 6)
+
+    def test_yields_as_soon_as_a_text_is_complete(self):
+        consumed = []
+
+        def source():
+            for u in [
+                make_utterance(0, 0, False),
+                make_utterance(0, 1, True),
+                make_utterance(1, 0, True),
+            ]:
+                consumed.append(u)
+                yield u
+
+        combined = api.combine_chunks(source())
+        assert next(combined).index == 0
+        assert len(consumed) == 2
+        assert next(combined).index == 1
+        assert len(consumed) == 3
+
+    @pytest.mark.parametrize(
+        "chunks, message",
+        [
+            pytest.param(
+                [make_utterance(0, 0, False)],
+                "Text 0 is missing its last chunk: the input ended",
+                id="ends-early",
+            ),
+            pytest.param(
+                [make_utterance(0, 0, False), make_utterance(1, 0, True)],
+                "Text 0 is missing its last chunk: got a chunk of text 1",
+                id="interleaved",
+            ),
+            pytest.param(
+                [make_utterance(0, 1, True)],
+                "expected chunk 0, got chunk 1",
+                id="first-chunk-missing",
+            ),
+            pytest.param(
+                [make_utterance(0, 0, False), make_utterance(0, 2, True)],
+                "expected chunk 1, got chunk 2",
+                id="chunk-skipped",
+            ),
+        ],
+    )
+    def test_errors(self, chunks, message):
+        with pytest.raises(ValueError, match=message):
+            list(api.combine_chunks(chunks))
+
+    def test_empty(self):
+        assert list(api.combine_chunks([])) == []
