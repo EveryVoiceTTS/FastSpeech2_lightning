@@ -4,13 +4,14 @@ from pathlib import Path
 from everyvoice.config.shared_types import ContactInformation
 from everyvoice.config.text_config import Symbols, TextConfig
 from everyvoice.config.type_definitions import DatasetTextRepresentation
-from everyvoice.tests.stubs import TEST_CONTACT, capture_logs
+from everyvoice.tests.stubs import CONFIG_DIR, TEST_CONTACT, capture_logs
 from everyvoice.text.lookups import LookupTable
 from everyvoice.text.utils import get_symbols_from_checkpoint_symbol_dict, symbol_sorter
 from pytest import raises
 
 from ..cli.synthesize import load_data_from_filelist
 from ..config import LATEST_VERSION, FastSpeech2Config
+from ..dataset import FastSpeech2DataModule, FastSpeech2SynthesisDataModule
 from ..model import FastSpeech2
 from ..type_definitions_heavy import Stats, StatsInfo
 
@@ -409,3 +410,33 @@ class TestLoadingData:
     def test_load_psv(self):
         data = self.write_and_load("characters|language\nfoo|eng\nbar|eng\nbaz|fra\n")
         assert len(data) == 3
+
+
+class TestDataModuleOutputDirs:
+    """Training must not create a synthesis output directory in the current
+    directory, and synthesis must use the output directory it was given."""
+
+    def test_training_creates_no_directory(self, tmp_path, monkeypatch):
+        # A config with real filelists, which the data module loads
+        config = FastSpeech2Config.load_config_from_path(
+            CONFIG_DIR / f"{TEXT_TO_SPEC_CONFIG_FILENAME_PREFIX}.yaml"
+        )
+        monkeypatch.chdir(tmp_path)
+        FastSpeech2DataModule(config)
+        assert list(tmp_path.iterdir()) == []
+
+    def test_synthesis_uses_its_output_dir(self, tmp_path, monkeypatch):
+        cwd = tmp_path / "cwd"
+        cwd.mkdir()
+        monkeypatch.chdir(cwd)
+        output_dir = tmp_path / "my_output"
+        data_module = FastSpeech2SynthesisDataModule(
+            FastSpeech2Config(contact=TEST_CONTACT),
+            data=[],
+            lang2id={"default": 0},
+            speaker2id={"default": 0},
+            inference_output_dir=output_dir,
+        )
+        assert data_module.predict_path.parent == output_dir
+        assert output_dir.is_dir()
+        assert list(cwd.iterdir()) == []

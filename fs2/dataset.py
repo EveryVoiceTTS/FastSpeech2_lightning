@@ -237,8 +237,9 @@ class FastSpeech2DataModule(BaseDataModule):
         config: FastSpeech2Config,
         inference=False,
         teacher_forcing=False,
-        inference_output_dir=Path("synthesis_output"),
+        inference_output_dir: Path | None = None,
     ):
+        # inference_output_dir gets created: only synthesis should give one
         super().__init__(config=config, inference_output_dir=inference_output_dir)
         self.inference = inference
         self.prepared = False
@@ -356,12 +357,14 @@ class FastSpeech2SynthesisDataModule(FastSpeech2DataModule):
         data: list[dict],
         lang2id: LookupTable,
         speaker2id: LookupTable,
+        inference_output_dir: Path,
         teacher_forcing: bool = False,
     ):
         super().__init__(
             config=config,
             inference=True,
             teacher_forcing=teacher_forcing,
+            inference_output_dir=inference_output_dir,
         )
         self.inference = True
         self.data = data

@@ -424,6 +424,7 @@ def synthesize_helper(
                 data,
                 model.lang2id,
                 model.speaker2id,
+                inference_output_dir=output_dir,
                 teacher_forcing=teacher_forcing,
             ),
             return_predictions=True,
