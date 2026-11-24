@@ -344,17 +344,6 @@ def prepare_data(
     return data
 
 
-def get_global_step(model_path: Path) -> int:
-    """
-    Extract the `global_step` from a model.
-    Note: we have to do this because the `global_step` gets reset to 0 when we call load_from_checkpoint().
-    """
-    import torch
-
-    m = torch.load(model_path, map_location=torch.device("cpu"), weights_only=True)
-    return m["global_step"]
-
-
 def load_model(model_path: Path, device: "torch.device") -> "FastSpeech2":
     check_file_not_empty(model_path)
     from ..model import FastSpeech2

@@ -113,11 +113,7 @@ def check_data_command(  # noqa: C901
         from everyvoice.preprocessor import Preprocessor
         from everyvoice.utils.heavy import get_device_from_accelerator
 
-        from ..core.synthesize import (
-            get_global_step,
-            load_data_from_filelist,
-            synthesize_helper,
-        )
+        from ..core.synthesize import load_data_from_filelist, synthesize_helper
         from ..model import FastSpeech2
         from .check_data_heavy import check_data_from_filelist
 
@@ -190,9 +186,9 @@ def check_data_command(  # noqa: C901
     else:
         combined_filelist_data = None
 
-    # get global step
-    # We can't just use model.global_step because it gets reset by lightning
-    global_step = get_global_step(model_path)
+    # model.global_step is 0 without a Trainer; global_step_at_load is always set
+    # for a model loaded from a checkpoint.
+    global_step = model.global_step_at_load or 0
 
     synthesize_helper(
         model=model,
