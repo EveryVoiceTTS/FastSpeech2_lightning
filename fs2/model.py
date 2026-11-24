@@ -1,6 +1,6 @@
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast
 
 import numpy as np
 import pytorch_lightning as pl
@@ -87,7 +87,11 @@ class FastSpeech2(pl.LightningModule):
             from pydantic import ValidationError
 
             try:
-                config = FastSpeech2Config(**config)
+                # A dict config comes from a checkpoint's hyperparameters.
+                # cast: this repo's mypy can't see everyvoice's ConfigModel
+                config = cast(
+                    FastSpeech2Config, FastSpeech2Config.from_checkpoint_dump(config)
+                )
             except ValidationError as e:
                 for error in e.errors():
                     if isinstance(
@@ -423,8 +427,8 @@ class FastSpeech2(pl.LightningModule):
         and handle them appropriately."""
         checkpoint = self.check_and_upgrade_checkpoint(checkpoint)
 
-        self.config = FeaturePredictionConfig(
-            **checkpoint["hyper_parameters"]["config"]
+        self.config = FeaturePredictionConfig.from_checkpoint_dump(
+            checkpoint["hyper_parameters"]["config"]
         )
         if (
             "stats" in checkpoint["hyper_parameters"]
