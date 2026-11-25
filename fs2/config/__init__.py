@@ -45,10 +45,6 @@ class ConformerConfig(ConfigModel):
         default=9,
         description="The size of the kernel in each convoluational layer of the Conformer.",
     )
-    depthwise: bool = Field(
-        default=True,
-        description="Whether the feedforward modules use depthwise separable convolutions (see Pine et al. 2022: https://aclanthology.org/2022.acl-long.507/) instead of position-wise linear layers.",
-    )
     dropout: float = Field(default=0.2, description="The amount of dropout to apply.")
 
 
@@ -298,10 +294,7 @@ class FastSpeech2Config(BaseModelWithContact):
             # Converting to 1.0 just requires setting the VERSION field
             data["VERSION"] = "1.0"
 
-        # 1.2 removed the Global Style Token module and made the Conformer
-        # feedforward modules configurable, defaulting to depthwise separable
-        # convolutions. Configs from before 1.2 that spell out an encoder or
-        # decoder describe position-wise feedforward modules.
+        # 1.2 removed the Global Style Token module.
         if ckpt_version < Version("1.2"):
             data = {**data, "VERSION": "1.2"}
             model = data.get("model")
@@ -313,9 +306,6 @@ class FastSpeech2Config(BaseModelWithContact):
                         "Please re-train your model without it, or downgrade to everyvoice<=0.5.0 "
                         "to use a model that was trained with it."
                     )
-                for name in ("encoder", "decoder"):
-                    if isinstance(model.get(name), dict):
-                        model[name] = {"depthwise": False, **model[name]}
                 data["model"] = model
 
         return data

@@ -40,18 +40,10 @@ Differences from torchaudio's Conformer:
   compute statistics over padded positions.
 - The padding mask covers the whole input, which may be longer than its longest
   item.
-- With ``depthwise_ffn=True``, the feed-forward modules use depthwise separable
-  convolutions, as in the depthwise FastSpeech2 of Pine et al. (2022),
-  "Requirements and Motivations of Low-Resource Speech Synthesis for Language
-  Revitalization" (https://aclanthology.org/2022.acl-long.507/,
-  https://github.com/roedoejet/FastSpeech2_ACL2022_reproducibility), following
-  LightSpeech (Luo et al., 2021). With ``depthwise_ffn=False``, they are
-  torchaudio's position-wise feed-forward modules.
 
-Module structure and attribute names match torchaudio's, so with
-``depthwise_ffn=False`` the state_dict keys and the seeded initial weights are
-the same as torchaudio's, and checkpoints trained with torchaudio's Conformer
-load unchanged.
+Module structure and attribute names match torchaudio's, so the state_dict keys
+and the seeded initial weights are the same as torchaudio's, and checkpoints
+trained with torchaudio's Conformer load unchanged.
 """
 
 from typing import Optional
@@ -179,75 +171,15 @@ class _FeedForwardModule(torch.nn.Module):
             torch.nn.Dropout(dropout),
         )
 
-    def forward(
-        self, input: torch.Tensor, padding_mask: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         r"""
         Args:
             input (torch.Tensor): with shape `(*, D)`.
-            padding_mask: unused, since this module does not mix time steps.
 
         Returns:
             torch.Tensor: output, with shape `(*, D)`.
         """
         return self.sequential(input)
-
-
-class _DepthwiseFeedForwardModule(torch.nn.Module):
-    r"""Feed forward layer with a depthwise separable first projection.
-
-    Pine et al. (2022): a depthwise convolution over time, followed by pointwise
-    convolutions to the hidden dimension and back. Their second projection is a
-    kernel-size-1 depthwise convolution followed by a pointwise one; the
-    depthwise part only scales each channel, which the pointwise convolution
-    subsumes, so it is omitted here.
-
-    Args:
-        input_dim (int): input dimension.
-        hidden_dim (int): hidden dimension.
-        kernel_size (int): kernel size of the depthwise convolution.
-        dropout (float, optional): dropout probability. (Default: 0.0)
-    """
-
-    def __init__(
-        self, input_dim: int, hidden_dim: int, kernel_size: int, dropout: float = 0.0
-    ) -> None:
-        super().__init__()
-        if (kernel_size - 1) % 2 != 0:
-            raise ValueError("kernel_size must be odd to achieve 'SAME' padding.")
-        self.layer_norm = torch.nn.LayerNorm(input_dim)
-        self.depthwise_conv = torch.nn.Conv1d(
-            input_dim,
-            input_dim,
-            kernel_size,
-            padding=(kernel_size - 1) // 2,
-            groups=input_dim,
-        )
-        self.sequential = torch.nn.Sequential(
-            torch.nn.Conv1d(input_dim, hidden_dim, kernel_size=1),
-            torch.nn.SiLU(),
-            torch.nn.Dropout(dropout),
-            torch.nn.Conv1d(hidden_dim, input_dim, kernel_size=1),
-            torch.nn.Dropout(dropout),
-        )
-
-    def forward(
-        self, input: torch.Tensor, padding_mask: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        r"""
-        Args:
-            input (torch.Tensor): with shape `(T, B, D)`.
-            padding_mask (torch.Tensor or None): with shape `(B, T)`, True at
-                padded positions.
-
-        Returns:
-            torch.Tensor: output, with shape `(T, B, D)`.
-        """
-        x = self.layer_norm(input).permute(1, 2, 0)  # (B, D, T)
-        # LayerNorm has a bias, so mask after it, right before the depthwise conv.
-        x = _mask_padding(x, padding_mask)
-        x = self.sequential(self.depthwise_conv(x))
-        return x.permute(2, 0, 1)
 
 
 class ConformerLayer(torch.nn.Module):
@@ -257,14 +189,10 @@ class ConformerLayer(torch.nn.Module):
         input_dim (int): input dimension.
         ffn_dim (int): hidden layer dimension of feedforward network.
         num_attention_heads (int): number of attention heads.
-        depthwise_conv_kernel_size (int): kernel size of depthwise convolution
-            layers, in the convolution module and, if ``depthwise_ffn``, in the
-            feedforward modules.
+        depthwise_conv_kernel_size (int): kernel size of depthwise convolution layer.
         dropout (float, optional): dropout probability. (Default: 0.0)
         convolution_first (bool, optional): apply the convolution module ahead of
             the attention module. (Default: ``False``)
-        depthwise_ffn (bool, optional): use depthwise separable convolutions in
-            the feedforward modules. (Default: ``False``)
     """
 
     def __init__(
@@ -275,18 +203,9 @@ class ConformerLayer(torch.nn.Module):
         depthwise_conv_kernel_size: int,
         dropout: float = 0.0,
         convolution_first: bool = False,
-        depthwise_ffn: bool = False,
     ) -> None:
         super().__init__()
-
-        def make_ffn() -> torch.nn.Module:
-            if depthwise_ffn:
-                return _DepthwiseFeedForwardModule(
-                    input_dim, ffn_dim, depthwise_conv_kernel_size, dropout=dropout
-                )
-            return _FeedForwardModule(input_dim, ffn_dim, dropout=dropout)
-
-        self.ffn1 = make_ffn()
+        self.ffn1 = _FeedForwardModule(input_dim, ffn_dim, dropout=dropout)
 
         self.self_attn_layer_norm = torch.nn.LayerNorm(input_dim)
         self.self_attn = torch.nn.MultiheadAttention(
@@ -302,7 +221,7 @@ class ConformerLayer(torch.nn.Module):
             bias=True,
         )
 
-        self.ffn2 = make_ffn()
+        self.ffn2 = _FeedForwardModule(input_dim, ffn_dim, dropout=dropout)
         self.final_layer_norm = torch.nn.LayerNorm(input_dim)
         self.convolution_first = convolution_first
 
@@ -330,7 +249,7 @@ class ConformerLayer(torch.nn.Module):
             torch.Tensor: output, with shape `(T, B, D)`.
         """
         residual = input
-        x = self.ffn1(input, key_padding_mask)
+        x = self.ffn1(input)
         x = x * 0.5 + residual
 
         if self.convolution_first:
@@ -352,7 +271,7 @@ class ConformerLayer(torch.nn.Module):
             x = self._apply_convolution(x, key_padding_mask)
 
         residual = x
-        x = self.ffn2(x, key_padding_mask)
+        x = self.ffn2(x)
         x = x * 0.5 + residual
 
         x = self.final_layer_norm(x)
@@ -373,8 +292,6 @@ class Conformer(torch.nn.Module):
         dropout (float, optional): dropout probability. (Default: 0.0)
         convolution_first (bool, optional): apply the convolution module ahead of
             the attention module. (Default: ``False``)
-        depthwise_ffn (bool, optional): use depthwise separable convolutions in
-            the feedforward modules. (Default: ``False``)
 
     Examples:
         >>> conformer = Conformer(
@@ -398,7 +315,6 @@ class Conformer(torch.nn.Module):
         depthwise_conv_kernel_size: int,
         dropout: float = 0.0,
         convolution_first: bool = False,
-        depthwise_ffn: bool = False,
     ):
         super().__init__()
 
@@ -411,7 +327,6 @@ class Conformer(torch.nn.Module):
                     depthwise_conv_kernel_size,
                     dropout=dropout,
                     convolution_first=convolution_first,
-                    depthwise_ffn=depthwise_ffn,
                 )
                 for _ in range(num_layers)
             ]

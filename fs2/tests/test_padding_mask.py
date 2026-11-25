@@ -35,9 +35,7 @@ def pad_with_garbage(short: torch.Tensor, long: torch.Tensor) -> torch.Tensor:
     return torch.stack([torch.cat([short, padding]), long])
 
 
-def make_conformers(
-    seed=0, depthwise_ffn=False
-) -> tuple[TorchaudioConformer, Conformer]:
+def make_conformers(seed=0) -> tuple[TorchaudioConformer, Conformer]:
     kwargs: dict[str, Any] = dict(
         input_dim=DIM,
         num_heads=2,
@@ -48,7 +46,7 @@ def make_conformers(
     torch.manual_seed(seed)
     conformer = TorchaudioConformer(**kwargs).eval()
     torch.manual_seed(seed)
-    masked = Conformer(**kwargs, depthwise_ffn=depthwise_ffn).eval()
+    masked = Conformer(**kwargs).eval()
     return conformer, masked
 
 
@@ -68,9 +66,8 @@ def test_masked_conformer_is_a_drop_in_replacement():
         torch.testing.assert_close(masked(x, lengths)[0], conformer(x, lengths)[0])
 
 
-@pytest.mark.parametrize("depthwise_ffn", [False, True])
-def test_masked_conformer_ignores_padding(depthwise_ffn):
-    conformer, masked = make_conformers(depthwise_ffn=depthwise_ffn)
+def test_masked_conformer_ignores_padding():
+    conformer, masked = make_conformers()
     short, long = torch.randn(5, DIM), torch.randn(12, DIM)
     batch = pad_with_garbage(short, long)
     lengths = torch.tensor([5, 12])
@@ -84,8 +81,7 @@ def test_masked_conformer_ignores_padding(depthwise_ffn):
         assert not torch.allclose(ref_batched, ref_alone)
 
 
-@pytest.mark.parametrize("depthwise_ffn", [False, True])
-def test_masked_conformer_training_ignores_padding(depthwise_ffn):
+def test_masked_conformer_training_ignores_padding():
     # In training mode, batch norm uses batch statistics: how much padding the
     # batch has must change neither the outputs nor the running statistics.
     short, long = torch.randn(5, DIM), torch.randn(12, DIM)
@@ -95,7 +91,7 @@ def test_masked_conformer_training_ignores_padding(depthwise_ffn):
     batches = [batch, torch.cat([batch, extra_padding], dim=1)]
     outputs, running_stats = [], []
     for batch in batches:
-        _, masked = make_conformers(depthwise_ffn=depthwise_ffn)
+        _, masked = make_conformers()
         masked.train()
         with torch.no_grad():
             output = masked(batch, lengths)[0]

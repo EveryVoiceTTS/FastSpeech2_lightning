@@ -182,7 +182,6 @@ class FastSpeech2(pl.LightningModule):
             num_layers=config.layers,
             depthwise_conv_kernel_size=config.conv_kernel_size,
             dropout=config.dropout,
-            depthwise_ffn=config.depthwise,
         )
 
     def forward(self, batch, control=InferenceControl(), inference=False):
@@ -392,12 +391,9 @@ class FastSpeech2(pl.LightningModule):
                 "please re-train your model or downgrade everyvoice to the version that was used to train your model."
             )
 
-        # Version 1.4 added depthwise separable feedforward modules to the
-        # Conformers and removed the GST module. Lightning builds the model
-        # from the checkpoint's config before calling on_load_checkpoint, so
-        # those changes are handled by the config upgrade to FastSpeech2Config
-        # version 1.2, which keeps position-wise feedforward modules for
-        # earlier checkpoints.
+        # Version 1.4 removed the GST module. Lightning builds the model from
+        # the checkpoint's config before calling on_load_checkpoint, so this is
+        # handled by the config upgrade to FastSpeech2Config version 1.2.
 
         # From 1.3 onward, checkpoints carry their own realized, ordered symbol
         # list (see on_save_checkpoint), so reconciling against a live-recomputed
