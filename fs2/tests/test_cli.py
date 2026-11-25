@@ -17,7 +17,7 @@ from everyvoice.config.type_definitions import (
     TargetTrainingTextRepresentationLevel,
 )
 from everyvoice.tests.preprocessed_audio_fixture import PreprocessedAudioFixture
-from everyvoice.tests.stubs import TEST_DATA_DIR, mute_logger, temp_chdir
+from everyvoice.tests.stubs import TEST_DATA_DIR, flatten_log, mute_logger, temp_chdir
 from everyvoice.utils import generic_psv_filelist_reader
 from typer.testing import CliRunner
 
@@ -437,9 +437,9 @@ def test_removed_style_reference_option():
             )
             result = runner.invoke(cli, args + ["--style-reference", str(file)])
             assert result.exit_code != 0
-            # rich wraps the error message in a box
-            message = " ".join(result.output.replace("│", " ").split())
-            assert "--style-reference was removed in EveryVoice 0.6.0" in message
+            assert "--style-reference was removed in EveryVoice 0.6.0" in flatten_log(
+                result.output
+            )
 
 
 class TestCLI:
