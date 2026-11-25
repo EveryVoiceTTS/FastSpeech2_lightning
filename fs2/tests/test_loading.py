@@ -288,7 +288,7 @@ class TestLoadingModel:
     def test_load_checkpoint_from_before_1_4(self):
         """
         Checkpoints from before version 1.4 may have the GST module disabled
-        in their config.
+        in their config, but not enabled.
         """
         import torch
         from pytorch_lightning import Trainer
@@ -310,6 +310,11 @@ class TestLoadingModel:
             assert loaded.config.VERSION == "1.2"
             for key, value in model.state_dict().items():
                 assert torch.equal(loaded.state_dict()[key], value), key
+
+            config["model"]["use_global_style_token_module"] = True
+            torch.save(m, ckpt_fn)
+            with raises(TypeError, match=r"removed in EveryVoice 0.6.0"):
+                FastSpeech2.load_from_checkpoint(ckpt_fn)
 
 
 class TestLoadingConfig:
@@ -363,7 +368,7 @@ class TestLoadingConfig:
         c = FastSpeech2Config(**arguments)
         assert c.VERSION == "1.2"
         arguments["model"]["use_global_style_token_module"] = True
-        with raises(ValueError, match=r"no longer supported"):
+        with raises(ValueError, match=r"removed in EveryVoice 0.6.0"):
             FastSpeech2Config(**arguments)
 
 

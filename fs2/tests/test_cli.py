@@ -9,6 +9,7 @@ from tempfile import TemporaryDirectory
 from unittest import mock
 
 import pytest
+import typer
 from everyvoice.config.shared_types import ContactInformation
 from everyvoice.config.text_config import TextConfig
 from everyvoice.config.type_definitions import (
@@ -20,6 +21,7 @@ from everyvoice.tests.stubs import TEST_DATA_DIR, mute_logger, temp_chdir
 from everyvoice.utils import generic_psv_filelist_reader
 from typer.testing import CliRunner
 
+from ..cli.check_data import check_data_command
 from ..cli.check_data_heavy import check_data_from_filelist
 from ..cli.cli import app
 from ..cli.synthesize import get_text_split_params
@@ -416,6 +418,28 @@ class TestCheckData(PreprocessedAudioFixture):
         assert checked_data[0]["pesq"] > 3.0
         assert checked_data[0]["pesq"] < 5.0
         assert checked_data[0]["duration"] == pytest.approx(5.17, abs=0.01)
+
+
+def test_removed_style_reference_option():
+    """--style-reference is hidden, and explains that it was removed."""
+    check_data_app = typer.Typer()
+    check_data_app.command()(check_data_command)
+    runner = CliRunner()
+    with TemporaryDirectory() as tmpdir:
+        file = Path(tmpdir) / "file"
+        file.touch()
+        for cli, args in (
+            (app, ["synthesize", str(file), "--text", "hello"]),
+            (check_data_app, [str(file), str(file)]),
+        ):
+            assert (
+                "--style-reference" not in runner.invoke(cli, args + ["--help"]).output
+            )
+            result = runner.invoke(cli, args + ["--style-reference", str(file)])
+            assert result.exit_code != 0
+            # rich wraps the error message in a box
+            message = " ".join(result.output.replace("│", " ").split())
+            assert "--style-reference was removed in EveryVoice 0.6.0" in message
 
 
 class TestCLI:

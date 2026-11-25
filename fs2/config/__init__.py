@@ -28,6 +28,10 @@ from pydantic import (
 LATEST_VERSION: str = "1.2"
 
 
+class RemovedFeatureError(ValueError):
+    """A config uses a feature that this version of EveryVoice no longer supports."""
+
+
 class ConformerConfig(ConfigModel):
     layers: int = Field(default=4, description="The number of layers in the Conformer.")
     heads: int = Field(
@@ -296,17 +300,16 @@ class FastSpeech2Config(BaseModelWithContact):
 
         # 1.2 removed the Global Style Token module.
         if ckpt_version < Version("1.2"):
-            data = {**data, "VERSION": "1.2"}
+            data["VERSION"] = "1.2"
             model = data.get("model")
-            if isinstance(model, dict):
-                model = dict(model)
-                if model.pop("use_global_style_token_module", False):
-                    raise ValueError(
-                        "The Global Style Token (GST) module is no longer supported. "
-                        "Please re-train your model without it, or downgrade to everyvoice<=0.5.0 "
-                        "to use a model that was trained with it."
-                    )
-                data["model"] = model
+            if isinstance(model, dict) and model.pop(
+                "use_global_style_token_module", False
+            ):
+                raise RemovedFeatureError(
+                    "The Global Style Token (GST) module was removed in EveryVoice 0.6.0. "
+                    "Please re-train your model without it, or use everyvoice 0.5.0 "
+                    "for a model that was trained with it."
+                )
 
         return data
 

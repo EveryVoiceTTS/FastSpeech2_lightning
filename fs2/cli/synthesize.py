@@ -23,6 +23,23 @@ from everyvoice.utils import slugify, spinner, truncate_basename
 from merge_args import merge_args
 
 
+def _style_reference_removed(value: Optional[str]) -> None:
+    if value is not None:
+        raise typer.BadParameter(
+            "--style-reference was removed in EveryVoice 0.6.0, along with the "
+            "Global Style Token (GST) module. Please use everyvoice 0.5.0 if you need it."
+        )
+
+
+# Hidden, so that the removed option gets an explanation instead of "No such option".
+RemovedStyleReferenceOption = Annotated[
+    Optional[str],
+    typer.Option(
+        "--style-reference", "-S", hidden=True, callback=_style_reference_removed
+    ),
+]
+
+
 def validate_data_keys_with_model_keys(
     data_keys: set[str], model_keys: set[str], key: str, multi: bool
 ) -> None:
@@ -461,6 +478,7 @@ def synthesize(  # noqa: C901
             help="Control the speaking rate of the synthesis. Set a value to multily the durations by, lower numbers produce quicker speaking rates, larger numbers produce slower speaking rates. Default is 1.0",
         ),
     ] = 1.0,
+    style_reference: RemovedStyleReferenceOption = None,
     speaker: Annotated[
         Optional[str],
         typer.Option(

@@ -12,7 +12,11 @@ from everyvoice.base_cli.interfaces import (
 from everyvoice.config.type_definitions import DatasetTextRepresentation
 from everyvoice.utils import generic_psv_filelist_reader, spinner
 
-from .synthesize import get_global_step, synthesize_helper
+from .synthesize import (
+    RemovedStyleReferenceOption,
+    get_global_step,
+    synthesize_helper,
+)
 
 
 def check_data_command(  # noqa: C901
@@ -37,6 +41,7 @@ def check_data_command(  # noqa: C901
             help="The directory where your synthesized audio should be written",
         ),
     ] = Path("checked_data"),
+    style_reference: RemovedStyleReferenceOption = None,
     accelerator: str = typer.Option("auto", "--accelerator", "-a"),
     devices: str = typer.Option(
         "auto", "--devices", "-d", help="The number of GPUs to use"

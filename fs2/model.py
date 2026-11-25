@@ -21,7 +21,7 @@ from everyvoice.utils import pydantic_validation_error_shortener
 from everyvoice.utils.heavy import expand
 from torch import nn
 
-from .config import ConformerConfig, FastSpeech2Config
+from .config import ConformerConfig, FastSpeech2Config, RemovedFeatureError
 from .conformer import Conformer
 from .layers import PositionalEmbedding, PostNet
 from .loss import FastSpeech2Loss
@@ -89,6 +89,11 @@ class FastSpeech2(pl.LightningModule):
             try:
                 config = FastSpeech2Config(**config)
             except ValidationError as e:
+                for error in e.errors():
+                    if isinstance(
+                        error.get("ctx", {}).get("error"), RemovedFeatureError
+                    ):
+                        raise TypeError(str(error["ctx"]["error"])) from e
                 logger.error(f"{pydantic_validation_error_shortener(e)}")
                 raise TypeError(
                     "Unable to load config.  Possible causes: is it really a FastSpeech2Config? or the correct version?"
