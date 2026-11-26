@@ -7,14 +7,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 from everyvoice import logger
-from everyvoice.base_cli.checkpoint import check_file_not_empty
 from everyvoice.config.type_definitions import (
     DatasetTextRepresentation,
     SynthesizeOutputFormats,
     TargetTrainingTextRepresentationLevel,
 )
 from everyvoice.text.textsplit import chunk_text, resolve_split_params
-from everyvoice.utils import slugify, truncate_basename
+from everyvoice.utils import check_file_not_empty, slugify, truncate_basename
 
 if TYPE_CHECKING:
     import torch.device
