@@ -29,6 +29,7 @@ from readalongs.api import (
 )
 
 from .config import FastSpeech2Config
+from .vocoding import spec_to_wav_batch
 
 
 def get_synthesis_output_writers(
@@ -686,13 +687,6 @@ class WavPredictionWriter(PredictionWriterBase):
         self.device = device
         self.vocoder_model = vocoder_model
         self.vocoder_config = vocoder_config
-        sampling_rate_change = (
-            vocoder_config.preprocessing.audio.output_sampling_rate
-            // vocoder_config.preprocessing.audio.input_sampling_rate
-        )
-        self.output_hop_size = (
-            sampling_rate_change * vocoder_config.preprocessing.audio.fft_hop_size
-        )
         self.file_extension: str = self.sep.join(
             (f"v_ckpt={vocoder_global_step}", self.file_extension)
         )
@@ -700,31 +694,16 @@ class WavPredictionWriter(PredictionWriterBase):
         logger.info(f"Saving wav output to {self.save_dir}")
 
     def synthesize_audio(self, outputs: dict[str, torch.Tensor | None]):
-        from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
-            synthesize_data,
-        )
-
-        sr: int
-        wavs: np.ndarray
+        """Return (wavs, wav_lens, sample_rate) for a batch: see spec_to_wav_batch()"""
         output_value = outputs[self.output_key]
         if output_value is None:
             raise ValueError(
                 f"{self.output_key} does not exist in the output of your model"
             )
-
-        wavs, sr = synthesize_data(
-            output_value.transpose(1, 2), self.vocoder_model, self.vocoder_config
+        assert "tgt_lens" in outputs and outputs["tgt_lens"] is not None
+        return spec_to_wav_batch(
+            output_value, outputs["tgt_lens"], self.vocoder_model, self.vocoder_config
         )
-
-        # wavs: [B (batch_size), C (channels), T (samples)]
-        assert (
-            wavs.ndim == 3
-        ), f"The generated audio did not contain 3 dimensions. First dimension should be B(atch) and the second dimension should be C(hannels) and third dimension should be T(ime) in samples. Got {wavs.shape} instead."
-        assert wavs.shape[0] == output_value.size(
-            0
-        ), f"You provided {output_value.size(0)} utterances, but {wavs.shape[0]} audio files were synthesized instead."
-
-        return wavs, sr
 
     def write_batch(
         self,
@@ -733,20 +712,17 @@ class WavPredictionWriter(PredictionWriterBase):
     ) -> None:
         logger.trace("Generating waveform...")
 
-        wavs, sr = self.synthesize_audio(outputs)
-
-        assert "tgt_lens" in outputs and outputs["tgt_lens"] is not None
+        wavs, wav_lens, sr = self.synthesize_audio(outputs)
 
         texts = batch["raw_text"]
         basenames = batch["basename"]
         speakers = batch["speaker"]
         languages = batch["language"]
         is_last_input_chunk = batch["is_last_input_chunk"]
-        unmasked_lens = list(outputs["tgt_lens"])
 
         for i, wav in enumerate(wavs):
             # The vocoder output includes padding, so we have to remove that
-            trimmed_wav = wav[:, : (unmasked_lens[i] * self.output_hop_size)]
+            trimmed_wav = wav[:, : int(wav_lens[i])]
 
             # Concatenate the current chunk to the full wav
             self.full_wav = torch.cat((self.full_wav, trimmed_wav), -1)

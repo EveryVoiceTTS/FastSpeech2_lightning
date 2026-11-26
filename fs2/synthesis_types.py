@@ -25,11 +25,18 @@ class SynthesisBatch:
             input tokens of each item
         output_key: the key of the spectrogram in outputs ("postnet_output", or
             "output" for models without a postnet)
+        wavs: after api.spec_to_wav(), the waveforms, [B, C (channels),
+            T (samples)], still padded, on the CPU; None before
+        wav_lens: after api.spec_to_wav(), the number of samples of each item
+        sample_rate: after api.spec_to_wav(), the sample rate of wavs
     """
 
     outputs: dict[str, Any]
     batch: dict[str, Any]
     output_key: str
+    wavs: "torch.Tensor | None" = None
+    wav_lens: "torch.Tensor | None" = None
+    sample_rate: int | None = None
 
     def __len__(self) -> int:
         return len(self.batch["basename"])
@@ -51,6 +58,9 @@ class Utterance:
         tokens: the input token ids, [N (tokens)]
         durations: the number of frames of each input token, [N (tokens)];
             durations.sum() == spec.size(-1)
+        wav: the waveform, [C (channels), T (samples)], if api.spec_to_wav() was
+            applied before api.unbatch(); None otherwise
+        sample_rate: the sample rate of wav, or None
     """
 
     index: int
@@ -63,3 +73,5 @@ class Utterance:
     spec: "torch.Tensor"
     tokens: "torch.Tensor"
     durations: "torch.Tensor"
+    wav: "torch.Tensor | None" = None
+    sample_rate: int | None = None

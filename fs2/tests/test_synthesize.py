@@ -16,6 +16,7 @@ from .. import api, prediction_writers
 from ..core import synthesize as core_synthesize
 from ..core.synthesize import iter_synthesis, synthesize_helper
 from ..synthesis_types import SynthesisBatch, Utterance
+from ..vocoding import get_output_hop_size
 
 
 @pytest.fixture()
@@ -382,3 +383,69 @@ class TestApiCombineChunks:
 
     def test_empty(self):
         assert list(api.combine_chunks([])) == []
+
+
+@pytest.fixture(scope="module")
+def vocoder(stubbed_vocoder):
+    """The stubbed vocoder, loaded for synthesis as a user would"""
+    from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl import api as hfgl_api
+
+    _vocoder, vocoder_path = stubbed_vocoder
+    return hfgl_api.load_model(vocoder_path, accelerator="cpu")
+
+
+class TestApiSpecToWav:
+    def test_adds_wavs_to_batches(self, api_model, vocoder):
+        texts = [SHORT_TEXT, "a much longer second text, to get some padding"]
+        hop_size = get_output_hop_size(vocoder.config)
+        batches = list(api.synthesize(api_model, texts, batch_size=2))
+        with_wavs = list(api.spec_to_wav(batches, vocoder))
+
+        assert len(with_wavs) == len(batches) == 1
+        (batch,), (with_wav,) = batches, with_wavs
+        assert batch.wavs is None
+        assert with_wav.outputs is batch.outputs
+        assert with_wav.wavs is not None and with_wav.wav_lens is not None
+        assert with_wav.wavs.shape[:2] == (2, 1)
+        assert with_wav.wavs.device == torch.device("cpu")
+        assert torch.equal(with_wav.wav_lens, batch.outputs["tgt_lens"] * hop_size)
+        assert with_wav.wavs.size(-1) >= int(with_wav.wav_lens.max())
+        assert (
+            with_wav.sample_rate
+            == vocoder.config.preprocessing.audio.output_sampling_rate
+        )
+        assert_no_grad_tracking(with_wav.wavs, "wavs")
+        assert_no_param_grads(vocoder, "vocoder")
+
+    def test_unbatch_trims_wavs(self, api_model, vocoder):
+        texts = [SHORT_TEXT, "a much longer second text, to get some padding"]
+        hop_size = get_output_hop_size(vocoder.config)
+        (batch,) = api.spec_to_wav(
+            api.synthesize(api_model, texts, batch_size=2), vocoder
+        )
+        utterances = list(api.unbatch([batch]))
+        assert batch.wavs is not None
+        for i, u in enumerate(utterances):
+            assert u.wav is not None
+            assert u.wav.size(-1) == u.spec.size(-1) * hop_size
+            assert torch.equal(u.wav, batch.wavs[i, :, : u.wav.size(-1)])
+            assert u.sample_rate == batch.sample_rate
+        assert utterances[0].wav.size(-1) < batch.wavs.size(-1)
+
+    def test_combine_joins_wavs(self, api_model, vocoder):
+        hop_size = get_output_hop_size(vocoder.config)
+        batches = api.synthesize(api_model, LONG_TEXT, batch_size=2, **CHUNKING)
+        chunks = list(api.unbatch(api.spec_to_wav(batches, vocoder)))
+        assert len(chunks) == 3
+        (combined,) = api.combine_chunks(chunks)
+        assert combined.wav is not None
+        assert torch.equal(
+            combined.wav,
+            torch.cat([c.wav for c in chunks], dim=-1),  # type: ignore[misc]
+        )
+        assert combined.wav.size(-1) == combined.spec.size(-1) * hop_size
+
+    def test_no_wav_without_spec_to_wav(self, api_model):
+        (utterance,) = api.unbatch(api.synthesize(api_model, SHORT_TEXT))
+        assert utterance.wav is None
+        assert utterance.sample_rate is None

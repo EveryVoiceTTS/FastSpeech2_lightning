@@ -12,6 +12,10 @@ from .synthesis_types import SynthesisBatch, Utterance
 
 if TYPE_CHECKING:
     import torch
+    from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.model import (
+        HiFiGAN,
+        HiFiGANGenerator,
+    )
 
 
 def load_config(
@@ -179,6 +183,29 @@ def synthesize(
         yield SynthesisBatch(outputs=outputs, batch=batch, output_key=model.output_key)
 
 
+def spec_to_wav(
+    batches: Iterable[SynthesisBatch],
+    vocoder: "HiFiGAN | HiFiGANGenerator",
+) -> Iterator[SynthesisBatch]:
+    """Generate the waveforms of each batch from synthesize() with vocoder.
+
+    Each batch's chunks are vocoded together: long texts are split into chunks
+    so that each fits in memory. Filter the result through unbatch() to get each
+    chunk's waveform as Utterance.wav, and through combine_chunks() to get each
+    text's, its chunks' waveforms joined end to end.
+
+    Args:
+        batches: as yielded by synthesize()
+        vocoder: the spec-to-wav model, see everyvoice.api.hfgl.load_model()
+
+    Yields: each batch, with its wavs, wav_lens and sample_rate set; the wavs are
+        on the CPU.
+    """
+    from .core.synthesize import spec_to_wav_synthesis
+
+    yield from spec_to_wav_synthesis(batches, vocoder)
+
+
 def unbatch(
     batches: Iterable[SynthesisBatch],
     device: "torch.device | str | None" = "cpu",
@@ -190,7 +217,8 @@ def unbatch(
         device: where to put the tensors of each Utterance; None leaves them on
             the model's device
 
-    Yields: one Utterance per chunk of input text, in the order of the texts.
+    Yields: one Utterance per chunk of input text, in the order of the texts,
+        with its wav if spec_to_wav() was applied to batches.
     """
     from .core.synthesize import unbatch_synthesis
 
@@ -200,10 +228,10 @@ def unbatch(
 def combine_chunks(utterances: Iterable[Utterance]) -> Iterator[Utterance]:
     """Combine the chunks of each input text from unbatch() into one Utterance.
 
-    Each combined Utterance is yielded as soon as the last chunk of its text comes
-    in. Its spec, tokens and durations are its chunks' concatenated; its text is
-    its chunks' texts joined with single spaces. Texts that were not split pass
-    through unchanged.
+    Each combined Utterance is yielded as soon as the last chunk of its text
+    comes in. Its spec, tokens, durations and wav (if the chunks have one) are
+    its chunks' concatenated; its text is its chunks' texts joined with single
+    spaces. Texts that were not split pass through unchanged.
 
     Args:
         utterances: as yielded by unbatch()
