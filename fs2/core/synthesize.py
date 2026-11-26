@@ -551,6 +551,7 @@ def unbatch_synthesis(
                 spec=copy_to_device(specs[i, :n_frames].transpose(0, 1)),
                 tokens=copy_to_device(batch["text"][i, :n_tokens]),
                 durations=copy_to_device(outputs["duration_rounded"][i, :n_tokens]),
+                space_token=synthesis_batch.space_token,
                 wav=(
                     None
                     if wavs is None or n_samples is None
@@ -565,13 +566,16 @@ def combine_utterance_chunks(
 ) -> Iterator["Utterance"]:
     """Combine the chunks of each input text into a single Utterance.
 
-    Each combined Utterance is yielded as soon as its last chunk comes in. Its
-    spec, tokens, durations and wav (if the chunks have one) are the concatenation
-    of its chunks'; its text is their texts joined with single spaces (chunking
-    strips the whitespace between chunks); its basename is the one shared by all
-    chunks, or else a slug of its text, as the output writers do. It has
-    chunk_index 0 and is_last_chunk True, like a text that was not split. A text
-    with a single chunk is yielded as is.
+    Each combined Utterance is yielded as soon as its last chunk comes in:
+    - its spec and wav (if the chunks have one) are its chunks' concatenated;
+    - its text is their texts joined with single spaces (chunking strips the
+      whitespace between chunks);
+    - likewise, its tokens are their tokens joined with space_token, whose
+      duration is 0 frames;
+    - its basename is the one shared by all chunks, or else a slug of its text,
+      as the output writers do;
+    - it has chunk_index 0 and is_last_chunk True, like a text that was not split.
+    A text with a single chunk is yielded as is.
 
     Args:
         utterances: as yielded by unbatch_synthesis(): the chunks of each text must
@@ -590,6 +594,17 @@ def combine_utterance_chunks(
             return chunks[0]
         first = chunks[0]
         wavs = [chunk.wav for chunk in chunks if chunk.wav is not None]
+
+        def join_tensors(tensors: list[torch.Tensor], separator: int) -> torch.Tensor:
+            """Concatenate tensors, with separator between consecutive ones"""
+            sep = torch.tensor(
+                [separator], dtype=tensors[0].dtype, device=tensors[0].device
+            )
+            pieces = [tensors[0]]
+            for tensor in tensors[1:]:
+                pieces += [sep, tensor]
+            return torch.cat(pieces)
+
         text = " ".join(chunk.text for chunk in chunks)
         return dataclasses.replace(
             first,
@@ -599,8 +614,9 @@ def combine_utterance_chunks(
                 [chunk.basename for chunk in chunks], text
             ),
             spec=torch.cat([chunk.spec for chunk in chunks], dim=-1),
-            tokens=torch.cat([chunk.tokens for chunk in chunks]),
-            durations=torch.cat([chunk.durations for chunk in chunks]),
+            # The space between chunks, as in text, takes no frames
+            tokens=join_tensors([chunk.tokens for chunk in chunks], first.space_token),
+            durations=join_tensors([chunk.durations for chunk in chunks], 0),
             wav=torch.cat(wavs, dim=-1) if len(wavs) == len(chunks) else None,
         )
 

@@ -137,7 +137,7 @@ def synthesize(
 
     Args:
         model (FastSpeech2): the model to use, see load_model(); synthesis runs on
-            the device the model is on
+            the device the model is on, and puts the model in eval mode
         texts (Sequence[str] | str): the utterances to synthesize, or a single one
         language (str|None): language to use in a multilingual model
         speaker (str|None): speaker to use in a multispeaker model
@@ -156,6 +156,10 @@ def synthesize(
             prepare it in the main process
 
     Yields: a SynthesisBatch for each batch of up to batch_size chunks.
+
+    Raises:
+        ValueError: if a text is empty or only whitespace, since there is nothing
+            to synthesize; checked before any synthesis starts.
     """
     from .core.synthesize import (
         check_text_representation,
@@ -167,6 +171,12 @@ def synthesize(
         texts = [texts]
     if not texts:
         return
+    blank = [index for index, text in enumerate(texts) if not text.strip()]
+    if blank:
+        raise ValueError(
+            f"The texts at indices {blank} are empty or blank: "
+            "there is nothing to synthesize."
+        )
 
     text_representation = DatasetTextRepresentation(text_representation)
     check_text_representation(model, text_representation)
@@ -183,6 +193,7 @@ def synthesize(
         desired_length=desired_length,
         max_length=max_length,
     )
+    (space_token,) = model.text_processor.encode_string_tokens([" "])
     for outputs, batch in iter_synthesis(
         model,
         data,
@@ -191,7 +202,12 @@ def synthesize(
         batch_size=batch_size,
         num_workers=num_workers,
     ):
-        yield SynthesisBatch(outputs=outputs, batch=batch, output_key=model.output_key)
+        yield SynthesisBatch(
+            outputs=outputs,
+            batch=batch,
+            output_key=model.output_key,
+            space_token=space_token,
+        )
 
 
 def spec_to_wav(
@@ -240,9 +256,10 @@ def combine_chunks(utterances: Iterable[Utterance]) -> Iterator[Utterance]:
     """Combine the chunks of each input text from unbatch() into one Utterance.
 
     Each combined Utterance is yielded as soon as the last chunk of its text
-    comes in. Its spec, tokens, durations and wav (if the chunks have one) are
-    its chunks' concatenated; its text is its chunks' texts joined with single
-    spaces. Texts that were not split pass through unchanged.
+    comes in. Its spec and wav (if the chunks have one) are its chunks'
+    concatenated; its text is its chunks' texts joined with single spaces, and
+    its tokens and durations are joined to match, with a space token lasting 0
+    frames between chunks. Texts that were not split pass through unchanged.
 
     Args:
         utterances: as yielded by unbatch()

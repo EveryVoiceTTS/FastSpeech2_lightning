@@ -25,6 +25,8 @@ class SynthesisBatch:
             input tokens of each item
         output_key: the key of the spectrogram in outputs ("postnet_output", or
             "output" for models without a postnet)
+        space_token: the model's token id for " ", which separates the chunks of
+            a text when they are combined
         wavs: after api.spec_to_wav(), the waveforms, [B, C (channels),
             T (samples)], still padded, on the CPU; None before
         wav_lens: after api.spec_to_wav(), the number of samples of each item
@@ -34,6 +36,7 @@ class SynthesisBatch:
     outputs: dict[str, Any]
     batch: dict[str, Any]
     output_key: str
+    space_token: int
     wavs: "torch.Tensor | None" = None
     wav_lens: "torch.Tensor | None" = None
     sample_rate: int | None = None
@@ -58,6 +61,9 @@ class Utterance:
         tokens: the input token ids, [N (tokens)]
         durations: the number of frames of each input token, [N (tokens)];
             durations.sum() == spec.size(-1)
+        space_token: the model's token id for " ": api.combine_chunks() puts it,
+            with a duration of 0, between the tokens of consecutive chunks, so
+            tokens match text
         wav: the waveform, [C (channels), T (samples)], if api.spec_to_wav() was
             applied before api.unbatch(); None otherwise
         sample_rate: the sample rate of wav, or None
@@ -73,5 +79,6 @@ class Utterance:
     spec: "torch.Tensor"
     tokens: "torch.Tensor"
     durations: "torch.Tensor"
+    space_token: int
     wav: "torch.Tensor | None" = None
     sample_rate: int | None = None

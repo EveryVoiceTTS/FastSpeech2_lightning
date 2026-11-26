@@ -201,6 +201,9 @@ class TestApiSynthesize:
             assert r.output_key == api_model.output_key
             assert r.outputs[r.output_key].size(0) == len(r)
             assert r.outputs[r.output_key].device == api_model.device
+            assert (
+                r.space_token == api_model.text_processor.encode_string_tokens([" "])[0]
+            )
             assert_no_grad_tracking(r.outputs, f"batch {i} outputs")
         assert_no_param_grads(api_model, "fs2 model")
 
@@ -211,6 +214,11 @@ class TestApiSynthesize:
 
     def test_no_texts(self, api_model):
         assert list(api.synthesize(api_model, [])) == []
+
+    @pytest.mark.parametrize("blank", ["", "   "])
+    def test_blank_texts_are_rejected(self, api_model, blank):
+        with pytest.raises(ValueError, match=r"indices \[1\] are empty or blank"):
+            next(api.synthesize(api_model, [SHORT_TEXT, blank, "another one"]))
 
     @pytest.mark.parametrize("split_text, n_chunks", [(True, 3), (False, 1), (None, 1)])
     def test_split_text(self, api_model, split_text, n_chunks):
@@ -273,6 +281,10 @@ class TestApiUnbatch:
         assert list(api.unbatch([])) == []
 
 
+# Space token id for hand-made Utterances
+SPACE = 99
+
+
 def make_utterance(
     index: int,
     chunk_index: int,
@@ -292,6 +304,7 @@ def make_utterance(
         spec=torch.full((4, n_frames), float(chunk_index)),
         tokens=torch.tensor([index, chunk_index]),
         durations=torch.tensor([n_frames - 1, 1]),
+        space_token=SPACE,
     )
 
 
@@ -318,11 +331,33 @@ class TestApiCombineChunks:
             slugify("".join(c.text for c in long_chunks))
         )
         assert torch.equal(long.spec, torch.cat([c.spec for c in long_chunks], -1))
-        assert torch.equal(long.tokens, torch.cat([c.tokens for c in long_chunks]))
-        assert torch.equal(
-            long.durations, torch.cat([c.durations for c in long_chunks])
+        # tokens and durations: the chunks', with a 0-frame space between them
+        (space,) = api_model.text_processor.encode_string_tokens([" "])
+        assert long.space_token == space
+        a, b, c = long_chunks
+        assert long.tokens.tolist() == (
+            a.tokens.tolist()
+            + [space]
+            + b.tokens.tolist()
+            + [space]
+            + c.tokens.tolist()
+        )
+        assert long.durations.tolist() == (
+            a.durations.tolist()
+            + [0]
+            + b.durations.tolist()
+            + [0]
+            + c.durations.tolist()
         )
         assert int(long.durations.sum()) == long.spec.size(-1)
+
+        # ... so that the tokens read like the text
+        def decode(tokens: torch.Tensor) -> str:
+            return "".join(
+                api_model.text_processor.decode_tokens(tokens.tolist(), None)
+            )
+
+        assert decode(long.tokens) == " ".join(decode(c.tokens) for c in long_chunks)
 
     def test_shared_basename_is_kept(self):
         chunks = [
@@ -332,6 +367,8 @@ class TestApiCombineChunks:
         (combined,) = api.combine_chunks(chunks)
         assert combined.basename == "utt1"
         assert combined.text == "text 0 chunk 0 text 0 chunk 1"
+        assert combined.tokens.tolist() == [0, 0, SPACE, 0, 1]
+        assert combined.durations.tolist() == [2, 1, 0, 2, 1]
         assert combined.spec.shape == (4, 6)
 
     def test_yields_as_soon_as_a_text_is_complete(self):
