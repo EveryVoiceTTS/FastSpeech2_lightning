@@ -27,12 +27,17 @@ def model(stubbed_model):
     return deepcopy(model)
 
 
-def make_item(basename: str, text: str, is_last_input_chunk: bool) -> dict:
+def make_item(
+    basename: str, text: str, index: int, chunk_index: int, is_last_input_chunk: bool
+) -> dict:
+    """One chunk of input text, as prepare_data() produces"""
     return {
         "basename": basename,
         "characters": text,
         "language": "default",
         "speaker": "default",
+        "index": index,
+        "chunk_index": chunk_index,
         "is_last_input_chunk": is_last_input_chunk,
         "duration_control": 1.0,
     }
@@ -41,10 +46,10 @@ def make_item(basename: str, text: str, is_last_input_chunk: bool) -> dict:
 # Utterance uttA is split in three chunks, uttB is a single chunk.
 # With batch_size=2, uttA spans the first two batches.
 CHUNKED_DATA = [
-    make_item("uttA", "hello there ", False),
-    make_item("uttA", "big wide ", False),
-    make_item("uttA", "world out there", True),
-    make_item("uttB", "a second text", True),
+    make_item("uttA", "hello there", 0, 0, False),
+    make_item("uttA", "big wide", 0, 1, False),
+    make_item("uttA", "world out there", 0, 2, True),
+    make_item("uttB", "a second text", 1, 0, True),
 ]
 
 
