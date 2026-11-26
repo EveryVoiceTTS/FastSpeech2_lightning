@@ -1,7 +1,9 @@
-"""
-TODO Once the synthesis generator API is written, document here how to get
-writers using get_synthesis_output_writers() and how to use them with the
-synthesis generator API.
+"""Writers that save synthesis outputs to files: specs, wavs, aligned text, losses.
+
+Get them with get_synthesis_output_writers(). The caller passes each batch of
+model outputs, in order, to every writer's write_batch(), then calls finalize()
+once: see synthesize_helper() in core/synthesize.py, which drives them for the CLI
+and the demo.
 """
 
 from abc import ABC, abstractmethod
