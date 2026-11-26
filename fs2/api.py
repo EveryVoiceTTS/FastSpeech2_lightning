@@ -91,13 +91,24 @@ def train(
 
 
 def load_model(
-    model_path: Path,
+    model_path: Path | str,
     accelerator: str = "auto",
 ) -> FastSpeech2:
-    """Returns the model"""
+    """Load a FastSpeech2 model from a checkpoint, ready for generating mel specs.
+
+    Its configuration is available as model.config, and the training step the
+    checkpoint was saved at as model.global_step_at_load.
+
+    Args:
+        model_path (Path|str): the FastSpeech2 checkpoint, e.g. the "last.ckpt" saved by train()
+        accelerator (str): determines the device the model is loaded on, one of
+            "auto", "cpu", "gpu" or "mps"; see train()
+    """
     from everyvoice.utils.heavy import get_device_from_accelerator
 
-    return core.load_model(model_path, device=get_device_from_accelerator(accelerator))
+    return core.load_model(
+        Path(model_path), device=get_device_from_accelerator(accelerator)
+    )
 
 
 def synthesize(
