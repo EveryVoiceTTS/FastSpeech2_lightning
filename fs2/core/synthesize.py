@@ -6,7 +6,6 @@ from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
-import typer
 from everyvoice import logger
 from everyvoice.base_cli.checkpoint import check_file_not_empty
 from everyvoice.config.type_definitions import (
@@ -44,7 +43,7 @@ def validate_data_keys_with_model_keys(
     """
     if multi:
         if None in data_keys:
-            raise typer.BadParameter(
+            raise ValueError(
                 f"You have not specified a {key} for all your sentences."
                 f" Available values are {model_keys}"
             )
@@ -54,7 +53,7 @@ def validate_data_keys_with_model_keys(
             is_or_are_not = (
                 f"are not {key}s that are" if len(data_keys) > 1 else f"is not a {key}"
             )
-            raise typer.BadParameter(
+            raise ValueError(
                 f"You provided {data_keys} which {is_or_are_not} supported by the model {model_keys or {}}."
             )
     else:
@@ -65,7 +64,7 @@ def validate_data_keys_with_model_keys(
         # TODO: Instead, should we check that `data_keys == model_keys`?
         extras = data_keys.difference(model_keys | {None})
         if extras:
-            raise typer.BadParameter(
+            raise ValueError(
                 f"The current model doesn't support multiple {key}s but your data has {key}s {extras}.\n"
                 f"Please retrain your model with multi{'lingual' if key == 'language' else key} set to True."
             )
@@ -567,12 +566,12 @@ def combine_utterance_chunks(
     """Combine the chunks of each input text into a single Utterance.
 
     Each combined Utterance is yielded as soon as its last chunk comes in. Its
-    spec, tokens, durations and wav (if the chunks have one) are the
-    concatenation of its chunks'; its text is
-    their texts joined with single spaces (chunking strips the whitespace between
-    chunks); its basename is the one shared by all chunks, or else a slug of its
-    text, as the output writers do. It has chunk_index 0 and is_last_chunk True,
-    like a text that was not split. A text with a single chunk is yielded as is.
+    spec, tokens, durations and wav (if the chunks have one) are the concatenation
+    of its chunks'; its text is their texts joined with single spaces (chunking
+    strips the whitespace between chunks); its basename is the one shared by all
+    chunks, or else a slug of its text, as the output writers do. It has
+    chunk_index 0 and is_last_chunk True, like a text that was not split. A text
+    with a single chunk is yielded as is.
 
     Args:
         utterances: as yielded by unbatch_synthesis(): the chunks of each text must
