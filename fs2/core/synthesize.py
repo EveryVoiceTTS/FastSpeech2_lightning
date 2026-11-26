@@ -498,8 +498,8 @@ def unbatch_synthesis(
         outputs, batch = synthesis_batch.outputs, synthesis_batch.batch
         specs = outputs[synthesis_batch.output_key]
         for i in range(len(synthesis_batch)):
-            n_frames = int(outputs["tgt_lens"][i])
-            n_tokens = int(batch["src_lens"][i])
+            n_frames = int(outputs["tgt_lens"][i])  # for unpadding specs
+            n_tokens = int(batch["src_lens"][i])  # for unpadding text and durations
             yield Utterance(
                 index=int(batch["index"][i]),
                 chunk_index=int(batch["chunk_index"][i]),
@@ -509,6 +509,7 @@ def unbatch_synthesis(
                 speaker=batch["speaker"][i],
                 language=batch["language"][i],
                 # [T, K] -> [K, T]
+                # unpad by subscripting here with :n_frames / :n_tokens
                 spec=copy_to_device(specs[i, :n_frames].transpose(0, 1)),
                 tokens=copy_to_device(batch["text"][i, :n_tokens]),
                 durations=copy_to_device(outputs["duration_rounded"][i, :n_tokens]),
