@@ -21,6 +21,7 @@ from ..core.synthesize import (
     text_to_spec_synthesis,
 )
 from ..synthesis_types import SynthesisBatch, Utterance
+from .utterance_stubs import SPACE_TOKEN, make_utterance
 
 
 @pytest.fixture()
@@ -203,6 +204,8 @@ SHORT_TEXT = "hello there"
 # Chunked in three with desired_length=10, max_length=25
 LONG_TEXT = "This is chunk one. This is chunk two. This is chunk three."
 CHUNKING: dict[str, Any] = dict(split_text=True, desired_length=10, max_length=25)
+# Two texts of different lengths, so that the shorter one gets padded in a batch
+PADDED_TEXTS = [SHORT_TEXT, "a much longer second text, to get some padding"]
 
 
 class TestApiTextToSpec:
@@ -275,8 +278,7 @@ class TestApiUnbatch:
             assert_no_grad_tracking([u.spec, u.tokens, u.durations])
 
     def test_matches_batch_without_padding(self, api_model):
-        texts = [SHORT_TEXT, "a much longer second text, to get some padding"]
-        (batch,) = api.text_to_spec(api_model, texts, batch_size=2)
+        (batch,) = api.text_to_spec(api_model, PADDED_TEXTS, batch_size=2)
         utterances = list(api.unbatch([batch], device=None))
         specs = batch.outputs[batch.output_key]
         for i, u in enumerate(utterances):
@@ -295,31 +297,12 @@ class TestApiUnbatch:
         assert list(api.unbatch([])) == []
 
 
-# Space token id for hand-made Utterances
-SPACE = 99
-
-
-def make_utterance(
-    index: int,
-    chunk_index: int,
-    is_last_chunk: bool,
-    basename: str = "base",
-    n_frames: int = 3,
-) -> Utterance:
-    """A small hand-made Utterance: 2 tokens, n_frames frames of 4 mel bands."""
-    return Utterance(
-        index=index,
-        chunk_index=chunk_index,
-        is_last_chunk=is_last_chunk,
-        text=f"text {index} chunk {chunk_index}",
-        basename=basename,
-        speaker="default",
-        language="default",
-        spec=torch.full((4, n_frames), float(chunk_index)),
-        tokens=torch.tensor([index, chunk_index]),
-        durations=torch.tensor([n_frames - 1, 1]),
-        space_token=SPACE,
-    )
+def join_lists(lists: list[list[int]], separator: int) -> list[int]:
+    """Concatenate lists, with separator between consecutive ones"""
+    joined = list(lists[0])
+    for items in lists[1:]:
+        joined += [separator, *items]
+    return joined
 
 
 class TestApiCombineChunks:
@@ -348,20 +331,11 @@ class TestApiCombineChunks:
         # tokens and durations: the chunks', with a 0-frame space between them
         (space,) = api_model.text_processor.encode_string_tokens([" "])
         assert long.space_token == space
-        a, b, c = long_chunks
-        assert long.tokens.tolist() == (
-            a.tokens.tolist()
-            + [space]
-            + b.tokens.tolist()
-            + [space]
-            + c.tokens.tolist()
+        assert long.tokens.tolist() == join_lists(
+            [c.tokens.tolist() for c in long_chunks], space
         )
-        assert long.durations.tolist() == (
-            a.durations.tolist()
-            + [0]
-            + b.durations.tolist()
-            + [0]
-            + c.durations.tolist()
+        assert long.durations.tolist() == join_lists(
+            [c.durations.tolist() for c in long_chunks], 0
         )
         assert int(long.durations.sum()) == long.spec.size(-1)
 
@@ -374,25 +348,27 @@ class TestApiCombineChunks:
         assert decode(long.tokens) == " ".join(decode(c.tokens) for c in long_chunks)
 
     def test_shared_basename_is_kept(self):
-        chunks = [
-            make_utterance(0, 0, False, "utt1"),
-            make_utterance(0, 1, True, "utt1"),
-        ]
-        (combined,) = api.combine_chunks(chunks)
+        a = make_utterance("one", 0, 0, False, basename="utt1", n_frames=3)
+        b = make_utterance("two", 0, 1, True, basename="utt1", n_frames=3)
+        (combined,) = api.combine_chunks([a, b])
         assert combined.basename == "utt1"
-        assert combined.text == "text 0 chunk 0 text 0 chunk 1"
-        assert combined.tokens.tolist() == [0, 0, SPACE, 0, 1]
-        assert combined.durations.tolist() == [2, 1, 0, 2, 1]
-        assert combined.spec.shape == (4, 6)
+        assert combined.text == "one two"
+        assert combined.tokens.tolist() == join_lists(
+            [a.tokens.tolist(), b.tokens.tolist()], SPACE_TOKEN
+        )
+        assert combined.durations.tolist() == join_lists(
+            [a.durations.tolist(), b.durations.tolist()], 0
+        )
+        assert combined.spec.shape == (80, 6)
 
     def test_yields_as_soon_as_a_text_is_complete(self):
         consumed = []
 
         def source():
             for u in [
-                make_utterance(0, 0, False),
-                make_utterance(0, 1, True),
-                make_utterance(1, 0, True),
+                make_utterance("one", 0, 0, False),
+                make_utterance("two", 0, 1, True),
+                make_utterance("three", 1, 0, True),
             ]:
                 consumed.append(u)
                 yield u
@@ -407,22 +383,22 @@ class TestApiCombineChunks:
         "chunks, message",
         [
             pytest.param(
-                [make_utterance(0, 0, False)],
+                [make_utterance("one", 0, 0, False)],
                 "Text 0 is missing its last chunk: the input ended",
                 id="ends-early",
             ),
             pytest.param(
-                [make_utterance(0, 0, False), make_utterance(1, 0, True)],
+                [make_utterance("one", 0, 0, False), make_utterance("two", 1, 0)],
                 "Text 0 is missing its last chunk: got a chunk of text 1",
                 id="interleaved",
             ),
             pytest.param(
-                [make_utterance(0, 1, True)],
+                [make_utterance("one", 0, 1, True)],
                 "expected chunk 0, got chunk 1",
                 id="first-chunk-missing",
             ),
             pytest.param(
-                [make_utterance(0, 0, False), make_utterance(0, 2, True)],
+                [make_utterance("one", 0, 0, False), make_utterance("two", 0, 2)],
                 "expected chunk 1, got chunk 2",
                 id="chunk-skipped",
             ),
@@ -445,15 +421,18 @@ def vocoder(stubbed_vocoder):
     return hfgl_api.load_model(vocoder_path, accelerator="cpu")
 
 
-class TestApiSpecToWav:
-    def test_adds_wavs_to_batches(self, api_model, vocoder):
-        texts = [SHORT_TEXT, "a much longer second text, to get some padding"]
-        hop_size = get_output_hop_size(vocoder.config)
-        batches = list(api.text_to_spec(api_model, texts, batch_size=2))
-        with_wavs = list(api.spec_to_wav(batches, vocoder))
+@pytest.fixture()
+def vocoded_batch(api_model, vocoder) -> tuple[SynthesisBatch, SynthesisBatch]:
+    """A batch of PADDED_TEXTS, before and after spec_to_wav()"""
+    (batch,) = api.text_to_spec(api_model, PADDED_TEXTS, batch_size=2)
+    (with_wav,) = api.spec_to_wav([batch], vocoder)
+    return batch, with_wav
 
-        assert len(with_wavs) == len(batches) == 1
-        (batch,), (with_wav,) = batches, with_wavs
+
+class TestApiSpecToWav:
+    def test_adds_wavs_to_batches(self, vocoded_batch, vocoder):
+        hop_size = get_output_hop_size(vocoder.config)
+        batch, with_wav = vocoded_batch
         assert batch.wavs is None
         assert with_wav.outputs is batch.outputs
         assert with_wav.wavs is not None and with_wav.wav_lens is not None
@@ -468,12 +447,9 @@ class TestApiSpecToWav:
         assert_no_grad_tracking(with_wav.wavs, "wavs")
         assert_no_param_grads(vocoder, "vocoder")
 
-    def test_unbatch_trims_wavs(self, api_model, vocoder):
-        texts = [SHORT_TEXT, "a much longer second text, to get some padding"]
+    def test_unbatch_trims_wavs(self, vocoded_batch, vocoder):
         hop_size = get_output_hop_size(vocoder.config)
-        (batch,) = api.spec_to_wav(
-            api.text_to_spec(api_model, texts, batch_size=2), vocoder
-        )
+        _, batch = vocoded_batch
         utterances = list(api.unbatch([batch]))
         assert batch.wavs is not None
         for i, u in enumerate(utterances):

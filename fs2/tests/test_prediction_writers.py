@@ -2,16 +2,12 @@
 
 from csv import DictReader
 from functools import partial
-from string import ascii_lowercase
 from typing import Callable
 
 import pytest
 import torch
-from everyvoice.config.shared_types import ContactInformation
-from everyvoice.config.text_config import TextConfig
 from everyvoice.config.type_definitions import SynthesizeOutputFormats as Formats
-from everyvoice.text.text_processor import TextProcessor
-from everyvoice.utils import slugify, truncate_basename
+from everyvoice.tests.stubs import TEST_CONTACT
 from pydub import AudioSegment
 from pympi import TextGrid
 
@@ -24,6 +20,7 @@ from ..prediction_writers import (
     get_synthesis_output_writers,
 )
 from ..synthesis_types import Utterance
+from .utterance_stubs import TEXT_CONFIG, make_utterance
 
 try:
     # Accelerate the failing for fetching bundles online, since we don't
@@ -35,57 +32,23 @@ try:
 except Exception:
     pass
 
-CONTACT = ContactInformation(
-    contact_name="Test Runner", contact_email="info@everyvoice.ca"
-)
-TEXT_CONFIG = TextConfig(symbols={"ascii": list(ascii_lowercase)})
-TEXT_PROCESSOR = TextProcessor(TEXT_CONFIG)
-HOP_SIZE = 256  # audio samples per spec frame
-
-
-def chunk(
-    text: str,
-    index: int,
-    chunk_index: int,
-    is_last_chunk: bool,
-    speaker: str,
-    language: str,
-    basename: str | None = None,
-    n_frames: int = 490,
-) -> Utterance:
-    """One synthesized chunk of text, as unbatch() yields: by default, its
-    basename is its slugified text, as prepare_data() makes it; its spec is
-    n_frames frames of ones, its tokens share the frames, and its wav is
-    silence, HOP_SIZE samples per frame."""
-    tokens = torch.IntTensor(TEXT_PROCESSOR.encode_text(text))
-    durations = torch.full((len(tokens),), n_frames // len(tokens), dtype=torch.int)
-    durations[-1] += n_frames - int(durations.sum())
-    return Utterance(
-        index=index,
-        chunk_index=chunk_index,
-        is_last_chunk=is_last_chunk,
-        text=text,
-        basename=basename or truncate_basename(slugify(text)),
-        speaker=speaker,
-        language=language,
-        spec=torch.ones(80, n_frames),
-        tokens=tokens,
-        durations=durations,
-        space_token=TEXT_PROCESSOR.encode_string_tokens([" "])[0],
-        wav=torch.zeros(1, n_frames * HOP_SIZE),
-        sample_rate=22050,
-    )
-
-
 # Three texts: "one"; "two three four", in three chunks; and a text whose
 # basename, as given by a filelist, deliberately doesn't match its text, which
 # catches writers that re-derive the basename from the text.
 CHUNKS = [
-    chunk("one", 0, 0, True, "S1", "L1"),
-    chunk("two", 1, 0, False, "S2", "L2"),
-    chunk("three", 1, 1, False, "S2", "L2"),
-    chunk("four", 1, 2, True, "S2", "L2"),
-    chunk("this utterance is way too long", 2, 0, True, "S3", "L3", "spk3_utt002"),
+    make_utterance("one", 0, 0, True, speaker="S1", language="L1"),
+    make_utterance("two", 1, 0, False, speaker="S2", language="L2"),
+    make_utterance("three", 1, 1, False, speaker="S2", language="L2"),
+    make_utterance("four", 1, 2, True, speaker="S2", language="L2"),
+    make_utterance(
+        "this utterance is way too long",
+        2,
+        0,
+        True,
+        speaker="S3",
+        language="L3",
+        basename="spk3_utt002",
+    ),
 ]
 # The basename, speaker and language of each text, once combined
 TEXTS = [
@@ -111,7 +74,7 @@ def make_writers(tmp_path) -> Callable:
     """get_synthesis_output_writers(), writing to tmp_path"""
     return partial(
         get_synthesis_output_writers,
-        config=FastSpeech2Config(contact=CONTACT, text=TEXT_CONFIG),
+        config=FastSpeech2Config(contact=TEST_CONTACT, text=TEXT_CONFIG),
         global_step=77,
         output_dir=tmp_path,
         vocoder_global_step=10,
@@ -236,9 +199,11 @@ def test_duplicate_filename(make_writers, tmp_path):
     two files."""
     writer = make_writers([Formats.wav])[Formats.wav]
     chunks = [
-        chunk("this is a chunk", 0, 0, False, "S1", "L1"),
-        chunk("this is another chunk", 0, 1, True, "S1", "L1"),
-        chunk("this is a chunk", 1, 0, True, "S1", "L1"),
+        make_utterance("this is a chunk", 0, 0, False, speaker="S1", language="L1"),
+        make_utterance(
+            "this is another chunk", 0, 1, True, speaker="S1", language="L1"
+        ),
+        make_utterance("this is a chunk", 1, 0, True, speaker="S1", language="L1"),
     ]
     write_chunks(chunks, writer)
     files = [p.name for p in (tmp_path / "wav").glob("*.wav")]
