@@ -13,7 +13,11 @@ from pytest import raises
 from pytorch_lightning import Trainer
 
 from ..config import FastSpeech2Config
-from ..core.synthesize import load_data_from_filelist, load_model
+from ..core.synthesize import (
+    combine_filelist_data,
+    load_data_from_filelist,
+    load_model,
+)
 from ..model import FastSpeech2
 from ..type_definitions_heavy import Stats, StatsInfo
 
@@ -352,6 +356,39 @@ class TestLoadingData:
                 DatasetTextRepresentation.characters,
             )
             return data
+
+    def test_combine_filelist_data(self):
+        first = self.write_and_load("line 1\nline 2\n")
+        second = self.write_and_load("line 3\nline 4\nline 5\n")
+        combined = combine_filelist_data(first, second)
+        assert [d["characters"] for d in combined] == [
+            "line 1",
+            "line 2",
+            "line 3",
+            "line 4",
+            "line 5",
+        ]
+        assert [d["index"] for d in combined] == [0, 1, 2, 3, 4]
+        assert [d["index"] for d in second] == [0, 1, 2]  # not modified
+
+    def test_combine_filelist_data_with_chunks(self):
+        def item(index, chunk_index, is_last):
+            return {
+                "index": index,
+                "chunk_index": chunk_index,
+                "is_last_input_chunk": is_last,
+            }
+
+        first = [item(0, 0, False), item(0, 1, True), item(1, 0, True)]
+        second = [item(0, 0, False), item(0, 1, True)]
+        combined = combine_filelist_data(first, second)
+        assert [(d["index"], d["chunk_index"]) for d in combined] == [
+            (0, 0),
+            (0, 1),
+            (1, 0),
+            (2, 0),
+            (2, 1),
+        ]
 
     def test_load_oneline(self):
         data = self.write_and_load("this is a test\n")

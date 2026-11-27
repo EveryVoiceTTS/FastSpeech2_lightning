@@ -113,7 +113,11 @@ def check_data_command(  # noqa: C901
         from everyvoice.preprocessor import Preprocessor
         from everyvoice.utils.heavy import get_device_from_accelerator
 
-        from ..core.synthesize import load_data_from_filelist, synthesize_helper
+        from ..core.synthesize import (
+            combine_filelist_data,
+            load_data_from_filelist,
+            synthesize_helper,
+        )
         from ..model import FastSpeech2
         from .check_data_heavy import check_data_from_filelist
 
@@ -182,7 +186,7 @@ def check_data_command(  # noqa: C901
         val_filelist = load_data_from_filelist(
             config.training.validation_filelist, model, text_representation
         )
-        combined_filelist_data = training_filelist + val_filelist
+        combined_filelist_data = combine_filelist_data(training_filelist, val_filelist)
     else:
         combined_filelist_data = None
 

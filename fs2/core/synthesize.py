@@ -229,6 +229,24 @@ def load_data_from_filelist(
     return data
 
 
+def combine_filelist_data(*filelists: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Concatenate the data of several filelists, keeping each text's "index" unique.
+
+    Each filelist from load_data_from_filelist() numbers its texts from 0: here,
+    each one's indices are offset by the number of texts in the ones before it.
+    The items are copied, not modified.
+    """
+    combined: list[dict[str, Any]] = []
+    offset = 0
+    for data in filelists:
+        n_texts = 0
+        for item in data:
+            combined.append({**item, "index": item["index"] + offset})
+            n_texts = max(n_texts, item["index"] + 1)
+        offset += n_texts
+    return combined
+
+
 def prepare_data(
     texts: Optional[list[str]],
     language: str | None,
