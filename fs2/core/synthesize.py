@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from torch.utils.data import DataLoader
 
     from ..model import FastSpeech2, FastSpeech2Config
-    from ..prediction_writers import OutputWriter
+    from ..prediction_writers import OutputWriter, UtteranceWriter
     from ..synthesis_types import SynthesisBatch, Utterance
 
 
@@ -720,6 +720,34 @@ def combine_utterance_chunks(
         )
 
 
+def write_utterances(
+    utterances: Iterable["Utterance"],
+    writers: Sequence["UtteranceWriter"],
+) -> Iterator["Utterance"]:
+    """The last stage of the synthesis pipeline: write each synthesized text with
+    every writer, in order, then yield it unchanged.
+
+    The caller finalizes the writers, once the iteration is done.
+
+    Args:
+        utterances: whole texts, as yielded by combine_utterance_chunks()
+        writers: as from get_synthesis_output_writers()
+
+    Raises:
+        ValueError: if an utterance is only a chunk of a text.
+    """
+    for utterance in utterances:
+        if utterance.chunk_index > 0 or not utterance.is_last_chunk:
+            raise ValueError(
+                f"Utterance {utterance.basename!r} is chunk {utterance.chunk_index} "
+                f"of text {utterance.index}: apply combine_utterance_chunks() "
+                "before writing."
+            )
+        for writer in writers:
+            writer.write_utterance(utterance)
+        yield utterance
+
+
 def synthesize_helper(
     model: "FastSpeech2",
     texts: Optional[list[str]],
@@ -872,9 +900,9 @@ def synthesize_helper(
             spec_batches = spec_to_wav_synthesis(spec_batches, vocoder_model)
         chunk_utterances = unbatch_synthesis(spec_batches)
         text_utterances = combine_utterance_chunks(chunk_utterances)
-        for utterance in text_utterances:
-            for utterance_writer in utterance_writers:
-                utterance_writer.write_utterance(utterance)
+        written_utterances = write_utterances(text_utterances, utterance_writers)
+        for _ in written_utterances:
+            pass
         for writer in writers.values():
             writer.finalize()
 

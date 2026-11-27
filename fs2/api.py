@@ -3,7 +3,10 @@ from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from everyvoice.config.type_definitions import DatasetTextRepresentation
+from everyvoice.config.type_definitions import (
+    DatasetTextRepresentation,
+    SynthesizeOutputFormats,
+)
 
 from . import core
 from .config import FastSpeech2Config
@@ -267,3 +270,104 @@ def combine_chunks(utterances: Iterable[Utterance]) -> Iterator[Utterance]:
     from .core.synthesize import combine_utterance_chunks
 
     yield from combine_utterance_chunks(utterances)
+
+
+def write_to_files(
+    utterances: Iterable[Utterance],
+    model: FastSpeech2,
+    output_dir: Path | str,
+    output_types: Sequence[SynthesizeOutputFormats | str],
+    *,
+    vocoder: "HiFiGAN | HiFiGANGenerator | None" = None,
+    simple_filenames: bool = False,
+) -> Iterator[Utterance]:
+    """Write the files of each synthesized text from combine_chunks(), as the
+    `everyvoice synthesize` command does, and yield it unchanged.
+
+    The files are written as the utterances go through: iterate over the result,
+    to actually write the files.
+
+    Args:
+        utterances: as yielded by combine_chunks()
+        model: the model that synthesized utterances, for its configuration and
+            training step, which are part of the file names
+        output_dir: the directory to write to, in subdirectories by output type
+        output_types: one or more of "spec", "wav", "textgrid", "readalong-xml"
+            and "readalong-html"; "wav" and "readalong-html" require the
+            utterances to have waveforms, see spec_to_wav()
+        vocoder: the vocoder that generated the waveforms, for its training
+            step, which is part of the wav file names
+        simple_filenames: if set, name files only by their basenames
+
+    Yields: each utterance, after writing its files.
+
+    Raises:
+        ValueError: if an utterance is only a chunk of a text: apply
+            combine_chunks() first.
+    """
+    from .core.synthesize import write_utterances
+    from .prediction_writers import UtteranceWriter, get_synthesis_output_writers
+
+    formats = [SynthesizeOutputFormats(t) for t in output_types]
+    if vocoder is None and (
+        SynthesizeOutputFormats.wav in formats
+        or SynthesizeOutputFormats.readalong_html in formats
+    ):
+        raise ValueError("Writing wav or readalong-html files requires the vocoder.")
+    writers = get_synthesis_output_writers(
+        output_types=formats,
+        output_dir=Path(output_dir),
+        config=model.config,
+        global_step=model.global_step_at_load or 0,
+        vocoder_global_step=(
+            None if vocoder is None else vocoder.global_step_at_load or 0
+        ),
+        simple_filenames=simple_filenames,
+    )
+    utterance_writers = [w for w in writers.values() if isinstance(w, UtteranceWriter)]
+    yield from write_utterances(utterances, utterance_writers)
+    # Only reached once utterances is exhausted, not if the iteration stops early
+    for writer in utterance_writers:
+        writer.finalize()
+
+
+def synthesize_to_files(
+    model: FastSpeech2,
+    texts: Sequence[str] | str,
+    output_dir: Path | str,
+    output_types: Sequence[SynthesizeOutputFormats | str],
+    *,
+    vocoder: "HiFiGAN | HiFiGANGenerator | None" = None,
+    simple_filenames: bool = False,
+    **text_to_spec_args,
+) -> None:
+    """Synthesize texts and write their files: the whole pipeline, from
+    text_to_spec() to write_to_files(), in one call.
+
+    If the need arises, this function could return the names of the files written.
+
+    This function is both a convenience wrapper for the whole synthesis pipeline
+    and a sample you can copy and modify for your needs, since it uses only
+    functions from this API.
+
+    Args:
+        model, texts, and **text_to_spec_args: see text_to_spec()
+        output_dir, output_types, simple_filenames: see write_to_files()
+        vocoder: the spec-to-wav model, required for "wav" and "readalong-html"
+            output
+    """
+    prediction_batches = text_to_spec(model, texts, **text_to_spec_args)
+    if vocoder is not None:
+        prediction_batches = spec_to_wav(prediction_batches, vocoder)
+    utterances = unbatch(prediction_batches)
+    utterances = combine_chunks(utterances)
+    written_utterances = write_to_files(
+        utterances,
+        model,
+        output_dir,
+        output_types,
+        vocoder=vocoder,
+        simple_filenames=simple_filenames,
+    )
+    for _ in written_utterances:
+        pass

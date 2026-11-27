@@ -1,5 +1,6 @@
 from copy import deepcopy
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -201,7 +202,7 @@ def api_model(model):
 SHORT_TEXT = "hello there"
 # Chunked in three with desired_length=10, max_length=25
 LONG_TEXT = "This is chunk one. This is chunk two. This is chunk three."
-CHUNKING = dict(split_text=True, desired_length=10, max_length=25)
+CHUNKING: dict[str, Any] = dict(split_text=True, desired_length=10, max_length=25)
 
 
 class TestApiTextToSpec:
@@ -499,3 +500,65 @@ class TestApiSpecToWav:
         (utterance,) = api.unbatch(api.text_to_spec(api_model, SHORT_TEXT))
         assert utterance.wav is None
         assert utterance.sample_rate is None
+
+
+class TestApiWriteToFiles:
+    def utterances(self, api_model, texts) -> list[Utterance]:
+        batches = api.text_to_spec(api_model, texts, batch_size=2, **CHUNKING)
+        return list(api.combine_chunks(api.unbatch(batches)))
+
+    def test_writes_whole_texts(self, api_model, tmp_path):
+        utterances = self.utterances(api_model, [SHORT_TEXT, LONG_TEXT])
+        written = list(
+            api.write_to_files(utterances, api_model, tmp_path, ["spec", "textgrid"])
+        )
+        assert written == utterances  # passed through unchanged
+        assert len(list((tmp_path / "synthesized_spec").glob("*.pt"))) == 2
+        textgrids = [p.name for p in (tmp_path / "textgrids").glob("*")]
+        assert len(textgrids) == 2
+        short_basename = truncate_basename(slugify(SHORT_TEXT))
+        assert any(name.startswith(short_basename + "--") for name in textgrids)
+
+    def test_rejects_chunks(self, api_model, tmp_path):
+        batches = api.text_to_spec(api_model, LONG_TEXT, **CHUNKING)
+        chunks = api.unbatch(batches)
+        with pytest.raises(ValueError, match="combine"):
+            list(api.write_to_files(chunks, api_model, tmp_path, ["spec"]))
+
+    def test_finalizes_only_when_exhausted(self, api_model, tmp_path):
+        utterances = self.utterances(api_model, [SHORT_TEXT, "another one"])
+        spec_writer_class = prediction_writers.SpecPredictionWriter
+        with patch.object(spec_writer_class, "finalize") as mock_finalize:
+            written = api.write_to_files(utterances, api_model, tmp_path, ["spec"])
+            next(written)
+            mock_finalize.assert_not_called()
+            list(written)
+        mock_finalize.assert_called_once_with()
+
+    def test_wav_requires_vocoder(self, api_model, tmp_path):
+        utterances = self.utterances(api_model, [SHORT_TEXT])
+        with pytest.raises(ValueError, match="vocoder"):
+            list(api.write_to_files(utterances, api_model, tmp_path, ["wav"]))
+
+
+class TestApiSynthesizeToFiles:
+    def test_writes_files(self, api_model, vocoder, tmp_path):
+        result = api.synthesize_to_files(
+            api_model,
+            [SHORT_TEXT, LONG_TEXT],
+            tmp_path,
+            ["spec", "wav", "textgrid", "readalong-html"],
+            vocoder=vocoder,
+            batch_size=2,
+            **CHUNKING,
+        )
+        assert result is None
+        for subdir, pattern in [
+            ("synthesized_spec", "*.pt"),
+            ("wav", "*.wav"),
+            ("textgrids", "*.TextGrid"),
+            ("readalongs", "*.html"),
+        ]:
+            assert len(list((tmp_path / subdir).glob(pattern))) == 2, subdir
+        wav_names = [p.name for p in (tmp_path / "wav").glob("*.wav")]
+        assert all(f"v_ckpt={vocoder.global_step_at_load}" in n for n in wav_names)
