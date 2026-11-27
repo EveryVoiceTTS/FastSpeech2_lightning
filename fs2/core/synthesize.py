@@ -840,6 +840,8 @@ def synthesize_helper(
     with torch.inference_mode():
         # The pipeline stages are lazy iterators: everything runs in the loop below
         spec_batches = text_to_spec_with_batch_writers()
+        if SynthesizeOutputFormats.wav in writers:  # also there for readalong_html
+            spec_batches = spec_to_wav_synthesis(spec_batches, vocoder_model)
         chunk_utterances = unbatch_synthesis(spec_batches)
         text_utterances = combine_utterance_chunks(chunk_utterances)
         for utterance in text_utterances:

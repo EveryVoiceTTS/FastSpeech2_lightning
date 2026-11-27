@@ -12,8 +12,6 @@ from csv import DictWriter
 from pathlib import Path
 from typing import Any, Optional
 
-import numpy as np
-import numpy.typing as npt
 import torch
 import torchaudio
 from everyvoice import logger
@@ -22,7 +20,6 @@ from everyvoice.config.type_definitions import SynthesizeOutputFormats
 from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import HiFiGANConfig
 from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.model import HiFiGAN
 from everyvoice.text.text_processor import TextProcessor
-from everyvoice.utils import resolve_chunked_basename
 from pympi import TextGrid
 from readalongs.api import (
     Token,
@@ -32,7 +29,6 @@ from readalongs.api import (
 
 from .config import FastSpeech2Config
 from .synthesis_types import Utterance
-from .vocoding import spec_to_wav_batch
 
 
 def get_synthesis_output_writers(
@@ -270,11 +266,11 @@ class SpecPredictionWriter(BasePredictionWriter, UtteranceWriter):
         torch.save(utterance.spec.cpu(), filename)
 
 
-class AlignedTextPredictionWriter(BasePredictionWriter, BatchWriter):
+class AlignedTextPredictionWriter(BasePredictionWriter, UtteranceWriter):
     """
-    This writer runs inference on a provided text-to-spec model and saves the
-    resulting time-aligned text to file. The output format depends on the subclass's
-    implementation of save_aligned_text_to_file.
+    This writer saves the time-aligned text of each synthesized text to file. The
+    output format depends on the subclass's implementation of
+    save_aligned_text_to_file.
     """
 
     def __init__(
@@ -293,11 +289,6 @@ class AlignedTextPredictionWriter(BasePredictionWriter, BatchWriter):
             simple_filenames=simple_filenames,
         )
         self.config = config
-        self.full_text: str = ""  # Accumulates full text before saving file
-        self.chunk_basenames: list[str] = []  # Accumulates per-chunk basenames
-        self.xmax: float = 0
-        self.phones: list[tuple[float, float, str]] = []
-        self.words: list[tuple[float, float, str]] = []
         self.text_processor = TextProcessor(
             config.text,
             target_text_representation_level=config.model.target_text_representation_level,
@@ -323,119 +314,62 @@ class AlignedTextPredictionWriter(BasePredictionWriter, BatchWriter):
             frames * self.config.preprocessing.audio.fft_hop_size
         ) / self.config.preprocessing.audio.output_sampling_rate
 
-    def get_tokens_from_duration_and_labels(
-        self,
-        log_duration_predictions: torch.Tensor,
-        duration_control: float,
-        text: npt.NDArray[np.float32],
-        raw_text: str,
-    ):
-        # Get all durations in frames
-        # Must be the same as duration_rounded in forward() in variance_adaptor.py
-        duration_frames = (
-            torch.clamp(
-                torch.round(torch.exp(log_duration_predictions) - 1) * duration_control,
-                min=0,
-            )
-            .int()
-            .tolist()
-        )
-        # Get all input labels
-        tokens: list[int] = text.tolist()
+    def get_phones_and_words(
+        self, utterance: Utterance
+    ) -> tuple[float, list[tuple[float, float, str]], list[tuple[float, float, str]]]:
+        """Align utterance's tokens (phones) and words to its audio.
+
+        Returns: (xmax_seconds, phones, words), where phones and words are lists of
+            (start_seconds, end_seconds, label). Words end at each " " token, which
+            includes the 0-frame space that separates the chunks of a combined
+            utterance, and at the end; they are labelled from utterance.text.
+        """
+        # utterance.durations are the frames per token the model used to build the
+        # spec, with duration_control applied
+        duration_frames: list[int] = utterance.durations.tolist()
+        tokens: list[int] = utterance.tokens.tolist()
         text_labels = self.text_processor.decode_tokens(tokens, join_character=None)
         assert len(duration_frames) == len(
             text_labels
-        ), f"can't synthesize {raw_text} because the number of predicted duration steps ({len(duration_frames)}) doesn't equal the number of input text labels ({len(text_labels)})"
+        ), f"can't align {utterance.text!r} because the number of durations ({len(duration_frames)}) doesn't equal the number of input text labels ({len(text_labels)})"
         # get the duration of the audio: (sum_of_frames * hop_size) / sample_rate
         xmax_seconds = self.frames_to_seconds(sum(duration_frames))
         # create the tiers
         words: list[tuple[float, float, str]] = []
         phones: list[tuple[float, float, str]] = []
-        raw_text_words = raw_text.split()
+        raw_text_words = utterance.text.split()
         current_word_duration = 0.0
         last_phone_end = 0.0
         last_word_end = 0.0
-        # skip padding
-        text_labels_no_padding = [tl for tl in text_labels if tl != "\x80"]
-        duration_frames_no_padding = duration_frames[: len(text_labels_no_padding)]
-        for label, duration in zip(text_labels_no_padding, duration_frames_no_padding):
+        for label, duration in zip(text_labels, duration_frames):
             # add phone label
             phone_duration = self.frames_to_seconds(duration)
             current_phone_end = last_phone_end + phone_duration
-            interval = (last_phone_end, current_phone_end, label)
-            phones.append(interval)
+            phones.append((last_phone_end, current_phone_end, label))
             last_phone_end = current_phone_end
             # accumulate phone to word label
             current_word_duration += phone_duration
             # if label is space or the last phone, add the word and recount
-            if label == " " or len(phones) == len(text_labels_no_padding):
+            if label == " " or len(phones) == len(text_labels):
                 current_word_end = last_word_end + current_word_duration
-                interval = (
-                    last_word_end,
-                    current_word_end,
-                    raw_text_words[len(words)],
+                words.append(
+                    (last_word_end, current_word_end, raw_text_words[len(words)])
                 )
-                words.append(interval)
                 last_word_end = current_word_end
                 current_word_duration = 0
         return xmax_seconds, phones, words
 
-    def write_batch(
-        self,
-        outputs: dict[str, torch.Tensor | None],
-        batch: dict[str, Any],
-    ) -> None:
-        assert self.output_key in outputs and outputs[self.output_key] is not None
-        assert (
-            "duration_prediction" in outputs
-            and outputs["duration_prediction"] is not None
+    def write_utterance(self, utterance: Utterance) -> None:
+        xmax_seconds, phones, words = self.get_phones_and_words(utterance)
+        # Save the output to file (the subclass has to implement this)
+        self.save_aligned_text_to_file(
+            xmax_seconds,
+            phones,
+            words,
+            utterance.basename,
+            utterance.speaker,
+            utterance.language,
         )
-
-        basenames = batch["basename"]
-        speakers = batch["speaker"]
-        languages = batch["language"]
-        texts = batch["text"]  # type: ignore
-        raw_texts = batch["raw_text"]
-        duration_controls = batch["duration_control"]
-        is_last_input_chunk = batch["is_last_input_chunk"]
-
-        for i, log_duration_predictions in enumerate(outputs["duration_prediction"]):
-            # Get the phone/word alignment tokens
-            xmax_seconds, phones, words = self.get_tokens_from_duration_and_labels(
-                log_duration_predictions, duration_controls[i], texts[i], raw_texts[i]
-            )
-
-            # Concatenate
-            self.full_text += raw_texts[i]
-            self.chunk_basenames.append(basenames[i])
-            for phone in phones:
-                self.phones.append(
-                    (phone[0] + self.xmax, phone[1] + self.xmax, phone[2])
-                )
-            for word in words:
-                self.words.append((word[0] + self.xmax, word[1] + self.xmax, word[2]))
-            self.xmax += xmax_seconds
-
-            if is_last_input_chunk[i]:
-                # Save the output to file (the subclass has to implement this)
-                basename = resolve_chunked_basename(
-                    self.chunk_basenames, self.full_text
-                )
-                self.save_aligned_text_to_file(
-                    self.xmax,
-                    self.phones,
-                    self.words,
-                    basename,
-                    speakers[i],
-                    languages[i],
-                )
-
-                # Reset the accumulator variables
-                self.full_text = ""
-                self.chunk_basenames = []
-                self.xmax = 0
-                self.phones = []
-                self.words = []
 
 
 class TextGridPredictionWriter(AlignedTextPredictionWriter):
@@ -609,9 +543,10 @@ class OfflineRASPredictionWriter(AlignedTextPredictionWriter):
             f.write(readalong_html)
 
 
-class WavPredictionWriter(BasePredictionWriter, BatchWriter):
+class WavPredictionWriter(BasePredictionWriter, UtteranceWriter):
     """
-    Given text-to-spec, this writer does spec-to-wav and writes wav files.
+    This writer saves the waveform of each synthesized text as a wav file: run
+    spec_to_wav_synthesis() before unbatching, so the utterances have one.
     """
 
     def __init__(
@@ -636,9 +571,6 @@ class WavPredictionWriter(BasePredictionWriter, BatchWriter):
         self.config = config
 
         self.last_file_written: Optional[str] = None  # Necessary for the demo
-        self.full_text: str = ""  # Accumulates full text before saving file
-        self.chunk_basenames: list[str] = []  # Accumulates per-chunk basenames
-        self.full_wav = torch.tensor(())  # Accumulates full wav before saving file
         self.output_key = output_key
         self.device = device
         self.vocoder_model = vocoder_model
@@ -649,66 +581,21 @@ class WavPredictionWriter(BasePredictionWriter, BatchWriter):
 
         logger.info(f"Saving wav output to {self.save_dir}")
 
-    def synthesize_audio(self, outputs: dict[str, torch.Tensor | None]):
-        """Return (wavs, wav_lens, sample_rate) for a batch: see spec_to_wav_batch()"""
-        output_value = outputs[self.output_key]
-        if output_value is None:
+    def write_utterance(self, utterance: Utterance) -> None:
+        if utterance.wav is None or utterance.sample_rate is None:
             raise ValueError(
-                f"{self.output_key} does not exist in the output of your model"
+                f"Utterance {utterance.basename!r} has no waveform: "
+                "run spec_to_wav_synthesis() before unbatching."
             )
-        assert "tgt_lens" in outputs and outputs["tgt_lens"] is not None
-        return spec_to_wav_batch(
-            output_value, outputs["tgt_lens"], self.vocoder_model, self.vocoder_config
+        filename = self.get_filename(
+            utterance.basename, utterance.speaker, utterance.language
         )
-
-    def write_batch(
-        self,
-        outputs: dict[str, torch.Tensor | None],
-        batch: dict[str, Any],
-    ) -> None:
-        logger.trace("Generating waveform...")
-
-        wavs, wav_lens, sr = self.synthesize_audio(outputs)
-
-        texts = batch["raw_text"]
-        basenames = batch["basename"]
-        speakers = batch["speaker"]
-        languages = batch["language"]
-        is_last_input_chunk = batch["is_last_input_chunk"]
-
-        for i, wav in enumerate(wavs):
-            # The vocoder output includes padding, so we have to remove that
-            trimmed_wav = wav[:, : int(wav_lens[i])]
-
-            # Concatenate the current chunk to the full wav
-            self.full_wav = torch.cat((self.full_wav, trimmed_wav), -1)
-
-            # Concatenate the current text to the full text
-            self.full_text += texts[i]
-            self.chunk_basenames.append(basenames[i])
-
-            if is_last_input_chunk[i]:
-                # Generate filename
-                # Assumes that speakers will be the same across chunks in the same text input
-                basename = resolve_chunked_basename(
-                    self.chunk_basenames, self.full_text
-                )
-                filename = self.get_filename(basename, speakers[i], languages[i])
-
-                # Save file
-                torchaudio.save(
-                    filename,
-                    self.full_wav,
-                    sr,
-                    format="wav",
-                    encoding="PCM_S",
-                    bits_per_sample=16,
-                )
-
-                # Reset the accumulator variables
-                self.full_wav = torch.tensor(())
-                self.full_text = ""
-                self.chunk_basenames = []
-
-                # Update last_file_written (for demo)
-                self.last_file_written = filename
+        torchaudio.save(
+            filename,
+            utterance.wav.cpu(),
+            utterance.sample_rate,
+            format="wav",
+            encoding="PCM_S",
+            bits_per_sample=16,
+        )
+        self.last_file_written = filename  # for the demo

@@ -33,41 +33,35 @@ class WritingTestBase:
         contact_name="Test Runner", contact_email="info@everyvoice.ca"
     )
     output_key = "output"
-    outputs = {
-        output_key: torch.ones([2, 500, 80], device="cpu"),
-        "duration_prediction": torch.ones([2, 7], device="cpu"),
-        "tgt_lens": [
-            90,
-            490,
-        ],
-    }
-    batch = {
-        # "spk2_utt002" deliberately does not match slugify(raw_text) below, so
-        # these tests catch writers that ignore the filelist-provided basename
-        # and re-derive one from the text instead.
-        "basename": [
-            "short",
-            "spk2_utt002",
-        ],
-        "duration_control": [1.0, 1.0],
-        "raw_text": [
-            "short",
-            "This utterance is way too long",
-        ],
-        "text": [
-            torch.IntTensor([2, 3, 4, 5, 6, 7, 8], device="cpu"),
-            torch.IntTensor([2, 3, 4, 5, 6, 7, 8], device="cpu"),
-        ],
-        "speaker": [
-            "spk1",
-            "spk2",
-        ],
-        "language": [
-            "lngA",
-            "lngB",
-        ],
-        "is_last_input_chunk": [1, 1],
-    }
+
+    @staticmethod
+    def utterances() -> list[Utterance]:
+        # "spk2_utt002" deliberately does not match slugify(text), so these tests
+        # catch writers that ignore the filelist-provided basename and re-derive
+        # one from the text instead.
+        def utterance(index, text, basename, speaker, language, n_frames):
+            return Utterance(
+                index=index,
+                chunk_index=0,
+                is_last_chunk=True,
+                text=text,
+                basename=basename,
+                speaker=speaker,
+                language=language,
+                spec=torch.ones(80, n_frames),
+                tokens=torch.IntTensor([2, 3, 4, 5, 6, 7, 8]),
+                durations=torch.full((7,), n_frames // 7, dtype=torch.int),
+                space_token=1,
+                wav=torch.zeros(1, n_frames * 256),
+                sample_rate=22050,
+            )
+
+        return [
+            utterance(0, "short", "short", "spk1", "lngA", 91),
+            utterance(
+                1, "This utterance is way too long", "spk2_utt002", "spk2", "lngB", 490
+            ),
+        ]
 
 
 class TestWriterClasses(WritingTestBase):
@@ -102,6 +96,9 @@ class TestWriterClasses(WritingTestBase):
             # The loss needs whole batches; the spec is written per text
             assert isinstance(writers["score"], BatchWriter)
             assert isinstance(writers[SynthesizeOutputFormats.spec], UtteranceWriter)
+            assert isinstance(
+                writers[SynthesizeOutputFormats.textgrid], UtteranceWriter
+            )
 
 
 class TestScorer:
@@ -178,33 +175,6 @@ class TestWritingSpec(WritingTestBase):
     Testing the writer that writes pt files.
     """
 
-    @staticmethod
-    def utterances() -> list[Utterance]:
-        # "spk2_utt002" deliberately does not match slugify(text), so these tests
-        # catch writers that ignore the filelist-provided basename and re-derive
-        # one from the text instead.
-        def utterance(index, text, basename, speaker, language, n_frames):
-            return Utterance(
-                index=index,
-                chunk_index=0,
-                is_last_chunk=True,
-                text=text,
-                basename=basename,
-                speaker=speaker,
-                language=language,
-                spec=torch.ones(80, n_frames),
-                tokens=torch.IntTensor([2, 3, 4, 5, 6, 7, 8]),
-                durations=torch.full((7,), n_frames // 7, dtype=torch.int),
-                space_token=1,
-            )
-
-        return [
-            utterance(0, "short", "short", "spk1", "lngA", 91),
-            utterance(
-                1, "This utterance is way too long", "spk2_utt002", "spk2", "lngB", 490
-            ),
-        ]
-
     def make_writer(self, tmp_dir: Path, **kwargs):
         writers = get_synthesis_output_writers(
             [SynthesizeOutputFormats.spec],
@@ -267,7 +237,8 @@ class TestWritingTextGrid(WritingTestBase):
                 device=torch.device("cpu"),
             )
             writer = next(iter(writers.values()))
-            writer.write_batch(self.outputs, self.batch)
+            for utterance in self.utterances():
+                writer.write_utterance(utterance)
             output_dir = writer.save_dir
             # print(output_dir, *output_dir.glob("**/*"))  # For debugging
             assert output_dir.exists()
@@ -307,7 +278,8 @@ class TestWritingReadAlong(WritingTestBase):
                 device=torch.device("cpu"),
             )
             writer = next(iter(writers.values()))
-            writer.write_batch(self.outputs, self.batch)
+            for utterance in self.utterances():
+                writer.write_utterance(utterance)
             output_dir = writer.save_dir
 
             # print(output_dir, *output_dir.glob("**/*"))  # For debugging
@@ -348,9 +320,11 @@ class TestWritingOfflineRAS(WritingTestBase):
                 vocoder_config=vocoder.config,
                 vocoder_global_step=10,
             )
-            for writer in writers.values():
-                writer.write_batch(self.outputs, self.batch)
-                output_dir = writer.save_dir
+            # Also writes the wav files, which the HTML files embed
+            for utterance in self.utterances():
+                for writer in writers.values():
+                    writer.write_utterance(utterance)
+            output_dir = writers[SynthesizeOutputFormats.readalong_html].save_dir
 
             # print(output_dir, *output_dir.glob("**/*"))  # For debugging
 
@@ -399,7 +373,8 @@ class TestWritingWav(WritingTestBase):
                 vocoder_global_step=10,
             )
             writer = next(iter(writers.values()))
-            writer.write_batch(self.outputs, self.batch)
+            for utterance in self.utterances():
+                writer.write_utterance(utterance)
             output_dir = writer.save_dir
             # print(output_dir, *output_dir.glob("**/*"))  # For debugging
             assert output_dir.exists()
@@ -436,7 +411,8 @@ class TestWritingWav(WritingTestBase):
                 simple_filenames=True,
             )
             writer = next(iter(writers.values()))
-            writer.write_batch(self.outputs, self.batch)
+            for utterance in self.utterances():
+                writer.write_utterance(utterance)
             output_dir = writer.save_dir
             assert (output_dir / "short.wav").exists()
             assert (output_dir / "spk2_utt002.wav").exists()
