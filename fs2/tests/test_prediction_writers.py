@@ -32,7 +32,6 @@ class WritingTestBase:
     contact = ContactInformation(
         contact_name="Test Runner", contact_email="info@everyvoice.ca"
     )
-    output_key = "output"
 
     @staticmethod
     def utterances() -> list[Utterance]:
@@ -84,8 +83,6 @@ class TestWriterClasses(WritingTestBase):
                 config=FastSpeech2Config(contact=self.contact),
                 global_step=77,
                 output_dir=Path(tmp_dir),
-                output_key=self.output_key,
-                device=torch.device("cpu"),
                 return_scores=True,
                 loss_fn=lambda *_: {},
             )
@@ -125,8 +122,6 @@ class TestScorer:
                     config=FastSpeech2Config(contact=self.contact),
                     global_step=77,
                     output_dir=Path(tmp_dir),
-                    output_key="output",
-                    device=torch.device("cpu"),
                     return_scores=True,
                 )
 
@@ -148,8 +143,6 @@ class TestScorer:
                 config=FastSpeech2Config(contact=self.contact),
                 global_step=77,
                 output_dir=tmp_path,
-                output_key="output",
-                device=torch.device("cpu"),
                 return_scores=True,
                 loss_fn=fake_loss_fn,
             )
@@ -181,8 +174,6 @@ class TestWritingSpec(WritingTestBase):
             config=FastSpeech2Config(contact=self.contact),
             global_step=77,
             output_dir=tmp_dir,
-            output_key=self.output_key,
-            device=torch.device("cpu"),
             **kwargs,
         )
         return next(iter(writers.values()))
@@ -233,8 +224,6 @@ class TestWritingTextGrid(WritingTestBase):
                 config=FastSpeech2Config(contact=self.contact),
                 global_step=77,
                 output_dir=tmp_dir,
-                output_key=self.output_key,
-                device=torch.device("cpu"),
             )
             writer = next(iter(writers.values()))
             for utterance in self.utterances():
@@ -274,8 +263,6 @@ class TestWritingReadAlong(WritingTestBase):
                 config=FastSpeech2Config(contact=self.contact),
                 global_step=77,
                 output_dir=tmp_dir,
-                output_key=self.output_key,
-                device=torch.device("cpu"),
             )
             writer = next(iter(writers.values()))
             for utterance in self.utterances():
@@ -314,10 +301,6 @@ class TestWritingOfflineRAS(WritingTestBase):
                 ),
                 global_step=77,
                 output_dir=tmp_dir,
-                output_key=self.output_key,
-                device=torch.device("cpu"),
-                vocoder_model=vocoder,
-                vocoder_config=vocoder.config,
                 vocoder_global_step=10,
             )
             # Also writes the wav files, which the HTML files embed
@@ -364,12 +347,8 @@ class TestWritingWav(WritingTestBase):
                     contact=self.contact,
                     training=FastSpeech2TrainingConfig(vocoder_path=vocoder_path),
                 ),
-                device=torch.device("cpu"),
                 global_step=77,
                 output_dir=tmp_dir,
-                output_key=self.output_key,
-                vocoder_model=vocoder,
-                vocoder_config=vocoder.config,
                 vocoder_global_step=10,
             )
             writer = next(iter(writers.values()))
@@ -401,12 +380,8 @@ class TestWritingWav(WritingTestBase):
                     contact=self.contact,
                     training=FastSpeech2TrainingConfig(vocoder_path=vocoder_path),
                 ),
-                device=torch.device("cpu"),
                 global_step=77,
                 output_dir=tmp_dir,
-                output_key=self.output_key,
-                vocoder_model=vocoder,
-                vocoder_config=vocoder.config,
                 vocoder_global_step=10,
                 simple_filenames=True,
             )

@@ -14,9 +14,12 @@ from everyvoice.utils import slugify, truncate_basename
 
 from .. import api, prediction_writers
 from ..core import synthesize as core_synthesize
-from ..core.synthesize import iter_synthesis, synthesize_helper
+from ..core.synthesize import (
+    get_output_hop_size,
+    synthesize_helper,
+    text_to_spec_synthesis,
+)
 from ..synthesis_types import SynthesisBatch, Utterance
-from ..vocoding import get_output_hop_size
 
 
 @pytest.fixture()
@@ -53,17 +56,18 @@ CHUNKED_DATA = [
 ]
 
 
-class TestIterSynthesis:
+class TestTextToSpecSynthesis:
     def test_batches(self, model):
         model.train()
         batches = list(
-            iter_synthesis(
+            text_to_spec_synthesis(
                 model, deepcopy(CHUNKED_DATA), torch.device("cpu"), batch_size=3
             )
         )
         assert not model.training
         assert len(batches) == 2
-        (outputs1, batch1), (outputs2, batch2) = batches
+        outputs1, batch1 = batches[0].outputs, batches[0].batch
+        outputs2, batch2 = batches[1].outputs, batches[1].batch
         assert batch1["basename"] == ["uttA", "uttA", "uttA"]
         assert batch2["basename"] == ["uttB"]
         assert outputs1[model.output_key].size(0) == 3
@@ -74,15 +78,15 @@ class TestIterSynthesis:
 
     def test_no_grad_tracking(self, model):
         assert any(param.requires_grad for param in model.parameters())
-        for i, (outputs, batch) in enumerate(
-            iter_synthesis(
+        for i, synthesis_batch in enumerate(
+            text_to_spec_synthesis(
                 model, deepcopy(CHUNKED_DATA), torch.device("cpu"), batch_size=2
             )
         ):
             # no_grad must not leak out to the code consuming the iterator
             assert torch.is_grad_enabled()
-            assert_no_grad_tracking(outputs, f"batch {i} outputs")
-            assert_no_grad_tracking(batch, f"batch {i} batch")
+            assert_no_grad_tracking(synthesis_batch.outputs, f"batch {i} outputs")
+            assert_no_grad_tracking(synthesis_batch.batch, f"batch {i} batch")
         assert_no_param_grads(model, "fs2 model")
 
 
@@ -129,10 +133,10 @@ class TestSynthesizeHelper:
         # durations can depend on the padding within a batch.
         chunk_lens = [
             int(length)
-            for outputs, _ in iter_synthesis(
+            for synthesis_batch in text_to_spec_synthesis(
                 model, deepcopy(CHUNKED_DATA), torch.device("cpu"), batch_size=2
             )
-            for length in outputs["tgt_lens"]
+            for length in synthesis_batch.outputs["tgt_lens"]
         ]
         spec_a = torch.load(spec_dir / files[0])
         spec_b = torch.load(spec_dir / files[1])

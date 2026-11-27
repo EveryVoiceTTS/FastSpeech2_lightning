@@ -17,6 +17,9 @@ from everyvoice.utils import check_file_not_empty, slugify, truncate_basename
 
 if TYPE_CHECKING:
     import torch.device
+    from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import (
+        HiFiGANConfig,
+    )
     from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.model import (
         HiFiGAN,
         HiFiGANGenerator,
@@ -450,7 +453,7 @@ def make_synthesis_dataloader(
     )
 
 
-def iter_synthesis(
+def text_to_spec_synthesis(
     model: "FastSpeech2",
     data: list[dict[str, Any]],
     device: "torch.device",
@@ -459,8 +462,12 @@ def iter_synthesis(
     style_reference: bool = False,
     batch_size: int = 4,
     num_workers: int = 0,
-) -> Iterator[tuple[dict[str, Any], dict[str, Any]]]:
-    """Run the model's forward pass in inference mode over data, one batch at a time.
+) -> Iterator["SynthesisBatch"]:
+    """The text-to-spec stage of the synthesis pipeline: run the model's forward
+    pass in inference mode over data, one batch at a time.
+
+    The next stages are spec_to_wav_synthesis() (optional), unbatch_synthesis()
+    and combine_utterance_chunks().
 
     Args:
         model: the text-to-spec model; it gets moved to device and set to eval mode
@@ -469,15 +476,18 @@ def iter_synthesis(
         teacher_forcing, style_reference, batch_size, num_workers:
             see make_synthesis_dataloader()
 
-    Yields: (outputs, batch) for each batch, with the tensors left on device.
-        Batches come in the order of data, which the output writers rely on
-        to reassemble chunked texts.
+    Yields: a SynthesisBatch of spectrograms for each batch, with the tensors left
+        on device. Batches come in the order of data, which
+        combine_utterance_chunks() relies on to reassemble chunked texts.
     """
     import torch
     from lightning_fabric.utilities.apply_func import move_data_to_device
 
+    from ..synthesis_types import SynthesisBatch
+
     model.to(device)
     model.eval()
+    (space_token,) = model.text_processor.encode_string_tokens([" "])
     dataloader = make_synthesis_dataloader(
         model,
         data,
@@ -490,43 +500,58 @@ def iter_synthesis(
         batch = move_data_to_device(batch, device)
         with torch.no_grad():
             outputs = model(batch, inference=True)
-        yield outputs, batch
-
-
-def text_to_spec_synthesis(
-    model: "FastSpeech2",
-    data: list[dict[str, Any]],
-    device: "torch.device",
-    *,
-    teacher_forcing: bool = False,
-    style_reference: bool = False,
-    batch_size: int = 4,
-    num_workers: int = 0,
-) -> Iterator["SynthesisBatch"]:
-    """The text-to-spec stage of the synthesis pipeline: yields a SynthesisBatch of
-    spectrograms for each batch of data, as prepared by prepare_data().
-
-    The next stages are spec_to_wav_synthesis() (optional), unbatch_synthesis()
-    and combine_utterance_chunks(). See iter_synthesis() for the arguments.
-    """
-    from ..synthesis_types import SynthesisBatch
-
-    (space_token,) = model.text_processor.encode_string_tokens([" "])
-    for outputs, batch in iter_synthesis(
-        model,
-        data,
-        device,
-        teacher_forcing=teacher_forcing,
-        style_reference=style_reference,
-        batch_size=batch_size,
-        num_workers=num_workers,
-    ):
         yield SynthesisBatch(
             outputs=outputs,
             batch=batch,
             output_key=model.output_key,
             space_token=space_token,
         )
+
+
+def get_output_hop_size(vocoder_config: "HiFiGANConfig") -> int:
+    """The number of output audio samples the vocoder generates per spec frame."""
+    audio_config = vocoder_config.preprocessing.audio
+    sampling_rate_change = (
+        audio_config.output_sampling_rate // audio_config.input_sampling_rate
+    )
+    return sampling_rate_change * audio_config.fft_hop_size
+
+
+def spec_to_wav_batch(
+    specs: "torch.Tensor",
+    frame_lens: "torch.Tensor | Sequence[int]",
+    vocoder: "HiFiGAN | HiFiGANGenerator",
+    vocoder_config: "HiFiGANConfig",
+) -> tuple["torch.Tensor", "torch.Tensor", int]:
+    """Generate the waveforms of a padded batch of spectrograms.
+
+    Args:
+        specs: the spectrograms, [B (batch size), T (frames), K (mel bands)], as
+            output by the text-to-spec model
+        frame_lens: the number of frames of each spectrogram, [B], as a tensor or
+            a sequence of ints
+        vocoder: the spec-to-wav model
+        vocoder_config: its configuration, normally vocoder.config
+
+    Returns: (wavs, wav_lens, sample_rate), where wavs is [B, C (channels),
+        T (samples)], still padded, on the CPU, and wav_lens is the number of
+        samples of each item, [B].
+    """
+    import torch
+    from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
+        synthesize_data,
+    )
+
+    wavs, sample_rate = synthesize_data(specs.transpose(1, 2), vocoder, vocoder_config)
+    assert (
+        wavs.ndim == 3
+    ), f"The generated audio did not contain 3 dimensions. First dimension should be B(atch) and the second dimension should be C(hannels) and third dimension should be T(ime) in samples. Got {wavs.shape} instead."
+    assert wavs.shape[0] == specs.size(
+        0
+    ), f"You provided {specs.size(0)} utterances, but {wavs.shape[0]} audio files were synthesized instead."
+
+    wav_lens = torch.as_tensor(frame_lens).cpu() * get_output_hop_size(vocoder_config)
+    return wavs, wav_lens, sample_rate
 
 
 def spec_to_wav_synthesis(
@@ -546,8 +571,6 @@ def spec_to_wav_synthesis(
         wavs are on the CPU.
     """
     import dataclasses
-
-    from ..vocoding import spec_to_wav_batch
 
     for synthesis_batch in batches:
         wavs, wav_lens, sample_rate = spec_to_wav_batch(
@@ -716,8 +739,7 @@ def synthesize_helper(
     output_dir: Path,
     teacher_forcing_directory: Path | None,
     vocoder_global_step: Optional[int] = None,
-    vocoder_model=None,
-    vocoder_config=None,
+    vocoder_model: "HiFiGAN | HiFiGANGenerator | None" = None,
     return_scores=False,
     simple_filenames: bool = False,
 ) -> tuple[
@@ -792,6 +814,15 @@ def synthesize_helper(
     model.config.training.batch_size = batch_size
     model.config.training.train_data_workers = num_workers
 
+    needs_wav = (
+        SynthesizeOutputFormats.wav in output_types
+        or SynthesizeOutputFormats.readalong_html in output_types
+    )
+    if needs_wav and vocoder_model is None:
+        raise ValueError(
+            "We cannot synthesize waveforms without a vocoder. Please ensure that a vocoder is specified."
+        )
+
     from ..prediction_writers import (
         BatchWriter,
         UtteranceWriter,
@@ -802,11 +833,7 @@ def synthesize_helper(
         output_types=output_types,
         output_dir=output_dir,
         config=model.config,
-        output_key=model.output_key,
-        device=device,
         global_step=global_step,
-        vocoder_model=vocoder_model,
-        vocoder_config=vocoder_config,
         vocoder_global_step=vocoder_global_step,
         return_scores=return_scores,
         simple_filenames=simple_filenames,
@@ -841,6 +868,7 @@ def synthesize_helper(
         # The pipeline stages are lazy iterators: everything runs in the loop below
         spec_batches = text_to_spec_with_batch_writers()
         if SynthesizeOutputFormats.wav in writers:  # also there for readalong_html
+            assert vocoder_model is not None  # checked above
             spec_batches = spec_to_wav_synthesis(spec_batches, vocoder_model)
         chunk_utterances = unbatch_synthesis(spec_batches)
         text_utterances = combine_utterance_chunks(chunk_utterances)

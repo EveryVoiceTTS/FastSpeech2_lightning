@@ -36,12 +36,8 @@ def make_writers(tmp_path, stubbed_vocoder) -> Callable:
     return partial(
         get_synthesis_output_writers,
         config=config,
-        device=torch.device("cpu"),
         global_step=77,
         output_dir=tmp_path,
-        output_key="output",
-        vocoder_model=vocoder,
-        vocoder_config=vocoder.config,
         vocoder_global_step=10,
     )
 

@@ -213,7 +213,6 @@ def check_data_command(  # noqa: C901
         teacher_forcing_directory=teacher_forcing_directory,
         output_dir=output_dir,
         vocoder_model=None,
-        vocoder_config=None,
         vocoder_global_step=None,
         return_scores=True,
     )

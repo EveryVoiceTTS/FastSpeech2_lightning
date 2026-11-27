@@ -243,7 +243,7 @@ def synthesize(  # noqa: C901
         logger.info(f"Loading Vocoder from {vocoder_path}")
         try:
             vocoder_ckpt = load_checkpoint(vocoder_path, device=device, minimal=False)
-            vocoder_model, vocoder_config = load_hifigan_from_checkpoint(
+            vocoder_model, _vocoder_config = load_hifigan_from_checkpoint(
                 vocoder_ckpt, device
             )
         except Exception as e:
@@ -251,7 +251,6 @@ def synthesize(  # noqa: C901
         vocoder_global_step = vocoder_model.global_step_at_load or 0
     else:
         vocoder_model = None
-        vocoder_config = None
         vocoder_global_step = None
 
     synthesize_helper(
@@ -273,7 +272,6 @@ def synthesize(  # noqa: C901
         teacher_forcing_directory=teacher_forcing_directory,
         output_dir=output_dir,
         vocoder_model=vocoder_model,
-        vocoder_config=vocoder_config,
         vocoder_global_step=vocoder_global_step,
         simple_filenames=simple_filenames,
     )

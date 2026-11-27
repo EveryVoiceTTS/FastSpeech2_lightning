@@ -1,9 +1,9 @@
 """Writers that save synthesis outputs to files: specs, wavs, aligned text, losses.
 
-Get them with get_synthesis_output_writers(). The caller passes each batch of
-model outputs, in order, to every writer's write_batch(), then calls finalize()
-once: see synthesize_helper() in core/synthesize.py, which drives them for the CLI
-and the demo.
+Get them with get_synthesis_output_writers(). Most are UtteranceWriters, which
+write each synthesized text from its combined Utterance; LossWriter is a
+BatchWriter, which needs whole batches. See synthesize_helper() in
+core/synthesize.py, which drives them for the CLI and the demo.
 """
 
 from abc import ABC, abstractmethod
@@ -17,8 +17,6 @@ import torchaudio
 from everyvoice import logger
 from everyvoice.base_cli.prediction_writer import BasePredictionWriter
 from everyvoice.config.type_definitions import SynthesizeOutputFormats
-from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import HiFiGANConfig
-from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.model import HiFiGAN
 from everyvoice.text.text_processor import TextProcessor
 from pympi import TextGrid
 from readalongs.api import (
@@ -35,11 +33,7 @@ def get_synthesis_output_writers(
     output_types: Sequence[SynthesizeOutputFormats],
     output_dir: Path,
     config: FastSpeech2Config,
-    output_key: str,
-    device: torch.device,
     global_step: int,
-    vocoder_model: Optional[HiFiGAN] = None,
-    vocoder_config: Optional[HiFiGANConfig] = None,
     vocoder_global_step: Optional[int] = None,
     return_scores=False,
     simple_filenames: bool = False,
@@ -50,7 +44,8 @@ def get_synthesis_output_writers(
     that will generate those files.
 
     loss_fn is required when return_scores is True: pass the model's loss
-    module, e.g., model.loss.
+    module, e.g., model.loss. vocoder_global_step is required for wav and
+    readalong_html output: it is part of the wav filenames.
     """
     writers: dict[SynthesizeOutputFormats | str, OutputWriter] = {}
     if return_scores:
@@ -60,29 +55,18 @@ def get_synthesis_output_writers(
             config=config,
             global_step=global_step,
             output_dir=output_dir,
-            output_key=output_key,
             loss_fn=loss_fn,
         )
     if (
         SynthesizeOutputFormats.wav in output_types
         or SynthesizeOutputFormats.readalong_html in output_types
     ):
-        if (
-            vocoder_model is None
-            or vocoder_config is None
-            or vocoder_global_step is None
-        ):
-            raise ValueError(
-                "We cannot synthesize waveforms without a vocoder. Please ensure that a vocoder is specified."
-            )
+        if vocoder_global_step is None:
+            raise ValueError("vocoder_global_step is required to name wav files.")
         writers[SynthesizeOutputFormats.wav] = WavPredictionWriter(
             config=config,
-            device=device,
             global_step=global_step,
             output_dir=output_dir,
-            output_key=output_key,
-            vocoder_model=vocoder_model,
-            vocoder_config=vocoder_config,
             vocoder_global_step=vocoder_global_step,
             simple_filenames=simple_filenames,
         )
@@ -91,7 +75,6 @@ def get_synthesis_output_writers(
             config=config,
             global_step=global_step,
             output_dir=output_dir,
-            output_key=output_key,
             simple_filenames=simple_filenames,
         )
     if SynthesizeOutputFormats.textgrid in output_types:
@@ -99,7 +82,6 @@ def get_synthesis_output_writers(
             config=config,
             global_step=global_step,
             output_dir=output_dir,
-            output_key=output_key,
             simple_filenames=simple_filenames,
         )
     if SynthesizeOutputFormats.readalong_xml in output_types:
@@ -107,7 +89,6 @@ def get_synthesis_output_writers(
             config=config,
             global_step=global_step,
             output_dir=output_dir,
-            output_key=output_key,
             simple_filenames=simple_filenames,
         )
     if SynthesizeOutputFormats.readalong_html in output_types:
@@ -117,7 +98,6 @@ def get_synthesis_output_writers(
             config=config,
             global_step=global_step,
             output_dir=output_dir,
-            output_key=output_key,
             wav_writer=wav_writer,
             simple_filenames=simple_filenames,
         )
@@ -162,7 +142,8 @@ class UtteranceWriter(OutputWriter):
 
 class LossWriter(BatchWriter):
     """
-    This writer runs inference on a provided text-to-spec model and saves the resulting losses to disk.
+    This writer computes the losses of each batch, which needs teacher forcing, and
+    saves them, sorted, to one file at the end.
     """
 
     def __init__(
@@ -170,13 +151,11 @@ class LossWriter(BatchWriter):
         config: FastSpeech2Config,
         global_step: int,
         output_dir: Path,
-        output_key: str,
         loss_fn: Callable[..., dict[str, torch.Tensor]],
     ):
         super().__init__()
         self.global_step = global_step
         self.save_dir = output_dir
-        self.output_key = output_key
         self.config = config
         self.loss_fn = loss_fn
         logger.info(f"Saving pytorch output to {self.save_dir}")
@@ -245,7 +224,6 @@ class SpecPredictionWriter(BasePredictionWriter, UtteranceWriter):
         config: FastSpeech2Config,
         global_step: int,
         output_dir: Path,
-        output_key: str,
         simple_filenames: bool = False,
     ):
         super().__init__(
@@ -256,7 +234,6 @@ class SpecPredictionWriter(BasePredictionWriter, UtteranceWriter):
         )
         self.config = config
 
-        self.output_key = output_key
         logger.info(f"Saving pytorch output to {self.save_dir}")
 
     def write_utterance(self, utterance: Utterance) -> None:
@@ -277,7 +254,6 @@ class AlignedTextPredictionWriter(BasePredictionWriter, UtteranceWriter):
         self,
         config: FastSpeech2Config,
         global_step: int,
-        output_key: str,
         file_extension: str,
         save_dir: Path,
         simple_filenames: bool = False,
@@ -293,7 +269,6 @@ class AlignedTextPredictionWriter(BasePredictionWriter, UtteranceWriter):
             config.text,
             target_text_representation_level=config.model.target_text_representation_level,
         )
-        self.output_key = output_key
         logger.info(f"Saving text output to {self.save_dir}")
 
     def save_aligned_text_to_file(
@@ -374,7 +349,8 @@ class AlignedTextPredictionWriter(BasePredictionWriter, UtteranceWriter):
 
 class TextGridPredictionWriter(AlignedTextPredictionWriter):
     """
-    This writer runs inference on a provided text-to-spec model and saves the resulting textgrid of the predicted durations to disk. This can be used for evaluation.
+    This writer saves the predicted durations of each synthesized text as a
+    TextGrid, with phones and words tiers. This can be used for evaluation.
     """
 
     def __init__(
@@ -382,13 +358,11 @@ class TextGridPredictionWriter(AlignedTextPredictionWriter):
         config: FastSpeech2Config,
         global_step: int,
         output_dir: Path,
-        output_key: str,
         simple_filenames: bool = False,
     ):
         super().__init__(
             config=config,
             global_step=global_step,
-            output_key=output_key,
             file_extension=f"{config.preprocessing.audio.input_sampling_rate}-{config.preprocessing.audio.spec_type}.TextGrid",
             save_dir=output_dir / "textgrids",
             simple_filenames=simple_filenames,
@@ -434,7 +408,9 @@ class TextGridPredictionWriter(AlignedTextPredictionWriter):
 
 class ReadAlongPredictionWriter(AlignedTextPredictionWriter):
     """
-    This writer runs inference on a provided text-to-spec model and saves the resulting readalong of the predicted durations to disk. Combined with the .wav output, this can be loaded in the ReadAlongs Web-Component for viewing.
+    This writer saves the predicted durations of each synthesized text as a
+    .readalong file. Combined with the .wav output, this can be loaded in the
+    ReadAlongs Web-Component for viewing.
     """
 
     def __init__(
@@ -442,22 +418,15 @@ class ReadAlongPredictionWriter(AlignedTextPredictionWriter):
         config: FastSpeech2Config,
         global_step: int,
         output_dir: Path,
-        output_key: str,
         simple_filenames: bool = False,
     ):
         super().__init__(
             config=config,
             global_step=global_step,
-            output_key=output_key,
             file_extension=f"{config.preprocessing.audio.input_sampling_rate}-{config.preprocessing.audio.spec_type}.readalong",
             save_dir=output_dir / "readalongs",
             simple_filenames=simple_filenames,
         )
-        self.text_processor = TextProcessor(
-            config.text,
-            target_text_representation_level=config.model.target_text_representation_level,
-        )
-        self.output_key = output_key
 
     def save_aligned_text_to_file(
         self,
@@ -484,9 +453,9 @@ class ReadAlongPredictionWriter(AlignedTextPredictionWriter):
 
 class OfflineRASPredictionWriter(AlignedTextPredictionWriter):
     """
-    This writer runs inference on a provided text-to-spec model and saves the
-    resulting readalong of the predicted durations to disk as a single file
-    Offline HTML. This can be loaded in the ReadAlongs Studio-Web Editor for
+    This writer saves the predicted durations of each synthesized text as a
+    readalong in a single Offline HTML file, which embeds the wav file written by
+    the wav writer. This can be loaded in the ReadAlongs Studio-Web Editor for
     further modification.
     """
 
@@ -495,23 +464,16 @@ class OfflineRASPredictionWriter(AlignedTextPredictionWriter):
         config: FastSpeech2Config,
         global_step: int,
         output_dir: Path,
-        output_key: str,
         wav_writer: "WavPredictionWriter",
         simple_filenames: bool = False,
     ):
         super().__init__(
             config=config,
             global_step=global_step,
-            output_key=output_key,
             file_extension=f"{config.preprocessing.audio.input_sampling_rate}-{config.preprocessing.audio.spec_type}.html",
             save_dir=output_dir / "readalongs",
             simple_filenames=simple_filenames,
         )
-        self.text_processor = TextProcessor(
-            config.text,
-            target_text_representation_level=config.model.target_text_representation_level,
-        )
-        self.output_key = output_key
         self.wav_writer = wav_writer
 
     def save_aligned_text_to_file(
@@ -553,11 +515,7 @@ class WavPredictionWriter(BasePredictionWriter, UtteranceWriter):
         self,
         output_dir: Path,
         config: FastSpeech2Config,
-        output_key: str,
-        device: torch.device,
         global_step: int,
-        vocoder_model: HiFiGAN,
-        vocoder_config: HiFiGANConfig,
         vocoder_global_step: int,
         simple_filenames: bool = False,
     ):
@@ -571,10 +529,6 @@ class WavPredictionWriter(BasePredictionWriter, UtteranceWriter):
         self.config = config
 
         self.last_file_written: Optional[str] = None  # Necessary for the demo
-        self.output_key = output_key
-        self.device = device
-        self.vocoder_model = vocoder_model
-        self.vocoder_config = vocoder_config
         self.file_extension: str = self.sep.join(
             (f"v_ckpt={vocoder_global_step}", self.file_extension)
         )
