@@ -222,6 +222,10 @@ class FastSpeechDataset(Dataset):
             "is_last_input_chunk": (
                 item["is_last_input_chunk"] if self.inference else None
             ),
+            # Which input text, and which chunk of it, this item is; set by
+            # prepare_data(), so None for training or hand-built inference data
+            "index": item.get("index") if self.inference else None,
+            "chunk_index": item.get("chunk_index") if self.inference else None,
         }
 
         # used when returning scores

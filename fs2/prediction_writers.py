@@ -1,29 +1,24 @@
-"""
-TODO Once the synthesis generator API is written, document here how to get
-writers using get_synthesis_output_writers() and how to use them with the
-synthesis generator API.
+"""Writers that save synthesis outputs to files: specs, wavs, aligned text, losses.
+
+Get them with get_synthesis_output_writers(). Most are UtteranceWriters, which
+write each synthesized text from its combined Utterance; LossWriter is a
+BatchWriter, which needs whole batches. See synthesize_helper() in
+core/synthesize.py, which drives them for the CLI and the demo.
 """
 
+from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
 from csv import DictWriter
 from pathlib import Path
 from typing import Any, Optional
 
-import numpy as np
-import numpy.typing as npt
 import torch
 import torchaudio
 from everyvoice import logger
-from everyvoice.base_cli.prediction_writing_callback import (
-    BasePredictionWritingCallback,
-)
+from everyvoice.base_cli.prediction_writer import BasePredictionWriter
 from everyvoice.config.type_definitions import SynthesizeOutputFormats
-from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.config import HiFiGANConfig
-from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.model import HiFiGAN
 from everyvoice.text.text_processor import TextProcessor
-from everyvoice.utils import resolve_chunked_basename
 from pympi import TextGrid
-from pytorch_lightning.callbacks import Callback
 from readalongs.api import (
     Token,
     convert_prealigned_text_to_offline_html,
@@ -31,17 +26,14 @@ from readalongs.api import (
 )
 
 from .config import FastSpeech2Config
+from .synthesis_types import Utterance
 
 
 def get_synthesis_output_writers(
     output_types: Sequence[SynthesizeOutputFormats],
     output_dir: Path,
     config: FastSpeech2Config,
-    output_key: str,
-    device: torch.device,
     global_step: int,
-    vocoder_model: Optional[HiFiGAN] = None,
-    vocoder_config: Optional[HiFiGANConfig] = None,
     vocoder_global_step: Optional[int] = None,
     return_scores=False,
     simple_filenames: bool = False,
@@ -52,7 +44,8 @@ def get_synthesis_output_writers(
     that will generate those files.
 
     loss_fn is required when return_scores is True: pass the model's loss
-    module, e.g., model.loss.
+    module, e.g., model.loss. vocoder_global_step is required for wav and
+    readalong_html output: it is part of the wav filenames.
     """
     writers: dict[SynthesizeOutputFormats | str, OutputWriter] = {}
     if return_scores:
@@ -62,29 +55,18 @@ def get_synthesis_output_writers(
             config=config,
             global_step=global_step,
             output_dir=output_dir,
-            output_key=output_key,
             loss_fn=loss_fn,
         )
     if (
         SynthesizeOutputFormats.wav in output_types
         or SynthesizeOutputFormats.readalong_html in output_types
     ):
-        if (
-            vocoder_model is None
-            or vocoder_config is None
-            or vocoder_global_step is None
-        ):
-            raise ValueError(
-                "We cannot synthesize waveforms without a vocoder. Please ensure that a vocoder is specified."
-            )
+        if vocoder_global_step is None:
+            raise ValueError("vocoder_global_step is required to name wav files.")
         writers[SynthesizeOutputFormats.wav] = WavPredictionWriter(
             config=config,
-            device=device,
             global_step=global_step,
             output_dir=output_dir,
-            output_key=output_key,
-            vocoder_model=vocoder_model,
-            vocoder_config=vocoder_config,
             vocoder_global_step=vocoder_global_step,
             simple_filenames=simple_filenames,
         )
@@ -93,7 +75,6 @@ def get_synthesis_output_writers(
             config=config,
             global_step=global_step,
             output_dir=output_dir,
-            output_key=output_key,
             simple_filenames=simple_filenames,
         )
     if SynthesizeOutputFormats.textgrid in output_types:
@@ -101,7 +82,6 @@ def get_synthesis_output_writers(
             config=config,
             global_step=global_step,
             output_dir=output_dir,
-            output_key=output_key,
             simple_filenames=simple_filenames,
         )
     if SynthesizeOutputFormats.readalong_xml in output_types:
@@ -109,7 +89,6 @@ def get_synthesis_output_writers(
             config=config,
             global_step=global_step,
             output_dir=output_dir,
-            output_key=output_key,
             simple_filenames=simple_filenames,
         )
     if SynthesizeOutputFormats.readalong_html in output_types:
@@ -119,7 +98,6 @@ def get_synthesis_output_writers(
             config=config,
             global_step=global_step,
             output_dir=output_dir,
-            output_key=output_key,
             wav_writer=wav_writer,
             simple_filenames=simple_filenames,
         )
@@ -127,67 +105,45 @@ def get_synthesis_output_writers(
     return writers
 
 
-class OutputWriter:
-    """Common interface for the synthesis output writers.
+class OutputWriter(ABC):
+    """Common base of the synthesis output writers.
 
-    Subclasses implement write_batch() and, if needed, finalize(). The
-    on_predict_*_end methods are Lightning Callback hooks that just delegate to
-    them, so the writers can be driven either by trainer.predict() or directly.
+    A writer is either a BatchWriter, which gets each padded batch of model
+    outputs, or an UtteranceWriter, which gets each synthesized text as a
+    combined Utterance. Either way, the caller calls finalize() once at the end.
     """
 
+    def finalize(self) -> None:
+        """Called once, after the last batch or utterance has been processed."""
+
+
+class BatchWriter(OutputWriter):
+    """A writer that needs whole batches: the caller passes every batch, in
+    order, to write_batch()."""
+
+    @abstractmethod
     def write_batch(
         self,
         outputs: dict[str, torch.Tensor | None],
         batch: dict[str, Any],
-    ) -> None:  # pragma: no cover
+    ) -> None:
         """Process one batch of model outputs, writing files as needed."""
-        raise NotImplementedError
-
-    def finalize(self) -> None:
-        """Called once after the last batch has been processed."""
-
-    def on_predict_batch_end(
-        self,
-        trainer,
-        pl_module,
-        outputs: dict[str, torch.Tensor | None],
-        batch: dict[str, Any],
-        batch_idx: int,
-        dataloader_idx: int = 0,
-    ) -> None:
-        self.write_batch(outputs, batch)
-
-    def on_predict_epoch_end(
-        self,
-        trainer,
-        pl_module,
-    ) -> None:
-        self.finalize()
 
 
-class PredictionWriterBase(OutputWriter, BasePredictionWritingCallback):
-    def __init__(
-        self,
-        config: FastSpeech2Config,
-        file_extension: str,
-        global_step: int,
-        save_dir: Path,
-        include_global_step_in_filename: bool = False,
-        simple_filenames: bool = False,
-    ) -> None:
-        super().__init__(
-            save_dir=save_dir,
-            file_extension=file_extension,
-            global_step=global_step,
-            include_global_step_in_filename=include_global_step_in_filename,
-            simple_filenames=simple_filenames,
-        )
-        self.config = config
+class UtteranceWriter(OutputWriter):
+    """A writer that writes each synthesized text: the caller passes every
+    combined Utterance (see combine_utterance_chunks()), in order, to
+    write_utterance()."""
+
+    @abstractmethod
+    def write_utterance(self, utterance: Utterance) -> None:
+        """Write the files for one synthesized text."""
 
 
-class LossWriter(OutputWriter, Callback):
+class LossWriter(BatchWriter):
     """
-    This writer runs inference on a provided text-to-spec model and saves the resulting losses to disk.
+    This writer computes the losses of each batch, which needs teacher forcing, and
+    saves them, sorted, to one file at the end.
     """
 
     def __init__(
@@ -195,12 +151,11 @@ class LossWriter(OutputWriter, Callback):
         config: FastSpeech2Config,
         global_step: int,
         output_dir: Path,
-        output_key: str,
         loss_fn: Callable[..., dict[str, torch.Tensor]],
     ):
+        super().__init__()
         self.global_step = global_step
         self.save_dir = output_dir
-        self.output_key = output_key
         self.config = config
         self.loss_fn = loss_fn
         logger.info(f"Saving pytorch output to {self.save_dir}")
@@ -257,9 +212,11 @@ class LossWriter(OutputWriter, Callback):
         self.scores.append(score)
 
 
-class SpecPredictionWriter(PredictionWriterBase):
+class SpecPredictionWriter(BasePredictionWriter, UtteranceWriter):
     """
-    This writer reassembles text chunks, runs inference on a provided text-to-spec model and saves the resulting Mel spectrograms to disk as pytorch files. These can be used to fine-tune an EveryVoice spec-to-wav model.
+    This writer saves the Mel spectrogram of each synthesized text to disk as a
+    pytorch file, [K (bands), T (frames)]. These can be used to fine-tune an
+    EveryVoice spec-to-wav model.
     """
 
     def __init__(
@@ -267,103 +224,51 @@ class SpecPredictionWriter(PredictionWriterBase):
         config: FastSpeech2Config,
         global_step: int,
         output_dir: Path,
-        output_key: str,
         simple_filenames: bool = False,
     ):
         super().__init__(
-            config=config,
             global_step=global_step,
             file_extension=f"spec-pred-{config.preprocessing.audio.input_sampling_rate}-{config.preprocessing.audio.spec_type}.pt",
             save_dir=output_dir / "synthesized_spec",
             simple_filenames=simple_filenames,
         )
+        self.config = config
 
-        self.output_key = output_key
         logger.info(f"Saving pytorch output to {self.save_dir}")
 
-        self.full_text: str = ""  # Accumulates full text before saving file
-        self.chunk_basenames: list[str] = []  # Accumulates per-chunk basenames
-        self.full_spec = torch.tensor(())  # Accumulates full input before saving file
-
-    def write_batch(
-        self,
-        outputs: dict[str, torch.Tensor | None],
-        batch: dict[str, Any],
-    ) -> None:
-        assert self.output_key in outputs and outputs[self.output_key] is not None
-        assert "tgt_lens" in outputs and outputs["tgt_lens"] is not None
-
-        texts = batch["raw_text"]
-        basenames = batch["basename"]
-        speakers = batch["speaker"]
-        languages = batch["language"]
-        is_last_input_chunk = batch["is_last_input_chunk"]
-        unmasked_lens = list(outputs["tgt_lens"])
-
-        for i, data in enumerate(outputs[self.output_key]):  # type: ignore
-            # save tensors as [K (bands), T (frames)]
-            spec = data[: unmasked_lens[i]].cpu().transpose(0, 1)
-
-            # Concatenate the current chunk to the full spec
-            self.full_spec = torch.cat((self.full_spec, spec), -1)
-
-            # Concatenate the current text to the full text
-            self.full_text += texts[i]
-            self.chunk_basenames.append(basenames[i])
-
-            if is_last_input_chunk[i]:
-                # Generate filename
-                # Assumes that speakers will be the same across chunks in the same text input
-                basename = resolve_chunked_basename(
-                    self.chunk_basenames, self.full_text
-                )
-                filename = self.get_filename(basename, speakers[i], languages[i])
-
-                # Save file
-                torch.save(
-                    self.full_spec,
-                    filename,  # type: ignore
-                )
-
-                # Reset the accumulator variables
-                self.full_spec = torch.tensor(())
-                self.full_text = ""
-                self.chunk_basenames = []
+    def write_utterance(self, utterance: Utterance) -> None:
+        filename = self.get_filename(
+            utterance.basename, utterance.speaker, utterance.language
+        )
+        torch.save(utterance.spec.cpu(), filename)
 
 
-class AlignedTextPredictionWriter(PredictionWriterBase):
+class AlignedTextPredictionWriter(BasePredictionWriter, UtteranceWriter):
     """
-    This writer runs inference on a provided text-to-spec model and saves the
-    resulting time-aligned text to file. The output format depends on the subclass's
-    implementation of save_aligned_text_to_file.
+    This writer saves the time-aligned text of each synthesized text to file. The
+    output format depends on the subclass's implementation of
+    save_aligned_text_to_file.
     """
 
     def __init__(
         self,
         config: FastSpeech2Config,
         global_step: int,
-        output_key: str,
         file_extension: str,
         save_dir: Path,
         simple_filenames: bool = False,
     ):
         super().__init__(
-            config=config,
             global_step=global_step,
             file_extension=file_extension,
             save_dir=save_dir,
             simple_filenames=simple_filenames,
         )
-        self.full_text: str = ""  # Accumulates full text before saving file
-        self.chunk_basenames: list[str] = []  # Accumulates per-chunk basenames
-        self.xmax: float = 0
-        self.phones: list[tuple[float, float, str]] = []
-        self.words: list[tuple[float, float, str]] = []
+        self.config = config
         self.text_processor = TextProcessor(
             config.text,
             target_text_representation_level=config.model.target_text_representation_level,
         )
-        self.output_key = output_key
         logger.info(f"Saving text output to {self.save_dir}")
 
     def save_aligned_text_to_file(
@@ -379,129 +284,102 @@ class AlignedTextPredictionWriter(PredictionWriterBase):
         in the desired format."""
         raise NotImplementedError
 
+    @staticmethod
+    def readalong_tokens(words: list[tuple[float, float, str]]) -> list[Token]:
+        """The words, with their times, separated by spaces, for a readalong"""
+        tokens: list[Token] = []
+        for start, end, label in words:
+            if tokens:
+                tokens.append(Token(text=" ", is_word=False))
+            tokens.append(Token(text=label, time=start, dur=end - start))
+        return tokens
+
     def frames_to_seconds(self, frames: int) -> float:
         return (
             frames * self.config.preprocessing.audio.fft_hop_size
         ) / self.config.preprocessing.audio.output_sampling_rate
 
-    def get_tokens_from_duration_and_labels(
-        self,
-        log_duration_predictions: torch.Tensor,
-        duration_control: float,
-        text: npt.NDArray[np.float32],
-        raw_text: str,
-    ):
-        # Get all durations in frames
-        # Must be the same as duration_rounded in forward() in variance_adaptor.py
-        duration_frames = (
-            torch.clamp(
-                torch.round(torch.exp(log_duration_predictions) - 1) * duration_control,
-                min=0,
-            )
-            .int()
-            .tolist()
-        )
-        # Get all input labels
-        tokens: list[int] = text.tolist()
+    def get_phones_and_words(
+        self, utterance: Utterance
+    ) -> tuple[float, list[tuple[float, float, str]], list[tuple[float, float, str]]]:
+        """Align utterance's tokens (phones) and words to its audio.
+
+        Returns: (xmax_seconds, phones, words), where phones and words are lists of
+            (start_seconds, end_seconds, label). Words end at each " " token, which
+            includes the 0-frame space that separates the chunks of a combined
+            utterance, and at the end; they are labelled from utterance.text.
+        """
+        # utterance.durations are the frames per token the model used to build the
+        # spec, with duration_control applied
+        duration_frames: list[int] = utterance.durations.tolist()
+        tokens: list[int] = utterance.tokens.tolist()
         text_labels = self.text_processor.decode_tokens(tokens, join_character=None)
         assert len(duration_frames) == len(
             text_labels
-        ), f"can't synthesize {raw_text} because the number of predicted duration steps ({len(duration_frames)}) doesn't equal the number of input text labels ({len(text_labels)})"
+        ), f"can't align {utterance.text!r} because the number of durations ({len(duration_frames)}) doesn't equal the number of input text labels ({len(text_labels)})"
         # get the duration of the audio: (sum_of_frames * hop_size) / sample_rate
         xmax_seconds = self.frames_to_seconds(sum(duration_frames))
         # create the tiers
         words: list[tuple[float, float, str]] = []
         phones: list[tuple[float, float, str]] = []
-        raw_text_words = raw_text.split()
+        raw_text_words = utterance.text.split()
         current_word_duration = 0.0
         last_phone_end = 0.0
         last_word_end = 0.0
-        # skip padding
-        text_labels_no_padding = [tl for tl in text_labels if tl != "\x80"]
-        duration_frames_no_padding = duration_frames[: len(text_labels_no_padding)]
-        for label, duration in zip(text_labels_no_padding, duration_frames_no_padding):
+        for label, duration in zip(text_labels, duration_frames):
             # add phone label
             phone_duration = self.frames_to_seconds(duration)
             current_phone_end = last_phone_end + phone_duration
-            interval = (last_phone_end, current_phone_end, label)
-            phones.append(interval)
+            phones.append((last_phone_end, current_phone_end, label))
             last_phone_end = current_phone_end
             # accumulate phone to word label
             current_word_duration += phone_duration
             # if label is space or the last phone, add the word and recount
-            if label == " " or len(phones) == len(text_labels_no_padding):
+            if label == " " or len(phones) == len(text_labels):
                 current_word_end = last_word_end + current_word_duration
-                interval = (
-                    last_word_end,
-                    current_word_end,
-                    raw_text_words[len(words)],
+                words.append(
+                    (last_word_end, current_word_end, raw_text_words[len(words)])
                 )
-                words.append(interval)
                 last_word_end = current_word_end
                 current_word_duration = 0
         return xmax_seconds, phones, words
 
-    def write_batch(
-        self,
-        outputs: dict[str, torch.Tensor | None],
-        batch: dict[str, Any],
-    ) -> None:
-        assert self.output_key in outputs and outputs[self.output_key] is not None
-        assert (
-            "duration_prediction" in outputs
-            and outputs["duration_prediction"] is not None
+    def write_utterance(self, utterance: Utterance) -> None:
+        xmax_seconds, phones, words = self.get_phones_and_words(utterance)
+        # Save the output to file (the subclass has to implement this)
+        self.save_aligned_text_to_file(
+            xmax_seconds,
+            phones,
+            words,
+            utterance.basename,
+            utterance.speaker,
+            utterance.language,
         )
 
-        basenames = batch["basename"]
-        speakers = batch["speaker"]
-        languages = batch["language"]
-        texts = batch["text"]  # type: ignore
-        raw_texts = batch["raw_text"]
-        duration_controls = batch["duration_control"]
-        is_last_input_chunk = batch["is_last_input_chunk"]
 
-        for i, log_duration_predictions in enumerate(outputs["duration_prediction"]):
-            # Get the phone/word alignment tokens
-            xmax_seconds, phones, words = self.get_tokens_from_duration_and_labels(
-                log_duration_predictions, duration_controls[i], texts[i], raw_texts[i]
-            )
-
-            # Concatenate
-            self.full_text += raw_texts[i]
-            self.chunk_basenames.append(basenames[i])
-            for phone in phones:
-                self.phones.append(
-                    (phone[0] + self.xmax, phone[1] + self.xmax, phone[2])
-                )
-            for word in words:
-                self.words.append((word[0] + self.xmax, word[1] + self.xmax, word[2]))
-            self.xmax += xmax_seconds
-
-            if is_last_input_chunk[i]:
-                # Save the output to file (the subclass has to implement this)
-                basename = resolve_chunked_basename(
-                    self.chunk_basenames, self.full_text
-                )
-                self.save_aligned_text_to_file(
-                    self.xmax,
-                    self.phones,
-                    self.words,
-                    basename,
-                    speakers[i],
-                    languages[i],
-                )
-
-                # Reset the accumulator variables
-                self.full_text = ""
-                self.chunk_basenames = []
-                self.xmax = 0
-                self.phones = []
-                self.words = []
+def _add_textgrid_tiers(
+    textgrid: TextGrid,
+    name: str,
+    annotation_name: str,
+    intervals: list[tuple[float, float, str]],
+    max_seconds: float,
+) -> None:
+    """Add a tier with the labels of intervals, each one starting where the
+    previous one ends and the last one ending at max_seconds, and an annotation
+    tier with the same intervals, without labels."""
+    tier = textgrid.add_tier(name)
+    annotation_tier = textgrid.add_tier(annotation_name)
+    for i, (_start, end, label) in enumerate(intervals):
+        start = intervals[i - 1][1] if i > 0 else 0
+        end = end if i < len(intervals) - 1 else max_seconds
+        tier.add_interval(start, end, label)
+        annotation_tier.add_interval(start, end, "")
 
 
 class TextGridPredictionWriter(AlignedTextPredictionWriter):
     """
-    This writer runs inference on a provided text-to-spec model and saves the resulting textgrid of the predicted durations to disk. This can be used for evaluation.
+    This writer saves the predicted durations of each synthesized text as a
+    TextGrid, with phones and words tiers. This can be used for evaluation.
     """
 
     def __init__(
@@ -509,13 +387,11 @@ class TextGridPredictionWriter(AlignedTextPredictionWriter):
         config: FastSpeech2Config,
         global_step: int,
         output_dir: Path,
-        output_key: str,
         simple_filenames: bool = False,
     ):
         super().__init__(
             config=config,
             global_step=global_step,
-            output_key=output_key,
             file_extension=f"{config.preprocessing.audio.input_sampling_rate}-{config.preprocessing.audio.spec_type}.TextGrid",
             save_dir=output_dir / "textgrids",
             simple_filenames=simple_filenames,
@@ -533,35 +409,17 @@ class TextGridPredictionWriter(AlignedTextPredictionWriter):
         """Save the aligned text as a TextGrid with phones and words layers"""
 
         new_tg = TextGrid(xmax=max_seconds)
-        phone_tier = new_tg.add_tier("phones")
-        phone_annotation_tier = new_tg.add_tier("phone annotations")
-        for i in range(len(phones)):
-            interval = (
-                phones[i - 1][1] if i > 0 else 0,
-                phones[i][1] if i < len(phones) - 1 else max_seconds,
-                phones[i][2],
-            )
-            phone_annotation_tier.add_interval(interval[0], interval[1], "")
-            phone_tier.add_interval(*interval)
-
-        word_tier = new_tg.add_tier("words")
-        word_annotation_tier = new_tg.add_tier("word annotations")
-        for i in range(len(words)):
-            interval = (
-                words[i - 1][1] if i > 0 else 0,
-                words[i][1] if i < len(words) - 1 else max_seconds,
-                words[i][2],
-            )
-            word_tier.add_interval(*interval)
-            word_annotation_tier.add_interval(interval[0], interval[1], "")
-
+        _add_textgrid_tiers(new_tg, "phones", "phone annotations", phones, max_seconds)
+        _add_textgrid_tiers(new_tg, "words", "word annotations", words, max_seconds)
         filename = self.get_filename(basename, speaker, language)
         new_tg.to_file(filename)
 
 
 class ReadAlongPredictionWriter(AlignedTextPredictionWriter):
     """
-    This writer runs inference on a provided text-to-spec model and saves the resulting readalong of the predicted durations to disk. Combined with the .wav output, this can be loaded in the ReadAlongs Web-Component for viewing.
+    This writer saves the predicted durations of each synthesized text as a
+    .readalong file. Combined with the .wav output, this can be loaded in the
+    ReadAlongs Web-Component for viewing.
     """
 
     def __init__(
@@ -569,22 +427,15 @@ class ReadAlongPredictionWriter(AlignedTextPredictionWriter):
         config: FastSpeech2Config,
         global_step: int,
         output_dir: Path,
-        output_key: str,
         simple_filenames: bool = False,
     ):
         super().__init__(
             config=config,
             global_step=global_step,
-            output_key=output_key,
             file_extension=f"{config.preprocessing.audio.input_sampling_rate}-{config.preprocessing.audio.spec_type}.readalong",
             save_dir=output_dir / "readalongs",
             simple_filenames=simple_filenames,
         )
-        self.text_processor = TextProcessor(
-            config.text,
-            target_text_representation_level=config.model.target_text_representation_level,
-        )
-        self.output_key = output_key
 
     def save_aligned_text_to_file(
         self,
@@ -596,14 +447,9 @@ class ReadAlongPredictionWriter(AlignedTextPredictionWriter):
         language: str,
     ):
         """Save the aligned text as a .readalong file"""
-
-        ras_tokens: list[Token] = []
-        for start, end, label in words:
-            if ras_tokens:
-                ras_tokens.append(Token(text=" ", is_word=False))
-            ras_tokens.append(Token(text=label, time=start, dur=end - start))
-
-        readalong = convert_prealigned_text_to_readalong([ras_tokens], [language])
+        readalong = convert_prealigned_text_to_readalong(
+            [self.readalong_tokens(words)], [language]
+        )
         filename = self.get_filename(basename, speaker, language)
         with open(filename, "w", encoding="utf8") as f:
             f.write(readalong)
@@ -611,9 +457,9 @@ class ReadAlongPredictionWriter(AlignedTextPredictionWriter):
 
 class OfflineRASPredictionWriter(AlignedTextPredictionWriter):
     """
-    This writer runs inference on a provided text-to-spec model and saves the
-    resulting readalong of the predicted durations to disk as a single file
-    Offline HTML. This can be loaded in the ReadAlongs Studio-Web Editor for
+    This writer saves the predicted durations of each synthesized text as a
+    readalong in a single Offline HTML file, which embeds the wav file written by
+    the wav writer. This can be loaded in the ReadAlongs Studio-Web Editor for
     further modification.
     """
 
@@ -622,23 +468,16 @@ class OfflineRASPredictionWriter(AlignedTextPredictionWriter):
         config: FastSpeech2Config,
         global_step: int,
         output_dir: Path,
-        output_key: str,
         wav_writer: "WavPredictionWriter",
         simple_filenames: bool = False,
     ):
         super().__init__(
             config=config,
             global_step=global_step,
-            output_key=output_key,
             file_extension=f"{config.preprocessing.audio.input_sampling_rate}-{config.preprocessing.audio.spec_type}.html",
             save_dir=output_dir / "readalongs",
             simple_filenames=simple_filenames,
         )
-        self.text_processor = TextProcessor(
-            config.text,
-            target_text_representation_level=config.model.target_text_representation_level,
-        )
-        self.output_key = output_key
         self.wav_writer = wav_writer
 
     def save_aligned_text_to_file(
@@ -652,15 +491,9 @@ class OfflineRASPredictionWriter(AlignedTextPredictionWriter):
     ):
         """Save the aligned text as an Offline HTML readalong file"""
 
-        ras_tokens: list[Token] = []
-        for start, end, label in words:
-            if ras_tokens:
-                ras_tokens.append(Token(text=" ", is_word=False))
-            ras_tokens.append(Token(text=label, time=start, dur=end - start))
-
         wav_file_name = self.wav_writer.get_filename(basename, speaker, language)
         readalong_html, _readalong_xml = convert_prealigned_text_to_offline_html(
-            [ras_tokens],
+            [self.readalong_tokens(words)],
             wav_file_name,
             [language],
             title="ReadAlong generated using EveryVoice",
@@ -670,131 +503,51 @@ class OfflineRASPredictionWriter(AlignedTextPredictionWriter):
             f.write(readalong_html)
 
 
-class WavPredictionWriter(PredictionWriterBase):
+class WavPredictionWriter(BasePredictionWriter, UtteranceWriter):
     """
-    Given text-to-spec, this writer does spec-to-wav and writes wav files.
+    This writer saves the waveform of each synthesized text as a wav file: run
+    spec_to_wav_synthesis() before unbatching, so the utterances have one.
     """
 
     def __init__(
         self,
         output_dir: Path,
         config: FastSpeech2Config,
-        output_key: str,
-        device: torch.device,
         global_step: int,
-        vocoder_model: HiFiGAN,
-        vocoder_config: HiFiGANConfig,
         vocoder_global_step: int,
         simple_filenames: bool = False,
     ):
         super().__init__(
-            config=config,
             file_extension="pred.wav",
             global_step=global_step,
             save_dir=output_dir / "wav",
             include_global_step_in_filename=True,
             simple_filenames=simple_filenames,
         )
+        self.config = config
 
         self.last_file_written: Optional[str] = None  # Necessary for the demo
-        self.full_text: str = ""  # Accumulates full text before saving file
-        self.chunk_basenames: list[str] = []  # Accumulates per-chunk basenames
-        self.full_wav = torch.tensor(())  # Accumulates full wav before saving file
-        self.output_key = output_key
-        self.device = device
-        self.vocoder_model = vocoder_model
-        self.vocoder_config = vocoder_config
-        sampling_rate_change = (
-            vocoder_config.preprocessing.audio.output_sampling_rate
-            // vocoder_config.preprocessing.audio.input_sampling_rate
-        )
-        self.output_hop_size = (
-            sampling_rate_change * vocoder_config.preprocessing.audio.fft_hop_size
-        )
         self.file_extension: str = self.sep.join(
             (f"v_ckpt={vocoder_global_step}", self.file_extension)
         )
 
         logger.info(f"Saving wav output to {self.save_dir}")
 
-    def synthesize_audio(self, outputs: dict[str, torch.Tensor | None]):
-        from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl.utils import (
-            synthesize_data,
-        )
-
-        sr: int
-        wavs: np.ndarray
-        output_value = outputs[self.output_key]
-        if output_value is None:
+    def write_utterance(self, utterance: Utterance) -> None:
+        if utterance.wav is None or utterance.sample_rate is None:
             raise ValueError(
-                f"{self.output_key} does not exist in the output of your model"
+                f"Utterance {utterance.basename!r} has no waveform: "
+                "run spec_to_wav_synthesis() before unbatching."
             )
-
-        wavs, sr = synthesize_data(
-            output_value.transpose(1, 2), self.vocoder_model, self.vocoder_config
+        filename = self.get_filename(
+            utterance.basename, utterance.speaker, utterance.language
         )
-
-        # wavs: [B (batch_size), C (channels), T (samples)]
-        assert (
-            wavs.ndim == 3
-        ), f"The generated audio did not contain 3 dimensions. First dimension should be B(atch) and the second dimension should be C(hannels) and third dimension should be T(ime) in samples. Got {wavs.shape} instead."
-        assert wavs.shape[0] == output_value.size(
-            0
-        ), f"You provided {output_value.size(0)} utterances, but {wavs.shape[0]} audio files were synthesized instead."
-
-        return wavs, sr
-
-    def write_batch(
-        self,
-        outputs: dict[str, torch.Tensor | None],
-        batch: dict[str, Any],
-    ) -> None:
-        logger.trace("Generating waveform...")
-
-        wavs, sr = self.synthesize_audio(outputs)
-
-        assert "tgt_lens" in outputs and outputs["tgt_lens"] is not None
-
-        texts = batch["raw_text"]
-        basenames = batch["basename"]
-        speakers = batch["speaker"]
-        languages = batch["language"]
-        is_last_input_chunk = batch["is_last_input_chunk"]
-        unmasked_lens = list(outputs["tgt_lens"])
-
-        for i, wav in enumerate(wavs):
-            # The vocoder output includes padding, so we have to remove that
-            trimmed_wav = wav[:, : (unmasked_lens[i] * self.output_hop_size)]
-
-            # Concatenate the current chunk to the full wav
-            self.full_wav = torch.cat((self.full_wav, trimmed_wav), -1)
-
-            # Concatenate the current text to the full text
-            self.full_text += texts[i]
-            self.chunk_basenames.append(basenames[i])
-
-            if is_last_input_chunk[i]:
-                # Generate filename
-                # Assumes that speakers will be the same across chunks in the same text input
-                basename = resolve_chunked_basename(
-                    self.chunk_basenames, self.full_text
-                )
-                filename = self.get_filename(basename, speakers[i], languages[i])
-
-                # Save file
-                torchaudio.save(
-                    filename,
-                    self.full_wav,
-                    sr,
-                    format="wav",
-                    encoding="PCM_S",
-                    bits_per_sample=16,
-                )
-
-                # Reset the accumulator variables
-                self.full_wav = torch.tensor(())
-                self.full_text = ""
-                self.chunk_basenames = []
-
-                # Update last_file_written (for demo)
-                self.last_file_written = filename
+        torchaudio.save(
+            filename,
+            utterance.wav.cpu(),
+            utterance.sample_rate,
+            format="wav",
+            encoding="PCM_S",
+            bits_per_sample=16,
+        )
+        self.last_file_written = filename  # for the demo

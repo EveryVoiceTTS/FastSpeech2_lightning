@@ -211,7 +211,7 @@ def synthesize(  # noqa: C901
         )
         from everyvoice.utils.heavy import get_device_from_accelerator
 
-        from ..core.synthesize import get_global_step, load_model, synthesize_helper
+        from ..core.synthesize import load_model, synthesize_helper
         from ..model import FastSpeech2  # noqa: F401
 
     output_dir.mkdir(exist_ok=True, parents=True)
@@ -234,25 +234,23 @@ def synthesize(  # noqa: C901
 
     inference_base_command(model, **kwargs)
 
-    # get global step
-    # We can't just use model.global_step because it gets reset by lightning
-    global_step = get_global_step(model_path)
+    # model.global_step is 0 without a Trainer; global_step_at_load is always set
+    # for a model loaded from a checkpoint.
+    global_step = model.global_step_at_load or 0
 
     # load vocoder
     if vocoder_path is not None:
         logger.info(f"Loading Vocoder from {vocoder_path}")
         try:
             vocoder_ckpt = load_checkpoint(vocoder_path, device=device, minimal=False)
-            vocoder_model, vocoder_config = load_hifigan_from_checkpoint(
+            vocoder_model, _vocoder_config = load_hifigan_from_checkpoint(
                 vocoder_ckpt, device
             )
         except Exception as e:
             raise typer.BadParameter(f"Unable to load '{vocoder_path}': {e}")
-        # We can't just use model.global_step because it gets reset by lightning
-        vocoder_global_step = get_global_step(vocoder_path)
+        vocoder_global_step = vocoder_model.global_step_at_load or 0
     else:
         vocoder_model = None
-        vocoder_config = None
         vocoder_global_step = None
 
     synthesize_helper(
@@ -274,7 +272,6 @@ def synthesize(  # noqa: C901
         teacher_forcing_directory=teacher_forcing_directory,
         output_dir=output_dir,
         vocoder_model=vocoder_model,
-        vocoder_config=vocoder_config,
         vocoder_global_step=vocoder_global_step,
         simple_filenames=simple_filenames,
     )

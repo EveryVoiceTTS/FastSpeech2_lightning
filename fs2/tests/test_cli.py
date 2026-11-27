@@ -16,7 +16,6 @@ from everyvoice.config.type_definitions import (
 from everyvoice.tests.preprocessed_audio_fixture import PreprocessedAudioFixture
 from everyvoice.tests.stubs import TEST_DATA_DIR, flatten_log, mute_logger, temp_chdir
 from everyvoice.utils import generic_psv_filelist_reader
-from typer import BadParameter
 from typer.testing import CliRunner
 
 from ..cli.check_data_heavy import check_data_from_filelist
@@ -324,6 +323,34 @@ class TestPrepareSynthesizeData:
         assert split_text
         assert split_params[:2] == (100, 200)
 
+        # Lengths given by the caller override the stats
+        model.stats = stats
+        split_text, split_params = get_text_split_params(
+            model,
+            language="eng",
+            text_representation="phones",
+            desired_length=7,
+            max_length=9,
+        )
+        assert split_text
+        assert split_params == (7, 9, "‽", ":?")
+
+        # split_text given by the caller overrides the config, both ways
+        split_text, _ = get_text_split_params(
+            model, language="eng", text_representation="phones", split_text=False
+        )
+        assert not split_text
+        model.config.text.split_text = False
+        split_text, split_params = get_text_split_params(
+            model, language="eng", text_representation="phones"
+        )
+        assert not split_text
+        split_text, split_params = get_text_split_params(
+            model, language="eng", text_representation="phones", split_text=True
+        )
+        assert split_text
+        assert split_params == (3, 5, "‽", ":?")
+
 
 class TestValidateDataWithModel:
     """
@@ -339,7 +366,7 @@ class TestValidateDataWithModel:
         config.model.multilingual = True
         model_languages = {"L1", "L2"}
         with pytest.raises(
-            BadParameter,
+            ValueError,
             match=f"You provided {set((language,))} which is not a language supported by the model {model_languages}.",
         ):
             validate_data_keys_with_model_keys(
@@ -350,7 +377,7 @@ class TestValidateDataWithModel:
             )
         language_two = "ALSO_UNSUPPORTED"
         with pytest.raises(
-            BadParameter,
+            ValueError,
             match=f"You provided {set((language, language_two))} which are not languages that are supported by the model {model_languages}.",
         ):
             validate_data_keys_with_model_keys(
@@ -369,7 +396,7 @@ class TestValidateDataWithModel:
         config.model.multilingual = False
         model_languages = set()
         with pytest.raises(
-            BadParameter, match="The current model doesn't support multiple languages"
+            ValueError, match="The current model doesn't support multiple languages"
         ):
             validate_data_keys_with_model_keys(
                 data_keys={language},
@@ -387,7 +414,7 @@ class TestValidateDataWithModel:
         config.model.multispeaker = True
         model_speakers = {"S1", "S2"}
         with pytest.raises(
-            BadParameter,
+            ValueError,
             match=f"You provided {set((speaker,))} which is not a speaker supported by the model {model_speakers}.",
         ):
             validate_data_keys_with_model_keys(
@@ -406,7 +433,7 @@ class TestValidateDataWithModel:
         config.model.multispeaker = False
         model_speakers = set()
         with pytest.raises(
-            BadParameter, match="The current model doesn't support multiple speakers"
+            ValueError, match="The current model doesn't support multiple speakers"
         ):
             validate_data_keys_with_model_keys(
                 data_keys={speaker},

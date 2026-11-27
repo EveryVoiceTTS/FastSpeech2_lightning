@@ -1,16 +1,23 @@
 import tempfile
 from pathlib import Path
 
+import torch
 from everyvoice.config.shared_types import ContactInformation
 from everyvoice.config.text_config import Symbols, TextConfig
 from everyvoice.config.type_definitions import DatasetTextRepresentation
+from everyvoice.tests.model_stubs import STUBBED_MODEL_GLOBAL_STEP
 from everyvoice.tests.stubs import TEST_CONTACT, capture_logs
 from everyvoice.text.lookups import LookupTable
 from everyvoice.text.utils import get_symbols_from_checkpoint_symbol_dict, symbol_sorter
 from pytest import raises
+from pytorch_lightning import Trainer
 
 from ..config import FastSpeech2Config
-from ..core.synthesize import load_data_from_filelist
+from ..core.synthesize import (
+    combine_filelist_data,
+    load_data_from_filelist,
+    load_model,
+)
 from ..model import FastSpeech2
 from ..type_definitions_heavy import Stats, StatsInfo
 
@@ -350,6 +357,39 @@ class TestLoadingData:
             )
             return data
 
+    def test_combine_filelist_data(self):
+        first = self.write_and_load("line 1\nline 2\n")
+        second = self.write_and_load("line 3\nline 4\nline 5\n")
+        combined = combine_filelist_data(first, second)
+        assert [d["characters"] for d in combined] == [
+            "line 1",
+            "line 2",
+            "line 3",
+            "line 4",
+            "line 5",
+        ]
+        assert [d["index"] for d in combined] == [0, 1, 2, 3, 4]
+        assert [d["index"] for d in second] == [0, 1, 2]  # not modified
+
+    def test_combine_filelist_data_with_chunks(self):
+        def item(index, chunk_index, is_last):
+            return {
+                "index": index,
+                "chunk_index": chunk_index,
+                "is_last_input_chunk": is_last,
+            }
+
+        first = [item(0, 0, False), item(0, 1, True), item(1, 0, True)]
+        second = [item(0, 0, False), item(0, 1, True)]
+        combined = combine_filelist_data(first, second)
+        assert [(d["index"], d["chunk_index"]) for d in combined] == [
+            (0, 0),
+            (0, 1),
+            (1, 0),
+            (2, 0),
+            (2, 1),
+        ]
+
     def test_load_oneline(self):
         data = self.write_and_load("this is a test\n")
         assert len(data) == 1
@@ -357,7 +397,43 @@ class TestLoadingData:
     def test_load_twolines(self):
         data = self.write_and_load("test line 1\ntest line 2\n")
         assert len(data) == 2
+        assert [(d["index"], d["chunk_index"]) for d in data] == [(0, 0), (1, 0)]
 
     def test_load_psv(self):
         data = self.write_and_load("characters|language\nfoo|eng\nbar|eng\nbaz|fra\n")
         assert len(data) == 3
+        assert [(d["index"], d["chunk_index"]) for d in data] == [
+            (0, 0),
+            (1, 0),
+            (2, 0),
+        ]
+
+
+class TestGlobalStepAtLoad:
+    def test_fresh_model(self):
+        model = FastSpeech2(
+            FastSpeech2Config(contact=TEST_CONTACT),
+            lang2id={"default": 0},
+            speaker2id={"default": 0},
+        )
+        assert model.global_step_at_load is None
+
+    def test_load_model(self, stubbed_model):
+        """The path used for synthesis, and also for fine-tuning"""
+        _stub, stub_path = stubbed_model
+        model = load_model(stub_path, torch.device("cpu"))
+        assert model.global_step_at_load == STUBBED_MODEL_GLOBAL_STEP
+        assert model.global_step == 0  # no Trainer attached
+
+    def test_not_saved_in_checkpoints(self, stubbed_model, tmp_path):
+        _stub, stub_path = stubbed_model
+        model = load_model(stub_path, torch.device("cpu"))
+        trainer = Trainer(default_root_dir=str(tmp_path), barebones=True)
+        trainer.strategy.connect(model)
+        trainer.save_checkpoint(tmp_path / "resaved.ckpt")
+
+        checkpoint = torch.load(tmp_path / "resaved.ckpt", weights_only=True)
+        assert checkpoint["global_step"] == 0  # the new Trainer's step
+        assert str(STUBBED_MODEL_GLOBAL_STEP) not in repr(
+            checkpoint["hyper_parameters"]
+        )

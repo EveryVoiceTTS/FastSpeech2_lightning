@@ -114,7 +114,7 @@ def check_data_command(  # noqa: C901
         from everyvoice.utils.heavy import get_device_from_accelerator
 
         from ..core.synthesize import (
-            get_global_step,
+            combine_filelist_data,
             load_data_from_filelist,
             synthesize_helper,
         )
@@ -184,15 +184,15 @@ def check_data_command(  # noqa: C901
             config.training.training_filelist, model, text_representation
         )
         val_filelist = load_data_from_filelist(
-            config.training.training_filelist, model, text_representation
+            config.training.validation_filelist, model, text_representation
         )
-        combined_filelist_data = training_filelist + val_filelist
+        combined_filelist_data = combine_filelist_data(training_filelist, val_filelist)
     else:
         combined_filelist_data = None
 
-    # get global step
-    # We can't just use model.global_step because it gets reset by lightning
-    global_step = get_global_step(model_path)
+    # model.global_step is 0 without a Trainer; global_step_at_load is always set
+    # for a model loaded from a checkpoint.
+    global_step = model.global_step_at_load or 0
 
     synthesize_helper(
         model=model,
@@ -213,7 +213,6 @@ def check_data_command(  # noqa: C901
         teacher_forcing_directory=teacher_forcing_directory,
         output_dir=output_dir,
         vocoder_model=None,
-        vocoder_config=None,
         vocoder_global_step=None,
         return_scores=True,
     )

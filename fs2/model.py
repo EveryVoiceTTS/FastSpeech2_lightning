@@ -98,6 +98,11 @@ class FastSpeech2(pl.LightningModule):
         if stats is not None and not isinstance(stats, Stats):
             stats = Stats(**stats)
         self.config = config
+        # The global_step stored in the checkpoint this model was loaded from, or
+        # None if it wasn't loaded from a checkpoint. Not updated by further
+        # training: for the live step, use self.global_step (0 when no Trainer is
+        # attached, e.g., when loaded for synthesis).
+        self.global_step_at_load: int | None = None
         self.batch_size = config.training.batch_size
         self.text_processor = TextProcessor(
             config.text,
@@ -298,6 +303,8 @@ class FastSpeech2(pl.LightningModule):
             "attn_hard": variance_adaptor_out["attn_hard"],
             "duration_prediction": variance_adaptor_out["duration_prediction"],
             "duration_target": variance_adaptor_out["duration_target"],
+            # Frames per input token actually used to build the output
+            "duration_rounded": variance_adaptor_out["duration_rounded"],
             "energy_prediction": variance_adaptor_out["energy_prediction"],
             "energy_target": variance_adaptor_out["energy_target"],
             "pitch_prediction": variance_adaptor_out["pitch_prediction"],
@@ -425,6 +432,7 @@ class FastSpeech2(pl.LightningModule):
         but it will fail on breaking changes to the config. We should catch those exceptions
         and handle them appropriately."""
         checkpoint = self.check_and_upgrade_checkpoint(checkpoint)
+        self.global_step_at_load = checkpoint.get("global_step")
 
         self.config = FeaturePredictionConfig(
             **checkpoint["hyper_parameters"]["config"]
