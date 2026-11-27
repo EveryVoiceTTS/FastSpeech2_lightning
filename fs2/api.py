@@ -1,3 +1,37 @@
+"""
+Programmatic API to the EveryVoice FastSpeech2_lightning module
+
+This API is intended for use as a stand-alone script or a Jupyter notebook or a
+service like HuggingFace.
+
+Before using this API, you must have prepared your data and configuration files using
+the EveryVoice new-project wizard:
+
+    everyvoice new-project
+
+From there, you can start using the API, which largely parallels the CLI
+
+from everyvoice.model.feature_prediction.FastSpeech2_lightning.fs2 import api
+# preprocess and train
+config = api.load_config("config/everyvoice-text-to-spec.yaml")
+api.preprocess(config)
+api.train(config)
+
+# load models
+model_path = "logs_and_checkpoints/FeaturePredictionExperiment/base/checkpoints/last.ckpt"
+model = api.load_model(model_path)
+from everyvoice.model.vocoder.HiFiGAN_iSTFT_lightning.hfgl import api as hfgl_api
+vocoder_path = "logs_and_checkpoints/VocoderExperiment/base/checkpoints/last.ckpt"
+vocoder = hfgl_api.load_model(vocoder_path)
+
+# synthesize via the single-function wrapper
+texts = ["utterance 1", "utturance 2"]
+api.synthesize_to_files(model, texts, "output_dir", ["wav"], vocoder=vocoder, )
+
+# synthesize step by step (lets you control what you want)
+# copy the body of synthesize_to_files and adjust it to your needs
+"""
+
 import multiprocessing as mp
 from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
@@ -356,6 +390,7 @@ def synthesize_to_files(
         vocoder: the spec-to-wav model, required for "wav" and "readalong-html"
             output
     """
+    # Prepare the synthesis generators -- nothing actually happens yet here
     prediction_batches = text_to_spec(model, texts, **text_to_spec_args)
     if vocoder is not None:
         prediction_batches = spec_to_wav(prediction_batches, vocoder)
@@ -369,5 +404,7 @@ def synthesize_to_files(
         vocoder=vocoder,
         simple_filenames=simple_filenames,
     )
+    # The following loop actually causes the stack of generators above to do
+    # their work:
     for _ in written_utterances:
         pass
