@@ -180,7 +180,7 @@ def check_data_command(  # noqa: C901
             config.training.training_filelist, model, text_representation
         )
         val_filelist = load_data_from_filelist(
-            config.training.training_filelist, model, text_representation
+            config.training.validation_filelist, model, text_representation
         )
         combined_filelist_data = training_filelist + val_filelist
     else:
