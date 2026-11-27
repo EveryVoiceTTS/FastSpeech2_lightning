@@ -164,28 +164,6 @@ class UtteranceWriter(OutputWriter):
         """Write the files for one synthesized text."""
 
 
-class PredictionWriterBase(BasePredictionWriter):
-    """Base for writers that write one file per utterance, named by get_filename()."""
-
-    def __init__(
-        self,
-        config: FastSpeech2Config,
-        file_extension: str,
-        global_step: int,
-        save_dir: Path,
-        include_global_step_in_filename: bool = False,
-        simple_filenames: bool = False,
-    ) -> None:
-        super().__init__(
-            save_dir=save_dir,
-            file_extension=file_extension,
-            global_step=global_step,
-            include_global_step_in_filename=include_global_step_in_filename,
-            simple_filenames=simple_filenames,
-        )
-        self.config = config
-
-
 class LossWriter(BatchWriter):
     """
     This writer runs inference on a provided text-to-spec model and saves the resulting losses to disk.
@@ -259,7 +237,7 @@ class LossWriter(BatchWriter):
         self.scores.append(score)
 
 
-class SpecPredictionWriter(PredictionWriterBase, UtteranceWriter):
+class SpecPredictionWriter(BasePredictionWriter, UtteranceWriter):
     """
     This writer saves the Mel spectrogram of each synthesized text to disk as a
     pytorch file, [K (bands), T (frames)]. These can be used to fine-tune an
@@ -275,12 +253,12 @@ class SpecPredictionWriter(PredictionWriterBase, UtteranceWriter):
         simple_filenames: bool = False,
     ):
         super().__init__(
-            config=config,
             global_step=global_step,
             file_extension=f"spec-pred-{config.preprocessing.audio.input_sampling_rate}-{config.preprocessing.audio.spec_type}.pt",
             save_dir=output_dir / "synthesized_spec",
             simple_filenames=simple_filenames,
         )
+        self.config = config
 
         self.output_key = output_key
         logger.info(f"Saving pytorch output to {self.save_dir}")
@@ -292,7 +270,7 @@ class SpecPredictionWriter(PredictionWriterBase, UtteranceWriter):
         torch.save(utterance.spec.cpu(), filename)
 
 
-class AlignedTextPredictionWriter(PredictionWriterBase, BatchWriter):
+class AlignedTextPredictionWriter(BasePredictionWriter, BatchWriter):
     """
     This writer runs inference on a provided text-to-spec model and saves the
     resulting time-aligned text to file. The output format depends on the subclass's
@@ -309,12 +287,12 @@ class AlignedTextPredictionWriter(PredictionWriterBase, BatchWriter):
         simple_filenames: bool = False,
     ):
         super().__init__(
-            config=config,
             global_step=global_step,
             file_extension=file_extension,
             save_dir=save_dir,
             simple_filenames=simple_filenames,
         )
+        self.config = config
         self.full_text: str = ""  # Accumulates full text before saving file
         self.chunk_basenames: list[str] = []  # Accumulates per-chunk basenames
         self.xmax: float = 0
@@ -631,7 +609,7 @@ class OfflineRASPredictionWriter(AlignedTextPredictionWriter):
             f.write(readalong_html)
 
 
-class WavPredictionWriter(PredictionWriterBase, BatchWriter):
+class WavPredictionWriter(BasePredictionWriter, BatchWriter):
     """
     Given text-to-spec, this writer does spec-to-wav and writes wav files.
     """
@@ -649,13 +627,13 @@ class WavPredictionWriter(PredictionWriterBase, BatchWriter):
         simple_filenames: bool = False,
     ):
         super().__init__(
-            config=config,
             file_extension="pred.wav",
             global_step=global_step,
             save_dir=output_dir / "wav",
             include_global_step_in_filename=True,
             simple_filenames=simple_filenames,
         )
+        self.config = config
 
         self.last_file_written: Optional[str] = None  # Necessary for the demo
         self.full_text: str = ""  # Accumulates full text before saving file
