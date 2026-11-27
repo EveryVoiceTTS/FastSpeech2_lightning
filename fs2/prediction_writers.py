@@ -284,6 +284,16 @@ class AlignedTextPredictionWriter(BasePredictionWriter, UtteranceWriter):
         in the desired format."""
         raise NotImplementedError
 
+    @staticmethod
+    def readalong_tokens(words: list[tuple[float, float, str]]) -> list[Token]:
+        """The words, with their times, separated by spaces, for a readalong"""
+        tokens: list[Token] = []
+        for start, end, label in words:
+            if tokens:
+                tokens.append(Token(text=" ", is_word=False))
+            tokens.append(Token(text=label, time=start, dur=end - start))
+        return tokens
+
     def frames_to_seconds(self, frames: int) -> float:
         return (
             frames * self.config.preprocessing.audio.fft_hop_size
@@ -347,6 +357,25 @@ class AlignedTextPredictionWriter(BasePredictionWriter, UtteranceWriter):
         )
 
 
+def _add_textgrid_tiers(
+    textgrid: TextGrid,
+    name: str,
+    annotation_name: str,
+    intervals: list[tuple[float, float, str]],
+    max_seconds: float,
+) -> None:
+    """Add a tier with the labels of intervals, each one starting where the
+    previous one ends and the last one ending at max_seconds, and an annotation
+    tier with the same intervals, without labels."""
+    tier = textgrid.add_tier(name)
+    annotation_tier = textgrid.add_tier(annotation_name)
+    for i, (_start, end, label) in enumerate(intervals):
+        start = intervals[i - 1][1] if i > 0 else 0
+        end = end if i < len(intervals) - 1 else max_seconds
+        tier.add_interval(start, end, label)
+        annotation_tier.add_interval(start, end, "")
+
+
 class TextGridPredictionWriter(AlignedTextPredictionWriter):
     """
     This writer saves the predicted durations of each synthesized text as a
@@ -380,28 +409,8 @@ class TextGridPredictionWriter(AlignedTextPredictionWriter):
         """Save the aligned text as a TextGrid with phones and words layers"""
 
         new_tg = TextGrid(xmax=max_seconds)
-        phone_tier = new_tg.add_tier("phones")
-        phone_annotation_tier = new_tg.add_tier("phone annotations")
-        for i in range(len(phones)):
-            interval = (
-                phones[i - 1][1] if i > 0 else 0,
-                phones[i][1] if i < len(phones) - 1 else max_seconds,
-                phones[i][2],
-            )
-            phone_annotation_tier.add_interval(interval[0], interval[1], "")
-            phone_tier.add_interval(*interval)
-
-        word_tier = new_tg.add_tier("words")
-        word_annotation_tier = new_tg.add_tier("word annotations")
-        for i in range(len(words)):
-            interval = (
-                words[i - 1][1] if i > 0 else 0,
-                words[i][1] if i < len(words) - 1 else max_seconds,
-                words[i][2],
-            )
-            word_tier.add_interval(*interval)
-            word_annotation_tier.add_interval(interval[0], interval[1], "")
-
+        _add_textgrid_tiers(new_tg, "phones", "phone annotations", phones, max_seconds)
+        _add_textgrid_tiers(new_tg, "words", "word annotations", words, max_seconds)
         filename = self.get_filename(basename, speaker, language)
         new_tg.to_file(filename)
 
@@ -438,14 +447,9 @@ class ReadAlongPredictionWriter(AlignedTextPredictionWriter):
         language: str,
     ):
         """Save the aligned text as a .readalong file"""
-
-        ras_tokens: list[Token] = []
-        for start, end, label in words:
-            if ras_tokens:
-                ras_tokens.append(Token(text=" ", is_word=False))
-            ras_tokens.append(Token(text=label, time=start, dur=end - start))
-
-        readalong = convert_prealigned_text_to_readalong([ras_tokens], [language])
+        readalong = convert_prealigned_text_to_readalong(
+            [self.readalong_tokens(words)], [language]
+        )
         filename = self.get_filename(basename, speaker, language)
         with open(filename, "w", encoding="utf8") as f:
             f.write(readalong)
@@ -487,15 +491,9 @@ class OfflineRASPredictionWriter(AlignedTextPredictionWriter):
     ):
         """Save the aligned text as an Offline HTML readalong file"""
 
-        ras_tokens: list[Token] = []
-        for start, end, label in words:
-            if ras_tokens:
-                ras_tokens.append(Token(text=" ", is_word=False))
-            ras_tokens.append(Token(text=label, time=start, dur=end - start))
-
         wav_file_name = self.wav_writer.get_filename(basename, speaker, language)
         readalong_html, _readalong_xml = convert_prealigned_text_to_offline_html(
-            [ras_tokens],
+            [self.readalong_tokens(words)],
             wav_file_name,
             [language],
             title="ReadAlong generated using EveryVoice",
