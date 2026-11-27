@@ -493,6 +493,42 @@ def iter_synthesis(
         yield outputs, batch
 
 
+def text_to_spec_synthesis(
+    model: "FastSpeech2",
+    data: list[dict[str, Any]],
+    device: "torch.device",
+    *,
+    teacher_forcing: bool = False,
+    style_reference: bool = False,
+    batch_size: int = 4,
+    num_workers: int = 0,
+) -> Iterator["SynthesisBatch"]:
+    """The text-to-spec stage of the synthesis pipeline: yields a SynthesisBatch of
+    spectrograms for each batch of data, as prepared by prepare_data().
+
+    The next stages are spec_to_wav_synthesis() (optional), unbatch_synthesis()
+    and combine_utterance_chunks(). See iter_synthesis() for the arguments.
+    """
+    from ..synthesis_types import SynthesisBatch
+
+    (space_token,) = model.text_processor.encode_string_tokens([" "])
+    for outputs, batch in iter_synthesis(
+        model,
+        data,
+        device,
+        teacher_forcing=teacher_forcing,
+        style_reference=style_reference,
+        batch_size=batch_size,
+        num_workers=num_workers,
+    ):
+        yield SynthesisBatch(
+            outputs=outputs,
+            batch=batch,
+            output_key=model.output_key,
+            space_token=space_token,
+        )
+
+
 def spec_to_wav_synthesis(
     batches: Iterable["SynthesisBatch"],
     vocoder: "HiFiGAN | HiFiGANGenerator",
@@ -503,7 +539,7 @@ def spec_to_wav_synthesis(
     texts are split into chunks precisely so that each fits in memory.
 
     Args:
-        batches: as yielded by api.synthesize()
+        batches: as yielded by api.text_to_spec()
         vocoder: the spec-to-wav model, e.g., from hfgl.api.load_model()
 
     Yields: a copy of each batch with wavs, wav_lens and sample_rate set; the
@@ -532,7 +568,7 @@ def unbatch_synthesis(
     """Split each SynthesisBatch into one Utterance per item, removing the padding.
 
     Args:
-        batches: as yielded by api.synthesize()
+        batches: as yielded by api.text_to_spec()
         device: where to put the tensors of each Utterance; None leaves them where
             they are. They are copied either way, so an Utterance doesn't keep its
             whole padded batch in memory.
@@ -756,7 +792,11 @@ def synthesize_helper(
     model.config.training.batch_size = batch_size
     model.config.training.train_data_workers = num_workers
 
-    from ..prediction_writers import get_synthesis_output_writers
+    from ..prediction_writers import (
+        BatchWriter,
+        UtteranceWriter,
+        get_synthesis_output_writers,
+    )
 
     writers = get_synthesis_output_writers(
         output_types=output_types,
@@ -773,25 +813,38 @@ def synthesize_helper(
         loss_fn=model.loss,
     )
 
-    batch_generator = iter_synthesis(
-        model,
-        data,
-        device,
-        teacher_forcing=teacher_forcing,
-        style_reference=style_reference is not None,
-        batch_size=batch_size,
-        num_workers=num_workers,
-    )
-    # Like trainer.predict() did, run the writers (including the vocoder) in
-    # inference mode too.
-    with torch.inference_mode():
-        for outputs, batch in tqdm(
-            batch_generator,
+    batch_writers = [w for w in writers.values() if isinstance(w, BatchWriter)]
+    utterance_writers = [w for w in writers.values() if isinstance(w, UtteranceWriter)]
+
+    def text_to_spec_with_batch_writers() -> Iterator["SynthesisBatch"]:
+        """The text-to-spec stage, also passing each batch to the batch writers."""
+        for synthesis_batch in tqdm(
+            text_to_spec_synthesis(
+                model,
+                data,
+                device,
+                teacher_forcing=teacher_forcing,
+                style_reference=style_reference is not None,
+                batch_size=batch_size,
+                num_workers=num_workers,
+            ),
             desc="Synthesizing",
             total=math.ceil(len(data) / batch_size),
         ):
-            for writer in writers.values():
-                writer.write_batch(outputs, batch)
+            for batch_writer in batch_writers:
+                batch_writer.write_batch(synthesis_batch.outputs, synthesis_batch.batch)
+            yield synthesis_batch
+
+    # Like trainer.predict() did, run the writers (including the vocoder) in
+    # inference mode too.
+    with torch.inference_mode():
+        # The pipeline stages are lazy iterators: everything runs in the loop below
+        spec_batches = text_to_spec_with_batch_writers()
+        chunk_utterances = unbatch_synthesis(spec_batches)
+        text_utterances = combine_utterance_chunks(chunk_utterances)
+        for utterance in text_utterances:
+            for utterance_writer in utterance_writers:
+                utterance_writer.write_utterance(utterance)
         for writer in writers.values():
             writer.finalize()
 

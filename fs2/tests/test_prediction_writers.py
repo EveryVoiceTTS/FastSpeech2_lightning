@@ -9,7 +9,13 @@ from everyvoice.config.type_definitions import SynthesizeOutputFormats
 from pympi import TextGrid
 
 from ..config import FastSpeech2Config, FastSpeech2TrainingConfig
-from ..prediction_writers import OutputWriter, get_synthesis_output_writers
+from ..prediction_writers import (
+    BatchWriter,
+    OutputWriter,
+    UtteranceWriter,
+    get_synthesis_output_writers,
+)
+from ..synthesis_types import Utterance
 
 try:
     # Accelerate the failing for fetching bundles online, since we don't
@@ -69,9 +75,11 @@ class TestWriterClasses(WritingTestBase):
     The writers are plain OutputWriters, driven directly, not Lightning callbacks.
     """
 
-    def test_output_writer_is_abstract(self):
+    def test_writer_interfaces_are_abstract(self):
         with pytest.raises(TypeError):
-            OutputWriter()  # type: ignore[abstract]
+            BatchWriter()  # type: ignore[abstract]
+        with pytest.raises(TypeError):
+            UtteranceWriter()  # type: ignore[abstract]
 
     def test_writers_are_not_callbacks(self):
         from pytorch_lightning.callbacks import Callback
@@ -91,6 +99,9 @@ class TestWriterClasses(WritingTestBase):
             for writer in writers.values():
                 assert isinstance(writer, OutputWriter)
                 assert not isinstance(writer, Callback)
+            # The loss needs whole batches; the spec is written per text
+            assert isinstance(writers["score"], BatchWriter)
+            assert isinstance(writers[SynthesizeOutputFormats.spec], UtteranceWriter)
 
 
 class TestScorer:
@@ -167,53 +178,72 @@ class TestWritingSpec(WritingTestBase):
     Testing the writer that writes pt files.
     """
 
-    def test_filenames_not_truncated(self):
+    @staticmethod
+    def utterances() -> list[Utterance]:
+        # "spk2_utt002" deliberately does not match slugify(text), so these tests
+        # catch writers that ignore the filelist-provided basename and re-derive
+        # one from the text instead.
+        def utterance(index, text, basename, speaker, language, n_frames):
+            return Utterance(
+                index=index,
+                chunk_index=0,
+                is_last_chunk=True,
+                text=text,
+                basename=basename,
+                speaker=speaker,
+                language=language,
+                spec=torch.ones(80, n_frames),
+                tokens=torch.IntTensor([2, 3, 4, 5, 6, 7, 8]),
+                durations=torch.full((7,), n_frames // 7, dtype=torch.int),
+                space_token=1,
+            )
+
+        return [
+            utterance(0, "short", "short", "spk1", "lngA", 91),
+            utterance(
+                1, "This utterance is way too long", "spk2_utt002", "spk2", "lngB", 490
+            ),
+        ]
+
+    def make_writer(self, tmp_dir: Path, **kwargs):
+        writers = get_synthesis_output_writers(
+            [SynthesizeOutputFormats.spec],
+            config=FastSpeech2Config(contact=self.contact),
+            global_step=77,
+            output_dir=tmp_dir,
+            output_key=self.output_key,
+            device=torch.device("cpu"),
+            **kwargs,
+        )
+        return next(iter(writers.values()))
+
+    def test_filenames_not_truncated(self, tmp_path):
         """
         We limit the file name's length to at most BASENAME_MAX_LENGTH in the CLI,
         but the writer does not truncate the basenames passed to it
         """
-        with TemporaryDirectory() as tmp_dir:
-            tmp_dir = Path(tmp_dir)
-            writers = get_synthesis_output_writers(
-                [SynthesizeOutputFormats.spec],
-                config=FastSpeech2Config(contact=self.contact),
-                global_step=77,
-                output_dir=tmp_dir,
-                output_key=self.output_key,
-                device=torch.device("cpu"),
-            )
-            writer = next(iter(writers.values()))
-            writer.write_batch(self.outputs, self.batch)
-            output_dir = writer.save_dir
-            # print(output_dir, *output_dir.glob("**/*"))  # For debugging
-            assert output_dir.exists()
-            assert (
-                output_dir / "short--spk1--lngA--spec-pred-22050-mel-librosa.pt"
-            ).exists()
-            assert (
-                output_dir / "spk2_utt002--spk2--lngB--spec-pred-22050-mel-librosa.pt"
-            ).exists()
+        writer = self.make_writer(tmp_path)
+        for utterance in self.utterances():
+            writer.write_utterance(utterance)
+        output_dir = writer.save_dir
+        assert (
+            output_dir / "short--spk1--lngA--spec-pred-22050-mel-librosa.pt"
+        ).exists()
+        spec = torch.load(
+            output_dir / "spk2_utt002--spk2--lngB--spec-pred-22050-mel-librosa.pt"
+        )
+        assert spec.shape == (80, 490)
 
-    def test_simple_filenames(self):
+    def test_simple_filenames(self, tmp_path):
         """
         With simple_filenames=True, only the basename and extension are used.
         """
-        with TemporaryDirectory() as tmp_dir:
-            tmp_dir = Path(tmp_dir)
-            writers = get_synthesis_output_writers(
-                [SynthesizeOutputFormats.spec],
-                config=FastSpeech2Config(contact=self.contact),
-                global_step=77,
-                output_dir=tmp_dir,
-                output_key=self.output_key,
-                device=torch.device("cpu"),
-                simple_filenames=True,
-            )
-            writer = next(iter(writers.values()))
-            writer.write_batch(self.outputs, self.batch)
-            output_dir = writer.save_dir
-            assert (output_dir / "short.pt").exists()
-            assert (output_dir / "spk2_utt002.pt").exists()
+        writer = self.make_writer(tmp_path, simple_filenames=True)
+        for utterance in self.utterances():
+            writer.write_utterance(utterance)
+        output_dir = writer.save_dir
+        assert (output_dir / "short.pt").exists()
+        assert (output_dir / "spk2_utt002.pt").exists()
 
 
 class TestWritingTextGrid(WritingTestBase):

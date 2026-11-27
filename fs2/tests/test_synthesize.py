@@ -140,14 +140,18 @@ class TestSynthesizeHelper:
         assert spec_b.size(-1) == chunk_lens[3]
 
     def test_writers_driven_directly(self, model, tmp_path):
-        """write_batch is called once per batch, finalize once at the end"""
+        """write_utterance is called once per text, finalize once at the end"""
         spec_writer_class = prediction_writers.SpecPredictionWriter
         with (
-            patch.object(spec_writer_class, "write_batch") as mock_write_batch,
+            patch.object(spec_writer_class, "write_utterance") as mock_write,
             patch.object(spec_writer_class, "finalize") as mock_finalize,
         ):
             self.run_helper(model, tmp_path, filelist_data=deepcopy(CHUNKED_DATA))
-        assert mock_write_batch.call_count == 2
+        # CHUNKED_DATA has two texts: uttA, in three chunks, and uttB
+        assert [call.args[0].basename for call in mock_write.call_args_list] == [
+            "uttA",
+            "uttB",
+        ]
         mock_finalize.assert_called_once_with()
 
     def test_incompatible_text_representation(self, model, tmp_path):
@@ -196,10 +200,10 @@ LONG_TEXT = "This is chunk one. This is chunk two. This is chunk three."
 CHUNKING = dict(split_text=True, desired_length=10, max_length=25)
 
 
-class TestApiSynthesize:
+class TestApiTextToSpec:
     def test_yields_synthesis_batches(self, api_model):
         texts = [SHORT_TEXT, "a second text", "and a third one"]
-        results = list(api.synthesize(api_model, texts, batch_size=2))
+        results = list(api.text_to_spec(api_model, texts, batch_size=2))
         assert all(isinstance(r, SynthesisBatch) for r in results)
         assert [len(r) for r in results] == [2, 1]
         for i, r in enumerate(results):
@@ -213,30 +217,30 @@ class TestApiSynthesize:
         assert_no_param_grads(api_model, "fs2 model")
 
     def test_single_string(self, api_model):
-        results = list(api.synthesize(api_model, SHORT_TEXT))
+        results = list(api.text_to_spec(api_model, SHORT_TEXT))
         assert len(results) == 1
         assert results[0].batch["raw_text"] == [SHORT_TEXT]
 
     def test_no_texts(self, api_model):
-        assert list(api.synthesize(api_model, [])) == []
+        assert list(api.text_to_spec(api_model, [])) == []
 
     @pytest.mark.parametrize("blank", ["", "   "])
     def test_blank_texts_are_rejected(self, api_model, blank):
         with pytest.raises(ValueError, match=r"indices \[1\] are empty or blank"):
-            next(api.synthesize(api_model, [SHORT_TEXT, blank, "another one"]))
+            next(api.text_to_spec(api_model, [SHORT_TEXT, blank, "another one"]))
 
     @pytest.mark.parametrize("split_text, n_chunks", [(True, 3), (False, 1), (None, 1)])
     def test_split_text(self, api_model, split_text, n_chunks):
         api_model.config.text.split_text = False
         chunking = CHUNKING | dict(split_text=split_text)
-        results = list(api.synthesize(api_model, LONG_TEXT, **chunking))
+        results = list(api.text_to_spec(api_model, LONG_TEXT, **chunking))
         assert sum(len(r) for r in results) == n_chunks
 
 
 class TestApiUnbatch:
     def test_utterances(self, api_model):
         texts = [SHORT_TEXT, LONG_TEXT, "another one"]
-        batches = list(api.synthesize(api_model, texts, batch_size=2, **CHUNKING))
+        batches = list(api.text_to_spec(api_model, texts, batch_size=2, **CHUNKING))
         utterances = list(api.unbatch(batches))
 
         assert [(u.index, u.chunk_index, u.is_last_chunk) for u in utterances] == [
@@ -267,7 +271,7 @@ class TestApiUnbatch:
 
     def test_matches_batch_without_padding(self, api_model):
         texts = [SHORT_TEXT, "a much longer second text, to get some padding"]
-        (batch,) = api.synthesize(api_model, texts, batch_size=2)
+        (batch,) = api.text_to_spec(api_model, texts, batch_size=2)
         utterances = list(api.unbatch([batch], device=None))
         specs = batch.outputs[batch.output_key]
         for i, u in enumerate(utterances):
@@ -316,7 +320,7 @@ def make_utterance(
 class TestApiCombineChunks:
     def test_combines_chunks(self, api_model):
         texts = [SHORT_TEXT, LONG_TEXT, "another one"]
-        batches = api.synthesize(api_model, texts, batch_size=2, **CHUNKING)
+        batches = api.text_to_spec(api_model, texts, batch_size=2, **CHUNKING)
         chunks = list(api.unbatch(batches))
         assert len(chunks) == 5
         combined = list(api.combine_chunks(chunks))
@@ -440,7 +444,7 @@ class TestApiSpecToWav:
     def test_adds_wavs_to_batches(self, api_model, vocoder):
         texts = [SHORT_TEXT, "a much longer second text, to get some padding"]
         hop_size = get_output_hop_size(vocoder.config)
-        batches = list(api.synthesize(api_model, texts, batch_size=2))
+        batches = list(api.text_to_spec(api_model, texts, batch_size=2))
         with_wavs = list(api.spec_to_wav(batches, vocoder))
 
         assert len(with_wavs) == len(batches) == 1
@@ -463,7 +467,7 @@ class TestApiSpecToWav:
         texts = [SHORT_TEXT, "a much longer second text, to get some padding"]
         hop_size = get_output_hop_size(vocoder.config)
         (batch,) = api.spec_to_wav(
-            api.synthesize(api_model, texts, batch_size=2), vocoder
+            api.text_to_spec(api_model, texts, batch_size=2), vocoder
         )
         utterances = list(api.unbatch([batch]))
         assert batch.wavs is not None
@@ -476,7 +480,7 @@ class TestApiSpecToWav:
 
     def test_combine_joins_wavs(self, api_model, vocoder):
         hop_size = get_output_hop_size(vocoder.config)
-        batches = api.synthesize(api_model, LONG_TEXT, batch_size=2, **CHUNKING)
+        batches = api.text_to_spec(api_model, LONG_TEXT, batch_size=2, **CHUNKING)
         chunks = list(api.unbatch(api.spec_to_wav(batches, vocoder)))
         assert len(chunks) == 3
         (combined,) = api.combine_chunks(chunks)
@@ -488,6 +492,6 @@ class TestApiSpecToWav:
         assert combined.wav.size(-1) == combined.spec.size(-1) * hop_size
 
     def test_no_wav_without_spec_to_wav(self, api_model):
-        (utterance,) = api.unbatch(api.synthesize(api_model, SHORT_TEXT))
+        (utterance,) = api.unbatch(api.text_to_spec(api_model, SHORT_TEXT))
         assert utterance.wav is None
         assert utterance.sample_rate is None

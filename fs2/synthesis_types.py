@@ -1,4 +1,4 @@
-"""Types yielded by the fs2 synthesis API (see api.synthesize and api.unbatch).
+"""Types yielded by the fs2 synthesis API (see api.text_to_spec and api.unbatch).
 
 Deliberately light: torch is only imported for type checking.
 """
@@ -51,7 +51,7 @@ class Utterance:
 
     Attributes:
         index: which input text this is a chunk of (its position in the texts
-            given to api.synthesize)
+            given to api.text_to_spec)
         chunk_index: the position of this chunk within its input text
         is_last_chunk: whether this is the last chunk of its input text
         text: the text of this chunk

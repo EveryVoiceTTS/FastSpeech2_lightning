@@ -111,7 +111,7 @@ def load_model(
     )
 
 
-def synthesize(
+def text_to_spec(
     model: FastSpeech2,
     texts: Sequence[str] | str,
     *,
@@ -126,7 +126,8 @@ def synthesize(
     batch_size: int = 4,
     num_workers: int = 0,
 ) -> Iterator[SynthesisBatch]:
-    """Synthesize the utterances in texts with model, one batch at a time.
+    """The text-to-spec stage: synthesize the spectrograms of texts with model, one
+    batch at a time.
 
     Long texts are split into chunks, which are synthesized separately, in order.
     Each batch holds chunks in the order of texts, and can mix chunks from
@@ -163,8 +164,8 @@ def synthesize(
     """
     from .core.synthesize import (
         check_text_representation,
-        iter_synthesis,
         prepare_data,
+        text_to_spec_synthesis,
     )
 
     if isinstance(texts, str):
@@ -193,28 +194,21 @@ def synthesize(
         desired_length=desired_length,
         max_length=max_length,
     )
-    (space_token,) = model.text_processor.encode_string_tokens([" "])
-    for outputs, batch in iter_synthesis(
+    yield from text_to_spec_synthesis(
         model,
         data,
         model.device,
         style_reference=style_reference is not None,
         batch_size=batch_size,
         num_workers=num_workers,
-    ):
-        yield SynthesisBatch(
-            outputs=outputs,
-            batch=batch,
-            output_key=model.output_key,
-            space_token=space_token,
-        )
+    )
 
 
 def spec_to_wav(
     batches: Iterable[SynthesisBatch],
     vocoder: "HiFiGAN | HiFiGANGenerator",
 ) -> Iterator[SynthesisBatch]:
-    """Generate the waveforms of each batch from synthesize() with vocoder.
+    """Generate the waveforms of each batch from text_to_spec() with vocoder.
 
     Each batch's chunks are vocoded together: long texts are split into chunks
     so that each fits in memory. Filter the result through unbatch() to get each
@@ -222,7 +216,7 @@ def spec_to_wav(
     text's, its chunks' waveforms joined end to end.
 
     Args:
-        batches: as yielded by synthesize()
+        batches: as yielded by text_to_spec()
         vocoder: the spec-to-wav model, see everyvoice.api.hfgl.load_model()
 
     Yields: each batch, with its wavs, wav_lens and sample_rate set; the wavs are
@@ -237,10 +231,10 @@ def unbatch(
     batches: Iterable[SynthesisBatch],
     device: "torch.device | str | None" = "cpu",
 ) -> Iterator[Utterance]:
-    """Split each batch from synthesize() into one Utterance per chunk, without padding.
+    """Split each batch from text_to_spec() into one Utterance per chunk, without padding.
 
     Args:
-        batches: as yielded by synthesize()
+        batches: as yielded by text_to_spec()
         device: where to put the tensors of each Utterance; None leaves them on
             the model's device
 

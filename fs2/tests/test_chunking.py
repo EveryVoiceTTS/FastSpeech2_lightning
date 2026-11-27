@@ -14,7 +14,9 @@ from pydub import AudioSegment
 from pympi import TextGrid
 
 from ..config import FastSpeech2Config, FastSpeech2TrainingConfig
+from ..core.synthesize import combine_utterance_chunks
 from ..prediction_writers import get_synthesis_output_writers
+from ..synthesis_types import Utterance
 
 
 def run_batch_end(writer, outputs, batch, _idx):
@@ -202,27 +204,66 @@ class TestWritingWav(ChunkingTestBase):
         assert len(output_one) * 3 == len(output_two)
 
 
-class TestWritingSpec(ChunkingTestBase):
+def chunk(
+    text: str,
+    index: int,
+    chunk_index: int,
+    is_last_chunk: bool,
+    speaker: str,
+    language: str,
+    n_frames: int = 490,
+) -> Utterance:
+    """One synthesized chunk of text, as unbatch() yields: its basename is its text,
+    its spec is n_frames frames of ones, and its tokens share the frames."""
+    tokens = torch.IntTensor(TEXT_PROCESSOR.encode_text(text))
+    durations = torch.full((len(tokens),), n_frames // len(tokens), dtype=torch.int)
+    durations[-1] += n_frames - int(durations.sum())
+    return Utterance(
+        index=index,
+        chunk_index=chunk_index,
+        is_last_chunk=is_last_chunk,
+        text=text,
+        basename=text,
+        speaker=speaker,
+        language=language,
+        spec=torch.ones(80, n_frames),
+        tokens=tokens,
+        durations=durations,
+        space_token=TEXT_PROCESSOR.encode_string_tokens([" "])[0],
+    )
+
+
+# Four chunks of two texts: "one", and "two three four"
+CHUNKS = [
+    chunk("one", 0, 0, True, "S1", "L1"),
+    chunk("two", 1, 0, False, "S2", "L2"),
+    chunk("three", 1, 1, False, "S2", "L2"),
+    chunk("four", 1, 2, True, "S2", "L2"),
+]
+
+
+def write_chunks(writer, chunks: list[Utterance]) -> None:
+    """Combine chunks into texts and write them, as synthesize_helper() does."""
+    for utterance in combine_utterance_chunks(chunks):
+        writer.write_utterance(utterance)
+    writer.finalize()
+
+
+class TestWritingSpec:
     def test_spec_chunks(self, make_writers):
         """
-        Tests the correctness of the output of spectrograms for chunked text over multiple batches.
+        Tests the correctness of the output of spectrograms for chunked text.
         """
         writers = make_writers([SynthesizeOutputFormats.spec])
         writer = next(iter(writers.values()))
-
-        # Batch 1
-        run_batch_end(writer, self.outputs, self.batch1, 0)
+        write_chunks(writer, CHUNKS)
         output_dir = writer.save_dir
-        # print(output_dir, *output_dir.glob("**"))  # For debugging
-        assert output_dir.exists()
 
-        # Batch 2
-        run_batch_end(writer, self.outputs, self.batch2, 1)
-
-        # Test that the correctly named files were outputted
+        # Test that the correctly named files were outputted: the chunks' texts
+        # are joined with spaces, as in "two three four"
         assert (output_dir / "one--S1--L1--spec-pred-22050-mel-librosa.pt").exists()
         assert (
-            output_dir / "twothreefour--S2--L2--spec-pred-22050-mel-librosa.pt"
+            output_dir / "two-three-four--S2--L2--spec-pred-22050-mel-librosa.pt"
         ).exists()
 
         # Checks that the files have reasonable lengths
@@ -230,7 +271,7 @@ class TestWritingSpec(ChunkingTestBase):
             output_dir / "one--S1--L1--spec-pred-22050-mel-librosa.pt"
         )
         output_two = torch.load(
-            output_dir / "twothreefour--S2--L2--spec-pred-22050-mel-librosa.pt"
+            output_dir / "two-three-four--S2--L2--spec-pred-22050-mel-librosa.pt"
         )
 
         # There are four chunks but two outputs.

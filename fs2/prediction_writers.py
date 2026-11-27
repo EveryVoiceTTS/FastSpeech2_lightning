@@ -31,6 +31,7 @@ from readalongs.api import (
 )
 
 from .config import FastSpeech2Config
+from .synthesis_types import Utterance
 from .vocoding import spec_to_wav_batch
 
 
@@ -129,11 +130,20 @@ def get_synthesis_output_writers(
 
 
 class OutputWriter(ABC):
-    """Common interface for the synthesis output writers.
+    """Common base of the synthesis output writers.
 
-    Subclasses implement write_batch() and, if needed, finalize(). The caller
-    passes every batch, in order, to write_batch(), then calls finalize() once.
+    A writer is either a BatchWriter, which gets each padded batch of model
+    outputs, or an UtteranceWriter, which gets each synthesized text as a
+    combined Utterance. Either way, the caller calls finalize() once at the end.
     """
+
+    def finalize(self) -> None:
+        """Called once, after the last batch or utterance has been processed."""
+
+
+class BatchWriter(OutputWriter):
+    """A writer that needs whole batches: the caller passes every batch, in
+    order, to write_batch()."""
 
     @abstractmethod
     def write_batch(
@@ -143,12 +153,19 @@ class OutputWriter(ABC):
     ) -> None:
         """Process one batch of model outputs, writing files as needed."""
 
-    def finalize(self) -> None:
-        """Called once after the last batch has been processed."""
+
+class UtteranceWriter(OutputWriter):
+    """A writer that writes each synthesized text: the caller passes every
+    combined Utterance (see combine_utterance_chunks()), in order, to
+    write_utterance()."""
+
+    @abstractmethod
+    def write_utterance(self, utterance: Utterance) -> None:
+        """Write the files for one synthesized text."""
 
 
-class PredictionWriterBase(BasePredictionWriter, OutputWriter):
-    """Output writer that writes one file per utterance, named by get_filename()."""
+class PredictionWriterBase(BasePredictionWriter):
+    """Base for writers that write one file per utterance, named by get_filename()."""
 
     def __init__(
         self,
@@ -169,7 +186,7 @@ class PredictionWriterBase(BasePredictionWriter, OutputWriter):
         self.config = config
 
 
-class LossWriter(OutputWriter):
+class LossWriter(BatchWriter):
     """
     This writer runs inference on a provided text-to-spec model and saves the resulting losses to disk.
     """
@@ -242,9 +259,11 @@ class LossWriter(OutputWriter):
         self.scores.append(score)
 
 
-class SpecPredictionWriter(PredictionWriterBase):
+class SpecPredictionWriter(PredictionWriterBase, UtteranceWriter):
     """
-    This writer reassembles text chunks, runs inference on a provided text-to-spec model and saves the resulting Mel spectrograms to disk as pytorch files. These can be used to fine-tune an EveryVoice spec-to-wav model.
+    This writer saves the Mel spectrogram of each synthesized text to disk as a
+    pytorch file, [K (bands), T (frames)]. These can be used to fine-tune an
+    EveryVoice spec-to-wav model.
     """
 
     def __init__(
@@ -266,57 +285,14 @@ class SpecPredictionWriter(PredictionWriterBase):
         self.output_key = output_key
         logger.info(f"Saving pytorch output to {self.save_dir}")
 
-        self.full_text: str = ""  # Accumulates full text before saving file
-        self.chunk_basenames: list[str] = []  # Accumulates per-chunk basenames
-        self.full_spec = torch.tensor(())  # Accumulates full input before saving file
-
-    def write_batch(
-        self,
-        outputs: dict[str, torch.Tensor | None],
-        batch: dict[str, Any],
-    ) -> None:
-        assert self.output_key in outputs and outputs[self.output_key] is not None
-        assert "tgt_lens" in outputs and outputs["tgt_lens"] is not None
-
-        texts = batch["raw_text"]
-        basenames = batch["basename"]
-        speakers = batch["speaker"]
-        languages = batch["language"]
-        is_last_input_chunk = batch["is_last_input_chunk"]
-        unmasked_lens = list(outputs["tgt_lens"])
-
-        for i, data in enumerate(outputs[self.output_key]):  # type: ignore
-            # save tensors as [K (bands), T (frames)]
-            spec = data[: unmasked_lens[i]].cpu().transpose(0, 1)
-
-            # Concatenate the current chunk to the full spec
-            self.full_spec = torch.cat((self.full_spec, spec), -1)
-
-            # Concatenate the current text to the full text
-            self.full_text += texts[i]
-            self.chunk_basenames.append(basenames[i])
-
-            if is_last_input_chunk[i]:
-                # Generate filename
-                # Assumes that speakers will be the same across chunks in the same text input
-                basename = resolve_chunked_basename(
-                    self.chunk_basenames, self.full_text
-                )
-                filename = self.get_filename(basename, speakers[i], languages[i])
-
-                # Save file
-                torch.save(
-                    self.full_spec,
-                    filename,  # type: ignore
-                )
-
-                # Reset the accumulator variables
-                self.full_spec = torch.tensor(())
-                self.full_text = ""
-                self.chunk_basenames = []
+    def write_utterance(self, utterance: Utterance) -> None:
+        filename = self.get_filename(
+            utterance.basename, utterance.speaker, utterance.language
+        )
+        torch.save(utterance.spec.cpu(), filename)
 
 
-class AlignedTextPredictionWriter(PredictionWriterBase):
+class AlignedTextPredictionWriter(PredictionWriterBase, BatchWriter):
     """
     This writer runs inference on a provided text-to-spec model and saves the
     resulting time-aligned text to file. The output format depends on the subclass's
@@ -655,7 +631,7 @@ class OfflineRASPredictionWriter(AlignedTextPredictionWriter):
             f.write(readalong_html)
 
 
-class WavPredictionWriter(PredictionWriterBase):
+class WavPredictionWriter(PredictionWriterBase, BatchWriter):
     """
     Given text-to-spec, this writer does spec-to-wav and writes wav files.
     """
